@@ -8,17 +8,17 @@
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRegExp;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\CollectNodes;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\DetectRestrictedNodeType;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateNoTemporalScalarMix;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateEntityPropertyExists;
 	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ValidateJsonPropertyChain;
@@ -42,20 +42,21 @@
 		private EntityStore $entityStore;
 		
 		/**
-		 * Platform capabilities used to validate cast types against
-		 * engine-specific supported sets.
-		 * @var PlatformCapabilitiesInterface
+		 * @var array<string, string> Cast names and SQL types for the connected engine
 		 */
-		private PlatformCapabilitiesInterface $platform;
-		
+		private array $supportedCastTypes;
+
 		/**
 		 * Constructor - initializes the validator with entity schema information
 		 * @param EntityStore $entityStore The entity store containing schema definitions
 		 * @param PlatformCapabilitiesInterface $platform Platform capabilities for engine-specific cast validation
 		 */
-		public function __construct(EntityStore $entityStore, PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()) {
+		public function __construct(
+			EntityStore $entityStore,
+			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities()
+		) {
 			$this->entityStore = $entityStore;
-			$this->platform = $platform;
+			$this->supportedCastTypes = TypeMapper::getSupportedCastTypes($platform->getDatabaseType());
 		}
 		
 		/**
@@ -64,6 +65,8 @@
 		 * @throws SemanticException|EntityResolutionException If any validation fails
 		 */
 		public function validate(AstRetrieve $ast): void {
+			$this->validateWindow($ast);
+
 			// First, recursively validate all nested queries in temporary ranges
 			// This ensures inner queries are valid before validating the outer query
 			foreach ($ast->getRanges() as $range) {
@@ -78,6 +81,9 @@
 			
 			// Step 1: Validate that the projection list is not empty
 			$this->validatePopulatedProjections($ast);
+
+			// Step 2: Validate that routine calls sit in a query the database runs
+			$this->validateRoutineCallsRunOnServer($ast);
 			
 			// ==============================================================================
 			// Range validation
@@ -96,23 +102,27 @@
 			//         This range will act as the FROM clause of the SELECT query.
 			$this->validateAtLeastOneRangeWithoutVia($ast);
 			
-			// Step 5: Validate that each root identifier links to a range that exists
+			// Step 5: Check for ambiguous unqualified properties that the prefilter
+			// could not resolve. Must run before Step 6 so a bare property name
+			// that matches multiple ranges gets this validator's specific
+			// "ambiguous" message instead of Step 6's generic "undefined range
+			// reference" — both see the same Unresolved node otherwise.
+			$this->validateUnambiguousProperties($ast);
+
+			// Step 6: Validate that each root identifier links to a range that exists
 			$this->processWithVisitor($ast, ValidateRangesDeclared::class, $this->entityStore);
-			
-			// Step 6: Validate that via clauses do not form circular dependencies
+
+			// Step 7: Validate that via clauses do not form circular dependencies
 			$this->validateNoCircularViaDependencies($ast);
-			
+
 			// ==============================================================================
 			// Property validation
 			// ==============================================================================
-			
-			// Step 1: Check for ambiguous properties that the prefilter could not resolve
-			$this->validateUnambiguousProperties($ast);
-			
-			// Step 2: Validate property references against schema
+
+			// Step 1: Validate property references against schema
 			$this->processWithVisitor($ast, ValidateEntityPropertyExists::class, $this->entityStore);
-			
-			// Step 2b: Validate that JSON path segments only appear after a JSON-typed column
+
+			// Step 1b: Validate that JSON path segments only appear after a JSON-typed column
 			$this->processWithVisitor($ast, ValidateJsonPropertyChain::class, $this->entityStore);
 			
 			// Step 3: Validate that referenced relationships lead back to the entity
@@ -130,23 +140,19 @@
 			//           retrieve(y) where y in a JSON source produces empty arrays at runtime
 			//           because the engine has no schema to hydrate fields from.
 			$this->validateNoBareJsonSourceInProjection($ast);
-			
+
 			// Step 4c: Validates that WHERE conditions only reference fields that subquery ranges
 			//          actually export. A subquery's projection is its contract.
 			$this->validateSubqueryRangeWhereReferences($ast);
 			
-			// Step 4d: Validates that the outer retrieve list only references fields that subquery
-			//          ranges actually export. Mirrors 4c for the projection rather than WHERE.
-			$this->validateSubqueryRangeProjectionReferences($ast);
+			// Step 4d: Validate subquery field references in projections and sort expressions.
+			$this->validateSubqueryRangeProjectionAndSortReferences($ast);
 			
 			// Step 5: Validates that REGEXP is not used in the VALUES portion of the query
 			$this->validateNoRegExpInValueList($ast);
 			
 			// Step 6: Ensure expressions are not used inappropriately on entities
 			$this->processWithVisitor($ast, ValidateNoEntityExpressions::class);
-			
-			// Step 7: Validate SQL compliance rules (aggregates cannot be put in WHERE)
-			$this->validateNoAggregatesInWhereClause($ast);
 			
 			// Step 8: Validate that all identifiers in each search() call reference the same range
 			$this->validateSearchIdentifierRanges($ast);
@@ -168,6 +174,45 @@
 			//          combined with plain scalars in arithmetic expressions.
 			//          date("6 days") + 1 has no defined meaning and is a type error.
 			$this->processWithVisitor($ast, ValidateNoTemporalScalarMix::class, $this->entityStore);
+		}
+
+		/**
+		 * Validates pagination values and normalizes valid values to integers.
+		 * @param AstRetrieve $ast Query to validate
+		 * @return void
+		 * @throws SemanticException When a window value is outside its allowed range
+		 */
+		private function validateWindow(AstRetrieve $ast): void {
+			$window = $ast->getWindow();
+			$windowSize = $ast->getWindowSize();
+
+			if ($window !== null) {
+				$ast->setWindow($this->validateWindowValue($window, 'window page', true));
+			}
+
+			if ($windowSize !== null) {
+				$ast->setWindowSize($this->validateWindowValue($windowSize, 'window size', false));
+			}
+		}
+
+		/**
+		 * Ensures a pagination value is an integer in its allowed range.
+		 * @param int|float $value Value from the parsed window clause
+		 * @param string $label Value name used in the error
+		 * @param bool $allowZero Whether zero is valid
+		 * @return int
+		 * @throws SemanticException
+		 */
+		private function validateWindowValue(int|float $value, string $label, bool $allowZero): int {
+			if (!is_int($value) && (!is_finite($value) || floor($value) !== $value)) {
+				throw new SemanticException("The {$label} must be an integer.");
+			}
+
+			if ($value < ($allowZero ? 0 : 1) || (is_float($value) && $value >= (float)PHP_INT_MAX)) {
+				throw new SemanticException("The {$label} must be " . ($allowZero ? 'zero or greater' : 'greater than zero') . ' and within the supported integer range.');
+			}
+
+			return (int)$value;
 		}
 		
 		/**
@@ -263,8 +308,15 @@
 		 * still holds a raw AstIdentifier at this point, normalisation could not resolve it,
 		 * meaning the property is a column rather than a relation.
 		 *
+		 * An entity range's 'via' can also be a literal join condition instead of a relation
+		 * name (e.g. `via o.customer_id = c.id` — see Rules\Range::parseEntityRangeTail()).
+		 * That form is never a bare AstIdentifier once parsed (it's already an AstExpression),
+		 * so it passes this check unchanged without needing a separate branch here.
+		 *
 		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException When a 'via' clause references a column instead of a relation
+		 * @throws SemanticException When a 'via' clause names an undeclared relation — a bare
+		 *         property reference normalisation couldn't resolve. Does not fire for the
+		 *         literal-condition form, which was never a bare identifier to begin with.
 		 */
 		private function validateViaClauseNormalisationPassed(AstRetrieve $ast): void {
 			foreach ($ast->getRanges() as $range) {
@@ -272,10 +324,12 @@
 				if ($range->getJoinProperty() === null) {
 					continue;
 				}
-				
+
 				// A successful normalisation transforms the via AstIdentifier into an AstExpression.
 				// If the join property is still an AstIdentifier, normalisation could not resolve
 				// it as a relation — meaning the property is a plain column, which is not allowed.
+				// (A literal-condition via, e.g. `via o.customer_id = c.id`, was already an
+				// AstExpression at parse time and never reaches this branch.)
 				if ($range->getJoinProperty() instanceof AstIdentifier) {
 					throw new SemanticException("The 'via' property in range '{$range->getName()}' must be a relation, not a column.");
 				}
@@ -296,113 +350,92 @@
 		 * @throws SemanticException If a WHERE clause references an unexported subquery field
 		 */
 		private function validateSubqueryRangeWhereReferences(AstRetrieve $ast): void {
-			// No WHERE clause means nothing to check
-			if ($ast->getConditions() === null) {
-				return;
-			}
-			
-			// Build a map of subquery range name → exported field names for fast lookup.
-			// By this point, validateNoBareEntityInSubqueryProjection has already rejected
-			// any subquery that projects a bare entity, so every entry is an explicit list.
-			$subqueryExports = [];
-			
-			foreach ($ast->getRanges() as $range) {
-				if (!$range instanceof AstRangeDatabaseSubquery) {
-					continue;
-				}
-				
-				$subqueryExports[$range->getName()] = array_map(fn($alias) => $alias->getName(), $range->getQuery()->getValues());
-			}
-			
-			// Nothing to check if there are no subquery ranges in this query
-			if (empty($subqueryExports)) {
-				return;
-			}
-			
-			// Walk the WHERE clause and check every root identifier that points at a subquery range
-			$collector = new CollectNodes(AstIdentifier::class);
-			$ast->getConditions()->accept($collector);
-			
-			foreach ($collector->getCollectedNodes() as $node) {
-				// Only root nodes — child segments of x.foo.bar are not standalone references
-				if ($node->hasParentIdentifier()) {
-					continue;
-				}
-				
-				// Skip if no range found
-				$rangeName = $node->getRange()?->getName();
-				
-				if ($rangeName === null || !array_key_exists($rangeName, $subqueryExports)) {
-					continue;
-				}
-				
-				// If the field is not in the projection list, throw
-				$field = $node->getPropertyName();
-				
-				if (!in_array($field, $subqueryExports[$rangeName], true)) {
-					throw new SemanticException(sprintf(
-						"Field '%s.%s' referenced in WHERE clause is not exported by subquery range '%s'.",
-						$node->getName(),
-						$field,
-						$rangeName
-					));
-				}
+			if ($ast->getConditions() !== null) {
+				$this->validateSubqueryReferences(
+					$ast->getConditions(),
+					$this->subqueryExports($ast),
+					'WHERE clause'
+				);
 			}
 		}
 		
 		/**
-		 * Validates that the outer retrieve list only references fields that subquery ranges export.
+		 * Validates that retrieve and sort expressions only reference fields exported by subquery ranges.
 		 *
-		 * Mirrors validateSubqueryRangeWhereReferences but covers the projection (retrieve list)
-		 * rather than the WHERE clause. Both enforce the same contract: a subquery's projection
-		 * is the complete set of fields the outer query may reference.
+		 * Uses the same export contract as the WHERE clause check.
 		 *
-		 * @throws SemanticException If the outer projection references an unexported subquery field
+		 * @param AstRetrieve $ast
+		 * @return void
+		 * @throws SemanticException If an expression references an unexported subquery field
 		 */
-		private function validateSubqueryRangeProjectionReferences(AstRetrieve $ast): void {
-			// Build a map of subquery range name → exported field names for fast lookup.
-			$subqueryExports = [];
+		private function validateSubqueryRangeProjectionAndSortReferences(AstRetrieve $ast): void {
+			$subqueryExports = $this->subqueryExports($ast);
+
+			foreach ($ast->getValues() as $alias) {
+				$this->validateSubqueryReferences($alias->getExpression(), $subqueryExports, 'retrieve list');
+			}
+
+			foreach ($ast->getSort() as $sort) {
+				$this->validateSubqueryReferences($sort['ast'], $subqueryExports, 'SORT BY clause');
+			}
+		}
+
+		/**
+		 * Returns the fields exported by each subquery range.
+		 * @param AstRetrieve $ast
+		 * @return array<string, array<string, true>>
+		 */
+		private function subqueryExports(AstRetrieve $ast): array {
+			$exports = [];
 			
 			foreach ($ast->getRanges() as $range) {
 				if (!$range instanceof AstRangeDatabaseSubquery) {
 					continue;
 				}
 				
-				$subqueryExports[$range->getName()] = array_map(fn($alias) => $alias->getName(), $range->getQuery()->getValues());
+				$fields = [];
+				foreach ($range->getQuery()->getValues() as $alias) {
+					$fields[$alias->getName()] = true;
+				}
+				$exports[$range->getName()] = $fields;
 			}
 			
-			// Nothing to check if there are no subquery ranges in this query
-			if (empty($subqueryExports)) {
+			return $exports;
+		}
+
+		/**
+		 * Checks every identifier in an expression against its subquery range's exports.
+		 * @param AstInterface $expression
+		 * @param array<string, array<string, true>> $subqueryExports
+		 * @param string $location
+		 * @return void
+		 * @throws SemanticException
+		 */
+		private function validateSubqueryReferences(AstInterface $expression, array $subqueryExports, string $location): void {
+			if ($subqueryExports === []) {
 				return;
 			}
 			
-			// Walk the outer retrieve list and check every identifier that points at a subquery range
-			foreach ($ast->getValues() as $alias) {
-				$expression = $alias->getExpression();
-				
-				if (!$expression instanceof AstIdentifier) {
+			$collector = new CollectNodes(AstIdentifier::class);
+			$expression->accept($collector);
+
+			foreach ($collector->getCollectedNodes() as $node) {
+				if ($node->hasParentIdentifier()) {
 					continue;
 				}
 				
-				// Only root identifiers — hasParentIdentifier() is false for the range segment
-				if ($expression->hasParentIdentifier()) {
-					continue;
-				}
-				
-				$rangeName = $expression->getRange()?->getName();
-				
+				$rangeName = $node->getRange()?->getName();
 				if ($rangeName === null || !array_key_exists($rangeName, $subqueryExports)) {
 					continue;
 				}
 				
-				// If the field is not in the export list, throw
-				$field = $expression->getPropertyName();
-				
-				if (!in_array($field, $subqueryExports[$rangeName], true)) {
+				$field = $node->getPropertyName();
+				if (!isset($subqueryExports[$rangeName][$field])) {
 					throw new SemanticException(sprintf(
-						"Field '%s.%s' referenced in retrieve list is not exported by subquery range '%s'.",
-						$expression->getName(),
+						"Field '%s.%s' referenced in %s is not exported by subquery range '%s'.",
+						$node->getName(),
 						$field,
+						$location,
 						$rangeName
 					));
 				}
@@ -473,7 +506,7 @@
 				}
 			}
 		}
-		
+
 		/**
 		 * Validates that the outer projection does not select an entire subquery range.
 		 *
@@ -500,6 +533,32 @@
 			}
 		}
 		
+		/**
+		 * Routines run on the database server, so a query that PHP evaluates (a JSON
+		 * source, or no range at all) can't call one.
+		 * @param AstRetrieve $ast The AST to validate
+		 * @return void
+		 * @throws SemanticException When such a query calls a routine
+		 */
+		private function validateRoutineCallsRunOnServer(AstRetrieve $ast): void {
+			$calls = new CollectNodes(AstRoutineCall::class);
+			$ast->accept($calls);
+
+			if (empty($calls->getCollectedNodes())) {
+				return;
+			}
+
+			$runsInPhp = empty($ast->getRanges());
+
+			foreach ($ast->getRanges() as $range) {
+				$runsInPhp = $runsInPhp || $range instanceof AstRangeJsonSource;
+			}
+
+			if ($runsInPhp) {
+				throw new SemanticException("'{$calls->getCollectedNodes()[0]->getName()}' is a routine call, which the database runs, but this query runs in PHP (a JSON source, or no range).");
+			}
+		}
+
 		/**
 		 * Validates that at least one range exists without a 'via' clause to serve as the FROM clause.
 		 * In SQL, every query must have a primary FROM table. Other tables are joined to this base.
@@ -587,40 +646,6 @@
 						throw new SemanticException(sprintf($e->getMessage(), $range->getName()));
 					}
 				}
-			}
-		}
-		
-		/**
-		 * Validates that no aggregate functions are present in WHERE clause conditions.
-		 * SQL standard prohibits aggregate functions (COUNT, SUM, AVG, MIN, MAX) in WHERE clauses.
-		 * They should only appear in SELECT, HAVING, or ORDER BY clauses.
-		 * @param AstRetrieve $ast The AST to validate
-		 * @throws SemanticException If aggregate functions are found in WHERE conditions
-		 */
-		private function validateNoAggregatesInWhereClause(AstRetrieve $ast): void {
-			// Early exit if there are no WHERE conditions to validate
-			if ($ast->getConditions() === null) {
-				return;
-			}
-			
-			try {
-				// Create a visitor that searches for any of the prohibited aggregate
-				// function types in the condition tree
-				$visitor = new DetectRestrictedNodeType([AstAggregate::class]);
-				
-				// Traverse the WHERE clause conditions looking for aggregate functions
-				// If any are found, the visitor will throw an exception
-				$ast->getConditions()->accept($visitor);
-				
-				// If we reach this point, no aggregate functions were found (validation passed)
-				
-			} catch (\Exception $e) {
-				// Extract the aggregate function name from the exception message.
-				// Exception message contains the class name like "AstCount", so we extract "COUNT"
-				$nodeType = strtoupper(substr($e->getMessage(), 3));
-				
-				// Throw a user-friendly error explaining the SQL rule violation
-				throw new SemanticException("Aggregate function {$nodeType} is not allowed in WHERE clause");
 			}
 		}
 		
@@ -934,7 +959,7 @@
 					continue;
 				}
 				
-				// Partition into database and non-database ranges
+				// Partition into database and non-database ranges.
 				$databaseRanges = array_filter($ranges, fn($r) => $r instanceof AstRangeDatabase);
 				$nonDatabaseRanges = array_filter($ranges, fn($r) => !$r instanceof AstRangeDatabase);
 				
@@ -960,16 +985,16 @@
 		 * the connected database engine supports.
 		 *
 		 * The set of valid types is engine-specific and is retrieved from
-		 * PlatformCapabilitiesInterface::getSupportedCastTypes(). An unsupported
-		 * type name (e.g. (blob)x.data on MySQL) is rejected here with a clear
-		 * message listing the valid alternatives.
+		 * TypeMapper::getSupportedCastTypes(). An unsupported type name
+		 * (e.g. (blob)x.data on MySQL) is rejected here with a clear message
+		 * listing the valid alternatives.
 		 *
 		 * @param AstRetrieve $ast
 		 * @throws SemanticException
 		 */
 		private function validateCastTypes(AstRetrieve $ast): void {
 			// Fetch all cast types the database supports
-			$supportedTypes = $this->platform->getSupportedCastTypes();
+			$supportedTypes = $this->supportedCastTypes;
 			
 			// Collect every AstCast node in the entire query tree
 			$collector = new CollectNodes(AstCast::class);

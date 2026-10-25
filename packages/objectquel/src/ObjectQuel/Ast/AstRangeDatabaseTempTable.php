@@ -44,6 +44,35 @@
 		public function getTableName(): string {
 			return $this->tableName;
 		}
+
+		/**
+		 * Create a deep copy of this range including all child nodes.
+		 *
+		 * Overrides AstRangeDatabaseSubquery::deepClone() — its `new static(...)`
+		 * only supplies the parent constructor's parameters, missing this
+		 * subclass's required $tableName, so cloning through the inherited
+		 * method throws a TypeError. StageFactory::createDatabaseExecutionStage()
+		 * clones every range in a query, including not-yet-materialized
+		 * temp-table ranges, so $tableName must be preserved here.
+		 * @return static A new instance with cloned child nodes
+		 */
+		public function deepClone(): static {
+			$joinProperty = $this->getJoinProperty()?->deepClone();
+			$query = $this->getQuery()->deepClone();
+
+			// @phpstan-ignore-next-line new.static
+			$clone = new static(
+				$this->getName(),
+				$query,
+				$this->tableName,
+				$joinProperty,
+				$this->isRequired(),
+				$this->includeAsJoin()
+			);
+
+			$clone->setParent($this->getParent());
+			return $clone;
+		}
 		
 		/**
 		 * Set the SQL alias used for this derived table.

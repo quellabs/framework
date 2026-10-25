@@ -14,6 +14,10 @@
 		'username' => getenv('TEST_DB_USER') ?: 'root',
 		'password' => getenv('TEST_DB_PASS') ?: '',
 		'database' => getenv('TEST_DB_NAME') ?: 'canvas_blog',
+		// Cake's MySQL default is persistent, which shares this connection with other tests' Connections; PDO rolls back the shared transaction when one of those is garbage-collected
+		'persistent' => false,
+		// MySQL 8's default mode, so the suite catches values and queries a strict server rejects
+		'init' => ["SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"],
 	]);
 	
 	// Proxy directory — runtime-generated proxies are written here and reused
@@ -28,6 +32,16 @@
 	$config->setEntityNamespace('App\\Entities');
 	$config->setEntityPath(__DIR__ . '/../src/Entities');
 	$config->setProxyDir($proxyDir);
+
+	// ObjectQuel's FK/relationship integration suite needs a real EntityManager
+	// of its own, but UnitOfWork registers standalone signals (orm.prePersist
+	// etc.) on the process-wide SignalHub with no duplicate guard — a second
+	// EntityManager anywhere else in the same PHPUnit process throws. So it
+	// shares this one instance instead, via this additional entity path. Its
+	// fixtures live under their own namespace/directory (not App\Entities),
+	// which EntityLocator resolves from each file's own declared namespace, so
+	// this is safe to mix in without needing a matching entityNamespace here.
+	$config->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
 	
 	// Single EntityManager for the entire test suite. Creating one per test class
 	// causes SignalHub to throw on duplicate signal registration.
@@ -56,12 +70,113 @@
 		    `item_id1`   INT UNSIGNED NOT NULL,
 		    `item_id2`   INT UNSIGNED NOT NULL,
 		    `category`   INT UNSIGNED NOT NULL DEFAULT 1,
-		    `cnt`        INT          NOT NULL DEFAULT 0,
+		    `liked_count` INT UNSIGNED NOT NULL DEFAULT 0,
+		    `slope_count` INT UNSIGNED NOT NULL DEFAULT 0,
 		    `diff_slope` FLOAT        NOT NULL DEFAULT 0.0,
 		    PRIMARY KEY (`item_id1`, `item_id2`, `category`),
-		    INDEX `idx_item2` (`item_id2`, `category`)
+		    INDEX `idx_item2` (`item_id2`, `category`),
+		    INDEX `idx_category` (`category`, `item_id1`, `item_id2`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 	');
+
+	// Older local test databases may still have the legacy combined count.
+	$legacyColumn = $connection->execute("SHOW COLUMNS FROM `vogoo_links` LIKE 'cnt'")->fetchAssoc();
+	if ($legacyColumn !== []) {
+		$connection->execute('TRUNCATE TABLE `vogoo_links`');
+		$connection->execute('ALTER TABLE `vogoo_links` DROP COLUMN `cnt`,
+			ADD COLUMN `liked_count` INT UNSIGNED NOT NULL DEFAULT 0,
+			ADD COLUMN `slope_count` INT UNSIGNED NOT NULL DEFAULT 0,
+			ADD INDEX `idx_category` (`category`, `item_id1`, `item_id2`)');
+	}
 	
+	// Backs App\Entities\VersionedEntity — the only fixture entity with an
+	// @Orm\Version column, used to exercise append's version-column
+	// auto-initialization and replace's version bump against a real table.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `versioned_entities` (
+		    `id`      INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `label`   VARCHAR(255) NOT NULL,
+		    `version` INT          NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
+	// Backs App\Entities\UuidVersionedEntity — a uuid-typed @Orm\Version
+	// column, whose bump on `replace` adds a brand-new bound parameter
+	// (unlike an integer version's `col = col + 1`), exercised by
+	// WriteVerbVersionColumnTest.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `uuid_versioned_entities` (
+		    `id`    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `label` VARCHAR(255) NOT NULL,
+		    `token` VARCHAR(36)  NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
+	// Backs App\Entities\VehicleEntity/CarEntity — single-table-inheritance
+	// coverage for append's discriminator-column injection (literal-values
+	// and insert-from-select forms both), exercised by AppendDiscriminatorTest.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `sti_vehicles` (
+		    `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `name`         VARCHAR(100) NOT NULL,
+		    `vehicle_type` VARCHAR(50)  NOT NULL,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
+	// Backs App\Entities\DefaultColumnEntity — append's @Orm\Column(default=...)
+	// injection, exercised by AppendDefaultColumnTest. `priority`'s DDL default
+	// (99) is deliberately different from the annotation's (0), so a persisted
+	// row of 0 can only come from the annotation, never from the column falling
+	// through to the table's own DEFAULT.
+	$connection->execute(
+		'CREATE TABLE IF NOT EXISTS `default_column_test` (
+		    `id`       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+		    `name`     VARCHAR(100) NOT NULL,
+		    `priority` INT          NOT NULL DEFAULT 99,
+		    PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+	');
+
 	// Test connection
 	$GLOBALS['test_connection'] = $connection;
+
+	// Fixtures for OneToOneInverseOfViaTraversalTest. The test clears and seeds
+	// these tables itself, but an isolated test database must first have them.
+	$connection->execute('CREATE TABLE IF NOT EXISTS `accounts` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`label` VARCHAR(255) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `credentials` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`secret` VARCHAR(255) NOT NULL,
+		`account_id` INT UNSIGNED NULL,
+		UNIQUE KEY `uq_credentials_account` (`account_id`),
+		CONSTRAINT `fk_credentials_account` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+	// Fixtures for RelationalDivisionTest (customer -> orders -> items, plus a product required set).
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_customers` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`name` VARCHAR(100) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_orders` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`customer_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_order_items` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`order_id` INT UNSIGNED NULL,
+		`product_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_products` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`category` VARCHAR(100) NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+	$connection->execute('CREATE TABLE IF NOT EXISTS `rel_div_bundle_items` (
+		`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		`bundle` VARCHAR(100) NOT NULL,
+		`product_id` INT UNSIGNED NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');

@@ -9,11 +9,17 @@
 	 *
 	 * Wraps a DatabaseAdapter and uses it to determine which SQL features are
 	 * available at runtime. Construct this once (typically alongside your
-	 * EntityManager) and pass it into QuelToSQL.
+	 * EntityManager) and pass it into QuelToSQLRetrieve.
+	 *
+	 * This class only reports facts about the connected engine (feature flags,
+	 * supported styles, and getDatabaseType() itself) — it never builds SQL text.
+	 * Collaborators that render whole DDL/SQL fragments from those facts (e.g.
+	 * DDLTypeMapper) take a PlatformCapabilitiesInterface and query it, rather
+	 * than this class delegating out to them.
 	 *
 	 * Example:
 	 *   $platform = new PlatformCapabilities($adapter);
-	 *   $quelToSQL = new QuelToSQL($entityStore, $parameters, $platform);
+	 *   $quelToSQL = new QuelToSQLRetrieve($entityStore, $parameters, $platform);
 	 */
 	class PlatformCapabilities implements PlatformCapabilitiesInterface {
 		
@@ -30,6 +36,7 @@
 		 * @var bool|null
 		 */
 		private ?bool $windowFunctionsCache = null;
+
 		
 		/**
 		 * Constructor
@@ -44,6 +51,14 @@
 		 * @return bool True if native ENUM types are supported (MySQL/MariaDB), false otherwise
 		 */
 		public function supportsNativeEnums(): bool {
+			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb']);
+		}
+		
+		/**
+		 * Checks whether the database engine has a real UNSIGNED integer modifier.
+		 * @return bool
+		 */
+		public function supportsUnsignedIntegers(): bool {
 			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb']);
 		}
 		
@@ -70,34 +85,6 @@
 		/**
 		 * @inheritDoc
 		 *
-		 * Only reached when supportsRegexpLike() is false. For 'sqlsrv' that
-		 * covers two cases: an engine older than SQL Server 2025, or a SQL Server
-		 * 2025+ engine hosting a database whose compatibility level hasn't been
-		 * raised to 170+. Either way there is no regex operator available, so
-		 * this throws rather than returning a syntactically-valid-looking
-		 * operator that isn't.
-		 */
-		public function getRegexpFallbackOperators(): array {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => ['match' => '~', 'notMatch' => '!~'],
-				'sqlsrv' => throw new \RuntimeException(
-					'No regular expression support is available on this SQL Server ' .
-					'connection. REGEXP_LIKE() requires SQL Server 2025 (compatibility ' .
-					'level 170+); no fallback operator exists on earlier versions.'
-				),
-				
-				// MySQL, MariaDB, SQLite all parse the REGEXP keyword the same way.
-				// SQLite specifically requires a regexp() user function to be
-				// registered on the connection or this will fail at query time with
-				// "no such function: regexp" — that registration is outside what
-				// this interface can control.
-				default => ['match' => 'REGEXP', 'notMatch' => 'NOT REGEXP'],
-			};
-		}
-		
-		/**
-		 * @inheritDoc
-		 *
 		 * Performs feature detection by executing a probe query the first time it
 		 * is called. Result is cached per-instance for the lifetime of this object.
 		 */
@@ -117,6 +104,20 @@
 			
 			$stmt->closeCursor();
 			return $this->windowFunctionsCache = true;
+		}
+
+		/**
+		 * Reports whether the connected database supports native offset pagination.
+		 * SQL Server requires version 2012+ and compatibility level 110+.
+		 * @return bool
+		 */
+		public function supportsOffsetPagination(): bool {
+			if ($this->adapter->getDatabaseType() !== 'sqlsrv') {
+				return true;
+			}
+
+			return version_compare($this->adapter->getServerVersion(), '11.0', '>=')
+				&& ($this->adapter->getSqlServerCompatibilityLevel() ?? 0) >= 110;
 		}
 		
 		/**
@@ -148,7 +149,7 @@
 			// is safe to use directly for both engines.
 			return version_compare($this->adapter->getServerVersion(), $minimumVersions[$dbType], '>=');
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
@@ -169,23 +170,11 @@
 		/**
 		 * @inheritDoc
 		 *
-		 * PostgreSQL's 'jsonb' binary type is preferred over 'json' because it
-		 * supports GIN indexing and generally has better performance for reads.
-		 * All other engines use 'json'.
-		 */
-		public function getNativeJsonType(): string {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => 'jsonb',
-				default => 'json',
-			};
-		}
-		
-		/**
-		 * @inheritDoc
-		 *
 		 * JSON path extraction style depends on the engine and version:
 		 * - PostgreSQL:       col #>> '{a,b}'          (all versions)
 		 * - MariaDB >= 10.9:  JSON_VALUE(col, '$.a.b')
+		 * - SQL Server:       JSON_VALUE(col, '$.a.b') (available since SQL Server
+		 *                     2016; same function/path syntax as MariaDB's)
 		 * - SQLite >= 3.38:   col ->> '$.a.b'          (SQLite has no JSON_VALUE())
 		 * - All others:       JSON_UNQUOTE(JSON_EXTRACT(col, '$.a.b'))
 		 */
@@ -193,17 +182,20 @@
 			switch ($this->adapter->getDatabaseType()) {
 				case 'pgsql':
 					return JsonExtractionStyle::HashDoubleArrow;
-				
+
 				case 'mariadb':
 					return $this->supportsMariaDbJsonValue()
 						? JsonExtractionStyle::JsonValue
 						: JsonExtractionStyle::JsonUnquote;
-				
+
+				case 'sqlsrv':
+					return JsonExtractionStyle::JsonValue;
+
 				case 'sqlite':
 					return $this->supportsSqliteArrowOperator()
 						? JsonExtractionStyle::ArrowOperator
 						: JsonExtractionStyle::JsonUnquote;
-				
+
 				default:
 					return JsonExtractionStyle::JsonUnquote;
 			}
@@ -212,96 +204,65 @@
 		/**
 		 * @inheritDoc
 		 *
-		 * Cast type maps per engine:
-		 *
-		 * MySQL / MariaDB
-		 *   Integer arithmetic uses SIGNED (signed 64-bit) rather than INT because
-		 *   CAST(x AS INT) is not valid in MySQL; SIGNED / UNSIGNED are the correct
-		 *   integer target types for CAST().
-		 *
-		 * PostgreSQL
-		 *   Uses standard ANSI type names. INTEGER and FLOAT are the idiomatic choices;
-		 *   TEXT is preferred over VARCHAR (no length constraint) for string casts.
-		 *
-		 * SQLite
-		 *   SQLite CAST() accepts a limited set of type affinities: INTEGER, REAL,
-		 *   TEXT, NUMERIC, BLOB. There is no separate FLOAT or DOUBLE type.
+		 * SQLite is the only engine here without real, independently addressable
+		 * named constraints — every other supported engine tracks one for real.
 		 */
-		public function getSupportedCastTypes(): array {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => [
-					'int'     => 'INTEGER',
-					'float'   => 'FLOAT',
-					'string'  => 'TEXT',
-					'decimal' => 'DECIMAL',
-					'bool'    => 'BOOLEAN',
-				],
-				'sqlite' => [
-					'int'     => 'INTEGER',
-					'float'   => 'REAL',
-					'string'  => 'TEXT',
-					'decimal' => 'NUMERIC',
-				],
-				default => [
-					'int'     => 'SIGNED',
-					'float'   => 'DOUBLE',
-					'string'  => 'CHAR',
-					'decimal' => 'DECIMAL',
-				],
-			};
+		public function supportsNamedForeignKeys(): bool {
+			return $this->adapter->getDatabaseType() !== 'sqlite';
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
-		 * Unix timestamp conversion function per engine:
-		 * - MySQL / MariaDB: UNIX_TIMESTAMP(col)
-		 * - PostgreSQL:      EXTRACT(EPOCH FROM col)::BIGINT
-		 * - SQLite:          strftime('%s', col)
+		 * DatabaseAdapter::getForeignKeys() has a real implementation for every
+		 * engine getDatabaseType() can identify.
 		 */
-		public function getUnixTimestampFunction(): string {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => 'EXTRACT(EPOCH FROM %s)::BIGINT',
-				'sqlite' => "strftime('%%s', %s)",
-				default => 'UNIX_TIMESTAMP(%s)',
-			};
+		public function supportsForeignKeyIntrospection(): bool {
+			return in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb', 'sqlite', 'pgsql', 'sqlsrv']);
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
-		 * Current time as Unix timestamp per engine:
-		 * - MySQL / MariaDB: UNIX_TIMESTAMP()
-		 * - PostgreSQL:      EXTRACT(EPOCH FROM NOW())::BIGINT
-		 * - SQLite:          strftime('%s','now')
+		 * MySQL/MariaDB are the only supported engines whose DDL auto-commits
+		 * per statement; PostgreSQL, SQLite, and SQL Server all support
+		 * transactional DDL.
 		 */
-		public function getCurrentUnixTimestamp(): string {
-			return match ($this->adapter->getDatabaseType()) {
-				'pgsql' => 'EXTRACT(EPOCH FROM NOW())::BIGINT',
-				'sqlite' => "strftime('%s','now')",
-				default => 'UNIX_TIMESTAMP()',
-			};
+		public function supportsTransactionalDDL(): bool {
+			return !in_array($this->adapter->getDatabaseType(), ['mysql', 'mariadb'], true);
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
-		 * Current date/time as a native datetime value per engine:
-		 * - MySQL / MariaDB: NOW()
-		 * - PostgreSQL:      NOW()
-		 * - SQLite:          CURRENT_TIMESTAMP
-		 * - SQL Server:      SYSDATETIME() — higher precision than GETDATE(),
-		 *                    which reduces the chance of two concurrent writes
-		 *                    producing an identical version timestamp.
+		 * PostgreSQL and SQLite reject a qualified column on the left side of
+		 * SET; MySQL/MariaDB and SQL Server accept it.
 		 */
-		public function getCurrentDatetimeFunction(): string {
-			return match ($this->adapter->getDatabaseType()) {
-				'sqlite' => 'CURRENT_TIMESTAMP',
-				'sqlsrv' => 'SYSDATETIME()',
-				default => 'NOW()',
-			};
+		public function supportsQualifiedSetTarget(): bool {
+			return !in_array($this->adapter->getDatabaseType(), ['pgsql', 'sqlite'], true);
 		}
-		
+
+		/**
+		 * @inheritDoc
+		 */
+		public function supportsAliasAfterDmlTarget(): bool {
+			return $this->adapter->getDatabaseType() !== 'sqlsrv';
+		}
+
+		/**
+		 * @inheritDoc
+		 */
+		public function supportsBooleanLiterals(): bool {
+			return $this->adapter->getDatabaseType() !== 'sqlsrv';
+		}
+
+		/**
+		 * @inheritDoc
+		 */
+		public function getDatabaseType(): string {
+			return $this->adapter->getDatabaseType();
+		}
+
 		/**
 		 * REGEXP_LIKE(col, pattern, flags) was added in MySQL 8.0.0.
 		 * @return bool

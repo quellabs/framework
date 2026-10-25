@@ -5,18 +5,31 @@
 	use Cake\Database\Connection;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\Sculpt\Application;
 	use Quellabs\ObjectQuel\Configuration;
-	
+
 	/**
 	 * ObjectQuel service provider for the Sculpt framework
 	 */
 	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
-		
+
+		/**
+		 * @var Connection|null The underlying CakePHP connection, shared by
+		 *      getDatabaseAdapter() and getEntityManager() so a command
+		 *      requesting both doesn't open two live connections
+		 */
+		private ?Connection $connection = null;
+
 		/**
 		 * @var DatabaseAdapter|null Database adapter
 		 */
 		private ?DatabaseAdapter $adapter = null;
+
+		/**
+		 * @var EntityManager|null Entity manager
+		 */
+		private ?EntityManager $entityManager = null;
 		
 		/**
 		 * Register all ObjectQuel commands with the Sculpt application
@@ -31,13 +44,15 @@
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeEntityFromTableCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeRepositoryCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\MakeMigrationsCommand::class,
+					\Quellabs\ObjectQuel\Sculpt\Commands\MakeBlankMigrationCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\QuelMigrateCommand::class,
-					\Quellabs\ObjectQuel\Sculpt\Commands\QuelCreatePhinxConfigCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\PacGenerateEntityCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\QuelIndexHideCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\QuelIndexShowCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\ClearCacheCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\ListEntitiesCommand::class,
+					\Quellabs\ObjectQuel\Sculpt\Commands\ListFunctionsCommand::class,
+					\Quellabs\ObjectQuel\Sculpt\Commands\ListTriggersCommand::class,
 					\Quellabs\ObjectQuel\Sculpt\Commands\AnalyzeIndexesCommand::class,
 				]);
 			}
@@ -53,31 +68,35 @@
 		 *      password: string,
 		 *      port: int,
 		 *      encoding: string,
-		 *      collation: string,
 		 *      migrations_path: string,
+		 *      migration_table: string,
 		 *      entity_namespace: string,
 		 *      entity_path: string,
 		 *      proxy_namespace: string,
 		 *      proxy_path: string,
-		 *      metadata_cache_path: string
+		 *      metadata_cache_path: string,
+		 *      annotation_source: string,
+		 *      generate_foreign_keys: bool
 		 * }
 		 */
 		public static function getDefaults(): array {
 			return [
-				'driver'              => 'mysql',
-				'host'                => '',
-				'database'            => '',
-				'username'            => '',
-				'password'            => '',
-				'port'                => 3306,
-				'encoding'            => 'utf8mb4',
-				'collation'           => 'utf8mb4_unicode_ci',
-				'migrations_path'     => '',
-				'entity_namespace'    => '',
-				'entity_path'         => '',
-				'proxy_namespace'     => 'Quellabs\\ObjectQuel\\Proxy\\Runtime',
-				'proxy_path'          => '',
-				'metadata_cache_path' => ComposerUtils::getProjectRoot() . "/storage/annotations"
+				'driver'                => 'mysql',
+				'host'                  => '',
+				'database'              => '',
+				'username'              => '',
+				'password'              => '',
+				'port'                  => 3306,
+				'encoding'              => 'utf8mb4',
+				'migrations_path'       => '',
+				'migration_table'       => 'quel_migrations',
+				'entity_namespace'      => '',
+				'entity_path'           => '',
+				'proxy_namespace'       => 'Quellabs\\ObjectQuel\\Proxy\\Runtime',
+				'proxy_path'            => '',
+				'metadata_cache_path'   => ComposerUtils::getProjectRoot() . "/storage/annotations",
+				'annotation_source'     => \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS,
+				'generate_foreign_keys' => false,
 			];
 		}
 		
@@ -92,8 +111,12 @@
 			$configuration->setEntityPath($this->getConfigValueAsString('entity_path', $defaults['entity_path']));
 			$configuration->setEntityNameSpace($this->getConfigValueAsString('entity_namespace', $defaults['entity_namespace']));
 			$configuration->setMigrationsPath($this->getConfigValueAsString('migrations_path', $defaults['migrations_path']));
+			$configuration->setMigrationTable($this->getConfigValueAsString('migration_table', $defaults['migration_table']));
 			$configuration->setMetadataCachePath($this->getConfigValueAsString('metadata_cache_path', $defaults['metadata_cache_path']));
+			$configuration->setAnnotationSource($this->getConfigValueAsString('annotation_source', $defaults['annotation_source']));
 			$configuration->setUseMetadataCache(!empty($this->getConfigValueAsString('metadata_cache_path', $defaults['metadata_cache_path'])));
+			$configuration->setGenerateForeignKeys($this->getConfigValueAsBool('generate_foreign_keys', $defaults['generate_foreign_keys']));
+			$configuration->setCollation($this->getConfigValueAsString('collation', '') ?: null);
 			return $configuration;
 		}
 		
@@ -102,70 +125,29 @@
 		 * @return DatabaseAdapter The database adapter instance
 		 */
 		public function getDatabaseAdapter(): DatabaseAdapter {
-			// Return existing instance if already created (singleton behavior)
-			if ($this->adapter !== null) {
-				return $this->adapter;
-			}
-			
-			// Build the connection configuration from config file and defaults
-			$config = $this->buildConnectionConfig();
-			
-			// Create and cache the connection instance
-			$connection = new Connection($config);
-			
-			// Create a new database adapter with connection
-			$this->adapter = new DatabaseAdapter($connection);
-			
-			// Return the singleton instance
-			return $this->adapter;
+			return $this->adapter ??= new DatabaseAdapter($this->getConnection());
 		}
-		
+
 		/**
-		 * Returns a Phinx configuration array
-		 * @return array{
-		 *     paths: array{
-		 *         migrations: string
-		 *     },
-		 *     environments: array{
-		 *         default_migration_table: string,
-		 *         default_environment: string,
-		 *         development: array{
-		 *             adapter: string,
-		 *             host: string,
-		 *             name: string,
-		 *             user: string,
-		 *             pass: string,
-		 *             port: int,
-		 *             charset: string,
-		 *             collation: string
-		 *         }
-		 *     }
-		 * }
+		 * Returns an EntityManager wired to the same connection
+		 * getDatabaseAdapter() uses, using lazy initialization. Lets a
+		 * command run an ObjectQuel query string directly (via
+		 * executeQuery()) instead of driving the parser/compiler/executor
+		 * classes itself.
+		 * @return EntityManager
+		 * @throws \Quellabs\AnnotationReader\Exception\AnnotationReaderException
 		 */
-		public function createPhinxConfig(): array {
-			// Fetch default values
-			$defaults = $this->getDefaults();
-			
-			// Make a phinx config configuration array
-			return [
-				'paths'        => [
-					'migrations' => $this->getConfigValueAsString('migrations_path', $defaults['migrations_path']),
-				],
-				'environments' => [
-					'default_migration_table' => $this->getConfigValueAsString('migration_table', 'phinxlog'),
-					'default_environment'     => 'development',
-					'development'             => [
-						'adapter'   => $this->getConfigValueAsString('driver', $defaults['driver']),
-						'host'      => $this->getConfigValueAsString('host', $defaults['host']),
-						'name'      => $this->getConfigValueAsString('database', $defaults['database']),
-						'user'      => $this->getConfigValueAsString('username', $defaults['username']),
-						'pass'      => $this->getConfigValueAsString('password', $defaults['password']),
-						'port'      => $this->getConfigValueAsInt('port', $defaults['port']),
-						'charset'   => $this->getConfigValueAsString('encoding', $defaults['encoding']),
-						'collation' => $this->getConfigValueAsString('collation', $defaults['collation']),
-					],
-				],
-			];
+		public function getEntityManager(): EntityManager {
+			return $this->entityManager ??= new EntityManager($this->getConfiguration(), $this->getConnection());
+		}
+
+		/**
+		 * Returns the underlying CakePHP connection, built once from config
+		 * file and defaults and shared by getDatabaseAdapter()/getEntityManager().
+		 * @return Connection
+		 */
+		private function getConnection(): Connection {
+			return $this->connection ??= new Connection($this->buildConnectionConfig());
 		}
 		
 		/**

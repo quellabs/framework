@@ -1,9 +1,7 @@
 <?php
 	
 	namespace Quellabs\AnnotationReader\LexerParser;
-	
-	use Quellabs\AnnotationReader\Annotation\BasicEnum;
-	
+
 	/**
 	 * Class Token
 	 * @package Quellabs\AnnotationsReader

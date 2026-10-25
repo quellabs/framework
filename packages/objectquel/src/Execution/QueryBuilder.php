@@ -67,6 +67,17 @@
 		}
 		
 		/**
+		 * Whether a relation is fetched lazily (resolved at property-access time by the
+		 * ORM proxy) rather than eager-joined here. Centralized so the three range-walking
+		 * methods below apply the same fetch-mode check consistently.
+		 * @param ManyToOne|OneToOne $relation
+		 * @return bool
+		 */
+		private function isLazy(ManyToOne|OneToOne $relation): bool {
+			return $relation->getFetch() === self::FETCH_LAZY;
+		}
+
+		/**
 		 * Generates a unique alias string for a range.
 		 * Centralized so alias format is changed in one place only.
 		 * @param int $counter
@@ -86,15 +97,17 @@
 		 * Filtering rules applied (all must pass):
 		 *  - Fetch mode must not be LAZY.
 		 *  - The relation's target entity must normalize to $entityType.
-		 *  - If $requireNoInversedBy is true, getInversedBy() must return null
-		 *    (used for OneToOne owned-side filtering).
+		 *
+		 * Every entry in $relations is already owning-side by construction: non-owning
+		 * OneToOne declarations are stored as InverseOf annotations, never as OneToOne
+		 * (see EntityMetadataRecord::getOneToOneDependencies()), so no further
+		 * ownership filtering is needed here.
 		 *
 		 * @param string $entityType The main entity type being loaded.
 		 * @param string $dependentEntityType The entity type on the dependent side.
 		 * @param iterable<string, ManyToOne|OneToOne> $relations Keyed by property name, values are relation metadata.
 		 * @param array<string, string> $ranges Accumulator array (modified in place).
 		 * @param int $rangeCounter Alias counter (modified in place).
-		 * @param bool $requireNoInversedBy When true, relations with a non-null inversedBy are skipped.
 		 * @return void
 		 * @throws EntityResolutionException
 		 */
@@ -103,30 +116,22 @@
 			string $dependentEntityType,
 			iterable $relations,
 			array &$ranges,
-			int &$rangeCounter,
-			bool $requireNoInversedBy = false
+			int &$rangeCounter
 		): void {
 			foreach ($relations as $property => $relation) {
 				// LAZY relations are intentionally excluded: they are resolved at
 				// property-access time by the ORM proxy, not via an eager join here.
-				if ($relation->getFetch() === self::FETCH_LAZY) {
+				if ($this->isLazy($relation)) {
 					continue;
 				}
-				
+
 				// normalizeEntityClass strips namespace aliases and other decoration so
 				// we can do a reliable string comparison against $entityType.
 				// If this relation points somewhere else entirely, it is irrelevant here.
 				if ($this->entityStore->normalizeEntityClass($relation->getTargetEntity()) !== $entityType) {
 					continue;
 				}
-				
-				// For OneToOne relations we only want the *owning* side — the entity that
-				// holds the foreign-key column. The inverse side (annotated with inversedBy)
-				// does not own the column and must not generate a redundant range.
-				if ($requireNoInversedBy && $relation->getReferencedColumn() !== null) {
-					continue;
-				}
-				
+
 				// The JOIN must connect the dependent range back to 'main'. Emitting
 				// "via {alias}.{property}" is self-referential: the via property's parent is the
 				// dependent range itself, so the rewrite collapses both sides of the join onto it
@@ -142,6 +147,92 @@
 				
 				$alias = $this->createAlias($rangeCounter++);
 				$ranges[$alias] = "range of {$alias} is {$dependentEntityType} via main.{$mainInverse}";
+
+				// If this dependent is itself marked @Orm\EntityBridge, eager-join one hop
+				// further through its own relations instead of leaving the far side lazy.
+				// Exclude by $property (the exact relation just used to reach the bridge),
+				// not by target type — a self-referencing bridge (e.g. Friendship::$userA
+				// and $userB both targeting User) would otherwise have both relations
+				// excluded just for sharing a target type with the one that reached it.
+				$this->addBridgeExpansionRanges($dependentEntityType, $alias, null, $property, $ranges, $rangeCounter);
+			}
+		}
+
+		/**
+		 * When a dependent entity just joined in by addRanges() is marked @Orm\EntityBridge —
+		 * a pure linking/junction entity holding two ordinary ManyToOne (or owning OneToOne)
+		 * relations — eager-join one hop further through its own relations, so the far side of
+		 * the link resolves in the same query rather than lazily per row.
+		 *
+		 * Two independent, mutually-exclusive exclusion criteria prevent rejoining the
+		 * entity already reached via this bridge — each caller uses whichever one it can
+		 * actually identify:
+		 *  - $excludedProperty matches by relation identity: the exact property on the
+		 *    bridge itself that was just used to reach it (the child-side case, where that
+		 *    property is known). Matching by identity rather than target type means a
+		 *    self-referencing bridge (e.g. Friendship::$userA and $userB both targeting
+		 *    User) still gets its other relation joined instead of losing both to a
+		 *    type-based match.
+		 *  - $excludedEntityType matches by target type: used when the bridge was reached
+		 *    via a relation that lives on the *other* side (the forward case, where main
+		 *    owns the relation into the bridge, not the reverse) — there is no bridge-owned
+		 *    property to match by identity there, only "don't rejoin main's own type".
+		 * Pass both as null when there is nothing to exclude — e.g. the bridge itself is
+		 * 'main' because the caller queried it directly, so nothing has been reached via it
+		 * yet. The via-clause is anchored on the bridge's own alias, which is 'main' in that
+		 * direct-query case and a joined alias otherwise (e.g. "range of r1 is Tag via
+		 * r0.tag") — not self-referential, since the bridge range and the target range differ.
+		 * @param string $bridgeEntityType The bridge entity's class name
+		 * @param string $bridgeAlias The alias the bridge's own range was assigned ('main' when the bridge is the queried entity itself)
+		 * @param string|null $excludedEntityType Target type to skip (forward case), or null
+		 * @param string|null $excludedProperty Bridge-owned property to skip by identity (child-side case), or null
+		 * @param array<string, string> $ranges Accumulator array (modified in place)
+		 * @param int $rangeCounter Alias counter (modified in place)
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function addBridgeExpansionRanges(
+			string $bridgeEntityType,
+			string $bridgeAlias,
+			?string $excludedEntityType,
+			?string $excludedProperty,
+			array &$ranges,
+			int &$rangeCounter
+		): void {
+			$bridgeMetadata = $this->entityStore->getMetadata($bridgeEntityType);
+
+			if (!$bridgeMetadata->isEntityBridge()) {
+				return;
+			}
+
+			$relations = $bridgeMetadata->getOneToOneDependencies() + $bridgeMetadata->getManyToOneDependencies();
+
+			foreach ($relations as $property => $relation) {
+				// LAZY relations are resolved at property-access time by the ORM proxy,
+				// not via an eager join here — same convention as addRanges().
+				if ($this->isLazy($relation)) {
+					continue;
+				}
+
+				// Skip the exact relation that was just used to reach the bridge, by
+				// property identity — see the method docblock for why this is preferred
+				// over a target-type match wherever the property is known.
+				if ($excludedProperty !== null && $property === $excludedProperty) {
+					continue;
+				}
+
+				$targetEntityType = $this->entityStore->normalizeEntityClass($relation->getTargetEntity());
+
+				// Skip any bridge relation whose target is the entity type that reached
+				// the bridge via its own (non-bridge-owned) relation — that entity is
+				// already 'main'. Only used when there's no bridge-owned property to
+				// match by identity instead (see docblock).
+				if ($excludedEntityType !== null && $targetEntityType === $excludedEntityType) {
+					continue;
+				}
+
+				$alias = $this->createAlias($rangeCounter++);
+				$ranges[$alias] = "range of {$alias} is {$targetEntityType} via {$bridgeAlias}.{$property}";
 			}
 		}
 		
@@ -177,7 +268,9 @@
 		 *
 		 * The first entry is always 'main'. Subsequent entries are derived from OneToOne
 		 * (owned-side only) and ManyToOne relationships on each entity that declares a
-		 * dependency on $entityType.
+		 * dependency on $entityType, plus — when $entityType is itself an @Orm\EntityBridge —
+		 * its own two relations, and — when $entityType owns a relation into a bridge — that
+		 * bridge and one hop past it.
 		 *
 		 * @param string $entityType The entity type for which relationships should be retrieved.
 		 * @return array<string, string> Range definitions keyed by alias.
@@ -188,26 +281,33 @@
 			// All other ranges are joins relative to it.
 			$ranges = ['main' => "range of main is {$entityType}"];
 			$rangeCounter = 0;
-			
+
+			// If the queried entity is itself an @Orm\EntityBridge, eager-join its own two
+			// relations directly off 'main' (subject to fetch) — the same expansion a bridge
+			// gets when reached as a dependent or via a forward relation, just anchored on
+			// 'main' since a direct query means nothing has reached it to exclude.
+			if ($this->entityStore->getMetadata($entityType)->isEntityBridge()) {
+				$this->addBridgeExpansionRanges($entityType, 'main', null, null, $ranges, $rangeCounter);
+			}
+
 			// getDependentEntities returns every entity type that declares a relationship
 			// pointing at $entityType. We inspect each one for eagerly-fetchable relations
 			// and add a range for each qualifying join.
 			foreach ($this->entityStore->getDependentEntities($entityType) as $dependentEntityType) {
 				$metadata = $this->entityStore->getMetadata($dependentEntityType);
 				
-				// OneToOne: pass requireNoInversedBy=true so only the owning side
-				// (the entity that actually holds the FK column) generates a range.
+				// OneToOne: every entry is already owning-side (see addRanges() docblock),
+				// so it generates a range without further filtering.
 				$this->addRanges(
 					$entityType,
 					$dependentEntityType,
 					$metadata->getOneToOneDependencies(),
 					$ranges,
-					$rangeCounter,
-					requireNoInversedBy: true
+					$rangeCounter
 				);
-				
-				// ManyToOne: no inversedBy restriction needed — every ManyToOne that
-				// points at $entityType owns its own FK column by definition.
+
+				// ManyToOne: every ManyToOne that points at $entityType owns its own
+				// FK column by definition.
 				$this->addRanges(
 					$entityType,
 					$dependentEntityType,
@@ -216,8 +316,57 @@
 					$rangeCounter
 				);
 			}
-			
+
+			// $entityType may itself own a ManyToOne/OneToOne pointing *at* a bridge entity
+			// (the reverse direction from the walk above, e.g. AuditLog::$postTag -> PostTagEntity).
+			// That relation is main's own, so addForwardBridgeRanges() joins the bridge directly
+			// off 'main' and then extends one hop further through the bridge's own relations,
+			// same as addBridgeExpansionRanges() does for the child-side case.
+			$this->addForwardBridgeRanges($entityType, $ranges, $rangeCounter);
+
 			return $ranges;
+		}
+
+		/**
+		 * When $entityType itself owns a ManyToOne/owning-OneToOne relation pointing at a
+		 * bridge entity, eager-join that bridge directly off 'main' (subject to fetch), then
+		 * extend one hop further through the bridge's own relations via addBridgeExpansionRanges().
+		 *
+		 * This is the reverse direction of the walk in getRelationRanges(): that walk finds
+		 * entities that point *at* $entityType (the child side); this handles $entityType
+		 * pointing *at* a bridge (the parent side), which is otherwise always left lazy.
+		 * @param string $entityType The entity type being retrieved (the 'main' range).
+		 * @param array<string, string> $ranges Accumulator array (modified in place).
+		 * @param int $rangeCounter Alias counter (modified in place).
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function addForwardBridgeRanges(string $entityType, array &$ranges, int &$rangeCounter): void {
+			$metadata = $this->entityStore->getMetadata($entityType);
+			$relations = $metadata->getOneToOneDependencies() + $metadata->getManyToOneDependencies();
+
+			foreach ($relations as $property => $relation) {
+				// LAZY relations are resolved at property-access time by the ORM proxy,
+				// not via an eager join here — same convention as addRanges().
+				if ($this->isLazy($relation)) {
+					continue;
+				}
+
+				$targetEntityType = $this->entityStore->normalizeEntityClass($relation->getTargetEntity());
+
+				if (!$this->entityStore->getMetadata($targetEntityType)->isEntityBridge()) {
+					continue;
+				}
+
+				$alias = $this->createAlias($rangeCounter++);
+				$ranges[$alias] = "range of {$alias} is {$targetEntityType} via main.{$property}";
+
+				// Extend one hop further through the bridge's own relations, excluding
+				// $entityType by target type (no bridge-owned property identifies this
+				// relation — it lives on $entityType's side, not the bridge's) so a
+				// relation pointing back at it (if any) isn't rejoined.
+				$this->addBridgeExpansionRanges($targetEntityType, $alias, $entityType, null, $ranges, $rangeCounter);
+			}
 		}
 		
 		/**
@@ -228,11 +377,12 @@
 		private function parametersToString(array $parameters): string {
 			$parts = [];
 			
-			foreach ($parameters as $key => $_) {
-				// Produces a condition like "main.id=:id".
-				// The ":key" syntax is the named-placeholder convention understood by the
-				// ObjectQuel query executor — binding happens downstream, not here.
-				$parts[] = "main.{$key}=:{$key}";
+			foreach ($parameters as $key => $value) {
+				if ($value === null) {
+					$parts[] = "is_null(main.{$key})";
+				} else {
+					$parts[] = "main.{$key}=:{$key}";
+				}
 			}
 			
 			// Multiple primary-key columns (composite keys) are ANDed together.

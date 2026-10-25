@@ -40,8 +40,8 @@
 		 */
 		protected function insertLink(int $itemId1, int $itemId2, int $cnt, float $diffSlope = 0.0, int $category = 1): void {
 			$this->connection->execute(
-				'INSERT INTO vogoo_links (item_id1, item_id2, category, cnt, diff_slope) VALUES (:i1, :i2, :c, :cnt, :d)',
-				['i1' => $itemId1, 'i2' => $itemId2, 'c' => $category, 'cnt' => $cnt, 'd' => $diffSlope],
+				'INSERT INTO vogoo_links (item_id1, item_id2, category, liked_count, slope_count, diff_slope) VALUES (:i1, :i2, :c, :cnt, :cnt2, :d)',
+				['i1' => $itemId1, 'i2' => $itemId2, 'c' => $category, 'cnt' => $cnt, 'cnt2' => $cnt, 'd' => $diffSlope],
 			);
 		}
 		

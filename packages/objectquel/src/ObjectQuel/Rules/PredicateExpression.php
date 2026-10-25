@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel\Rules;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNot;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
@@ -20,7 +21,7 @@
 	 * or as arguments to other functions, because they are parsed at a level
 	 * above ComparisonExpression and ArithmeticExpression.
 	 *
-	 * Extends AbstractExpressionRule to gain $lexer, parsePropertyChain(), and
+	 * Extends ExpressionRuleBase to gain $lexer, parsePropertyChain(), and
 	 * parseIdentifierList(). Delegation downward to ComparisonExpression is done
 	 * explicitly rather than via inheritance, since ComparisonExpression does not
 	 * need those shared primitives and correctly stands alone.
@@ -33,17 +34,26 @@
 		/**
 		 * Parse a predicate expression.
 		 *
-		 * If the current token is an identifier immediately followed by '(',
-		 * attempt to dispatch it as a known predicate function. If the name is
-		 * not recognized, fall through to ComparisonExpression without consuming
-		 * any tokens. Each predicate branch is responsible for consuming its
-		 * own identifier token.
+		 * A leading NOT negates only the following term. This check belongs here
+		 * because LogicalExpression parses AND/OR operands by repeatedly calling
+		 * this method; handling NOT at a higher level would incorrectly negate
+		 * subsequent operands.
+		 *
+		 * If an identifier is immediately followed by '(', attempt to parse it as
+		 * a predicate function. Unknown names fall through to
+		 * ComparisonExpression without consuming any tokens. Predicate branches
+		 * consume their own identifier.
 		 *
 		 * @return AstInterface
 		 * @throws LexerException
 		 * @throws ParserException
 		 */
 		public function parse(): AstInterface {
+			if ($this->lexer->lookahead() === Token::Not) {
+				$this->lexer->match(Token::Not);
+				return new AstNot($this->parse());
+			}
+			
 			// Only attempt predicate dispatch when we see an identifier
 			// immediately followed by '(' — anything else cannot be a predicate call
 			if (

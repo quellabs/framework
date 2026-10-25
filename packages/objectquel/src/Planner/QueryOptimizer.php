@@ -32,6 +32,9 @@
 		private Optimizers\RangeOptimizer $rangeOptimizer;                   // Optimizes range queries and filtering
 		private Optimizers\JoinOptimizer $joinOptimizer;                     // Handles JOIN operations and elimination
 		private Optimizers\AggregateOptimizer $aggregateOptimizer;           // Optimizes aggregate functions (COUNT, SUM, etc.)
+		private Optimizers\WindowChainRewriter $windowChainRewriter;         // Extracts nested sequence functions into helper ranges
+		private Optimizers\WhereWindowFilterRewriter $whereWindowFilterRewriter; // Extracts a WHERE-filtered sequence function into a helper range
+		private Optimizers\WhereHavingFilterRewriter $whereHavingFilterRewriter; // Moves a plain-aggregate WHERE condition into an implicit HAVING clause
 		private Optimizers\ExistsOptimizer $existsOptimizer;                 // Converts EXISTS subqueries to more efficient forms
 		private Optimizers\JoinConditionFieldInjector $JoinConditionFieldInjector; // Optimizes value references and constants
 		private Optimizers\FoldingRuleOptimizer $constantFoldingOptimizer;          // Folds statically-resolvable nodes to boolean constants
@@ -51,10 +54,13 @@
 			$this->anyOptimizer = new Optimizers\AnyOptimizer($entityManager);
 			$this->rangeOptimizer = new Optimizers\RangeOptimizer($entityManager);
 			$this->joinOptimizer = new Optimizers\JoinOptimizer($entityManager);
-			$this->aggregateOptimizer = new Optimizers\AggregateOptimizer($platform);
-			
+			$this->aggregateOptimizer = new Optimizers\AggregateOptimizer($this->entityStore, $platform);
+			$this->windowChainRewriter = new Optimizers\WindowChainRewriter($this->entityStore, $platform);
+			$this->whereWindowFilterRewriter = new Optimizers\WhereWindowFilterRewriter($this->entityStore, $platform);
+			$this->whereHavingFilterRewriter = new Optimizers\WhereHavingFilterRewriter();
+			$this->existsOptimizer = new Optimizers\ExistsOptimizer($this->entityStore);
+
 			// Initialize stateless optimizers that work on AST structure alone
-			$this->existsOptimizer = new Optimizers\ExistsOptimizer();
 			$this->JoinConditionFieldInjector = new Optimizers\JoinConditionFieldInjector();
 			$this->booleanConstantOptimizer = new Optimizers\BooleanConstantOptimizer();
 			$this->searchResolver = new SearchStrategyResolver($entityManager->getEntityStore());
@@ -94,6 +100,10 @@
 			$this->rangePromotor->optimize($ast, $log);
 			$this->rangeOptimizer->optimize($ast, $log);
 			
+			// Move where-clause any(...) ranges into their EXISTS subqueries before join-type
+			// inference below, so references inside a quantifier never change the root's joins
+			$this->anyOptimizer->optimizeWhereQuantifiers($ast);
+			
 			// Phase 2: Remove left joins that are not referenced in the query
 			$this->rangeOptimizer->removeUnusedLeftJoinRanges($ast, true, $log);
 			$this->rangeOptimizer->removeUnusedTemporaryRanges($ast, $log);
@@ -106,6 +116,32 @@
 			// These may create new optimization opportunities for previous phases
 			$this->existsOptimizer->optimize($ast, $log);
 			$this->anyOptimizer->optimize($ast);
+
+			// Extract a WHERE condition filtering on a sequence function's result
+			// (e.g. `where rn <= 3`) into its own helper range before the aggregate
+			// passes below run — SQL can't reference a window function's result in
+			// the same query block's WHERE. rangePromotor runs immediately after to
+			// promote the new helper range.
+			$this->whereWindowFilterRewriter->rewrite($ast, $log);
+			$this->rangePromotor->optimize($ast, $log);
+
+			// Extract nested sequence functions (e.g. sum(x - lag(x sort by y)))
+			// into their own helper ranges before AggregateOptimizer runs — SQL
+			// can't nest a window function inside another aggregate's argument.
+			// rangePromotor runs again immediately after to promote any helper
+			// range just added; it already ran once above and is a no-op for
+			// ranges it already processed.
+			$this->windowChainRewriter->rewrite($ast, $log);
+			$this->rangePromotor->optimize($ast, $log);
+
+			// Move a plain-aggregate WHERE condition (e.g. `where sum(x) <= 100`)
+			// into an implicit HAVING clause before AggregateOptimizer runs, so it
+			// can steer that aggregate away from STRATEGY_WINDOW.
+			$this->whereHavingFilterRewriter->rewrite($ast, $log);
+
+			// Chooses and applies a SQL strategy (DIRECT/SUBQUERY/WINDOW/MEMORY) per
+			// aggregate — must run after every rewrite above that adds, moves, or
+			// extracts an aggregate node, since it snapshots the final aggregate set.
 			$this->aggregateOptimizer->optimize($ast, $log);
 			
 			// Convert search(...) to like/fulltext node
@@ -145,6 +181,7 @@
 		 * @param AstRetrieve $ast
 		 * @return void
 		 * @throws TransformationException
+		 * @throws QuelException
 		 */
 		private function injectDiscriminatorConditions(AstRetrieve $ast): void {
 			$injector = new InjectDiscriminatorCondition($this->entityStore);

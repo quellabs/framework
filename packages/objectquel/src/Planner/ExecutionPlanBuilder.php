@@ -55,7 +55,7 @@
 		 *   1. For each temporary range (AstRangeDatabase with embedded subquery):
 		 *      a. If it contains external sources → add a TempTableStage first, then
 		 *         register a dependency so the outer database stage runs after it.
-		 *      b. If it is pure SQL → leave as-is (inline subquery handled by QuelToSQL).
+		 *      b. If it is pure SQL → leave as-is (inline subquery handled by QuelToSQLRetrieve).
 		 *   2. Add the main database stage (which references temp tables as plain tables
 		 *      by the time it executes, because all TempTableStages will have run first).
 		 *   3. Add JSON/other non-database range stages (existing behavior).
@@ -70,7 +70,12 @@
 			
 			// Create a new plan to populate
 			$plan = new ExecutionPlan();
-			
+
+			// Record the complete, unsplit WHERE condition so PlanExecutor can
+			// re-apply it to the joined result once every stage has run — see
+			// ExecutionPlan::$originalConditions.
+			$plan->setOriginalConditions($query->getConditions());
+
 			// Shortcut: no ranges means the projection contains only constant expressions
 			// (literals, parameters, arithmetic). There is no data source to query, so
 			// emit a single ConstantStage and return immediately. PlanExecutor will evaluate

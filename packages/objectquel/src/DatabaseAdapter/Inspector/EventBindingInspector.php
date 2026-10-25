@@ -1,0 +1,69 @@
+<?php
+
+	namespace Quellabs\ObjectQuel\DatabaseAdapter\Inspector;
+
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\QuelException;
+
+	/**
+	 * Reads binding (trigger) existence from the connected database catalog — creating a
+	 * binding must not silently replace a conflicting existing object (see "Binding
+	 * identity and removal" in objectquel-equel-triggers-design.md).
+	 */
+	class EventBindingInspector {
+
+		private readonly DatabaseAdapter $connection;
+
+		/**
+		 * @param DatabaseAdapter $connection Connection whose catalog is read
+		 */
+		public function __construct(DatabaseAdapter $connection) {
+			$this->connection = $connection;
+		}
+
+		/**
+		 * Checks whether a trigger by this name already exists on this table.
+		 * @param string $table Physical table the trigger would be on
+		 * @param string $name Generated trigger name (see EventBindingNaming)
+		 * @return bool
+		 * @throws QuelException When the lookup fails or triggers are unsupported
+		 */
+		public function triggerExists(string $table, string $name): bool {
+			[$sql, $parameters] = $this->existenceQuery($table, $name);
+			$result = $this->connection->execute($sql, $parameters);
+
+			if ($result === null) {
+				throw new QuelException("Failed to look up trigger '{$name}': {$this->connection->getLastErrorMessage()}", 'routine_definition_error');
+			}
+
+			$row = $result->fetch('assoc');
+			return is_array($row) && is_numeric($row['n'] ?? null) && (int)$row['n'] > 0;
+		}
+
+		/**
+		 * @param string $table Physical table
+		 * @param string $name Trigger name
+		 * @return array{string, array<string, string>} SQL and its parameters
+		 * @throws QuelException When the engine has no triggers
+		 */
+		private function existenceQuery(string $table, string $name): array {
+			return match ($this->connection->getDatabaseType()) {
+				'pgsql' => [
+					'SELECT COUNT(*) AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace s ON s.oid = c.relnamespace WHERE t.tgname = :name AND c.relname = :table AND s.nspname = :schema AND NOT t.tgisinternal',
+					['name' => $name, 'table' => $table, 'schema' => (string)$this->connection->getRoutineSchema()],
+				],
+
+				'sqlsrv' => [
+					'SELECT COUNT(*) AS n FROM sys.triggers t JOIN sys.objects o ON o.object_id = t.parent_id JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE t.name = :name AND o.name = :table AND s.name = :schema',
+					['name' => $name, 'table' => $table, 'schema' => (string)$this->connection->getRoutineSchema()],
+				],
+
+				'mysql', 'mariadb' => [
+					'SELECT COUNT(*) AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = :name AND EVENT_OBJECT_TABLE = :table',
+					['name' => $name, 'table' => $table],
+				],
+
+				default => throw new QuelException("Triggers can't be looked up on '{$this->connection->getDatabaseType()}'.", 'routine_definition_error'),
+			};
+		}
+	}

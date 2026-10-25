@@ -3,27 +3,35 @@
 	namespace Quellabs\ObjectQuel\Planner\Helpers;
 	
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
-	
+
 	class AggregateRewriter {
-		
+
 		/**
 		 * Replace an aggregate node with a window-function node.
 		 * @param AstAggregate $aggregate Aggregate node to replace
+		 * @param AstAlias[] $nonAggItems Non-aggregate SELECT items; become the window's PARTITION BY
 		 * @return void
 		 */
-		public static function rewriteAggregateAsWindowFunction(AstAggregate $aggregate): void {
+		public static function rewriteAggregateAsWindowFunction(AstAggregate $aggregate, array $nonAggItems = []): void {
 			// Clone the aggregate node and clear the conditions
 			$cleanAgg = AggregateCloner::cloneWithoutConditions($aggregate);
-			
+
+			// Deep-clone so the window subquery doesn't share nodes with the outer SELECT list.
+			$partitionBy = array_map(
+				static fn(AstAlias $item) => $item->getExpression()->deepClone(),
+				$nonAggItems
+			);
+
 			// Create a new subquery node that replaces the original aggregate
-			$windowFn = AstExpressionFactory::createWindowFunction($cleanAgg, $aggregate->getType());
-			
+			$windowFn = AstExpressionFactory::createWindowFunction($cleanAgg, $aggregate->getType(), $partitionBy);
+
 			// Replace the aggregate with the new version
 			$parent = $aggregate->getParent() ?? throw new \LogicException('Cannot rewrite aggregate: node has no parent');
 			AstNodeReplacer::replaceChild($parent, $aggregate, $windowFn);
 		}
-		
+
 		/**
 		 * Rewrites an aggregate expression as a correlated subquery.
 		 * This is typically done to handle aggregates that can't be processed in the main query,

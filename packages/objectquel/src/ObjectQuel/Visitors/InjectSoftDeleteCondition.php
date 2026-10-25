@@ -10,18 +10,24 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCheckNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIfNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
-	use Quellabs\ObjectQuel\ObjectQuel\IdentifierType;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\IdentifierType;
 	
 	/**
 	 * Injects a soft-delete filter condition into an AstRetrieve for every
 	 * database range whose entity carries an @SoftDelete annotation.
 	 *
 	 * The injected condition depends on the annotated column's type:
-	 *   - 'datetime'  →  range.property IS NULL  (null means the record is active)
-	 *   - 'boolean'   →  range.property = false   (false means the record is active)
+	 *   - 'datetime'  →  range.property IS NULL              (null means the record is active)
+	 *   - 'boolean'   →  COALESCE(range.property, false) = false  (false or absent means active)
+	 *
+	 * For a joined range the condition is ANDed onto that range's own JOIN (ON
+	 * clause) instead of the WHERE clause, so a soft-deleted related row is
+	 * treated like an absent one rather than dropping the parent row. Only the
+	 * primary (FROM) range has no ON clause, so its condition goes into WHERE.
 	 *
 	 * Injection is skipped entirely when the query carries the
 	 * @ignoreSoftDelete true compiler directive, which is set automatically by
@@ -46,9 +52,8 @@
 		}
 		
 		/**
-		 * Walks every database range in the query. For each range whose entity
-		 * has a soft-delete column, builds the appropriate filter expression and
-		 * ANDs it onto the existing WHERE conditions.
+		 * Walks every database range and ANDs a soft-delete filter onto its JOIN
+		 * condition (or WHERE, for the primary range) — see class docblock.
 		 * @param AstRetrieve $ast
 		 * @return void
 		 * @throws EntityResolutionException
@@ -60,31 +65,37 @@
 			if ($ast->getDirective('ignoreSoftDelete')) {
 				return;
 			}
-			
+
 			foreach ($ast->getRanges() as $range) {
 				// Only concrete entity ranges have EntityStore metadata to inspect
 				if (!$range instanceof AstRangeDatabase) {
 					continue;
 				}
-				
+
 				$metadata = $this->entityStore->getMetadata($range->getEntityName());
-				
+
 				if (!$metadata->hasSoftDelete()) {
 					continue;
 				}
-				
+
 				$condition = $this->buildCondition($range, $metadata);
-				
+
 				if ($condition === null) {
 					continue;
 				}
-				
-				// AND the new condition onto whatever WHERE clause already exists.
-				// The existing conditions become the left operand so that the
-				// soft-delete filter always appears at the outermost level and
-				// cannot be short-circuited by an OR inside the original conditions.
+
+				// Joined range: AND onto its own ON-clause condition (see class docblock).
+				$joinProperty = $range->getJoinProperty();
+
+				if ($joinProperty !== null) {
+					$range->setJoinProperty(new AstBinaryOperator($joinProperty, $condition, 'AND'));
+					continue;
+				}
+
+				// Primary range: AND onto existing WHERE, existing conditions as left
+				// operand so the filter can't be short-circuited by an inner OR.
 				$existing = $ast->getConditions();
-				
+
 				if ($existing !== null) {
 					$combined = new AstBinaryOperator($existing, $condition, 'AND');
 					$ast->setConditions($combined);
@@ -125,8 +136,9 @@
 				// NULL means active (not yet soft-deleted); any timestamp means deleted
 				'datetime' => new AstCheckNull($root),
 
-				// false means active; true means deleted
-				'boolean'  => new AstExpression($root, new AstBool(false), '='),
+				// false means active; true means deleted. COALESCE treats a LEFT JOIN's
+				// NULL as active too, avoiding SQL's three-valued NULL logic on `= false`.
+				'boolean'  => new AstExpression(new AstIfNull($root, new AstBool(false)), new AstBool(false), '='),
 
 				// Unknown column type — skip rather than silently emitting a broken query
 				default    => null,

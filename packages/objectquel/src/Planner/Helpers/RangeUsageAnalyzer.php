@@ -36,6 +36,9 @@
 	 *    has at least one non-nullable field usage in the condition.
 	 *  - If a field name is unknown in the metadata, we conservatively treat it as
 	 *    nullable (i.e., we do NOT mark it as non-nullable use).
+	 *  - A reference reachable only through an OR does not count as non-nullable
+	 *    use: the other OR branch can still satisfy the condition with no match
+	 *    for that range at all (see {@see AstUtilities::isNestedInsideOr()}).
 	 *
 	 * @phpstan-type RangeName string
 	 * @phpstan-type RangeUsageMap array{
@@ -143,10 +146,12 @@
 
 				$rangeName = $range->getName();
 				$usedInCond[$rangeName] = true;
-				
-				// If the identifier denotes an entity.field and that field is non-nullable
-				// per metadata, remember that this range exhibits "nonNullableUse".
-				if ($this->isNonNullableField($id)) {
+
+				// If the identifier denotes an entity.field, that field is non-nullable
+				// per metadata, and the reference is not reachable only through an OR
+				// (an OR sibling could still satisfy the condition with no match for
+				// this range at all), remember that this range exhibits "nonNullableUse".
+				if (!AstUtilities::isNestedInsideOr($id) && $this->isNonNullableField($id)) {
 					$nonNullableUse[$rangeName] = true;
 				}
 			}
@@ -238,8 +243,8 @@
 				throw new \LogicException('Encountered an AstIdentifier without an entity name during non-nullable field analysis. This indicates a malformed AST.');
 			}
 			
-			// Pull the column definition map from metadata, e.g.:
-			//   ['id' => ['nullable' => false, ...], 'name' => ['nullable' => true, ...], ...]
+			// Column definitions are keyed by column name, e.g.:
+			//   ['id' => ['nullable' => false, ...], 'product_id' => ['nullable' => true, ...], ...]
 			$metadata = $this->entityStore->getMetadata($entityName);
 			$columnMap = $metadata->columnDefinitions;
 			
@@ -252,15 +257,16 @@
 				return false;
 			}
 			
-			$field = $next->getName();
+			// The identifier names a property; map it to its column
+			$column = $metadata->getColumnName($next->getName());
 			
-			// If the field is unknown, assume nullable (return false for "non-nullable").
-			if (!isset($columnMap[$field])) {
+			// If the property has no column, assume nullable (return false for "non-nullable").
+			if ($column === null || !isset($columnMap[$column])) {
 				return false;
 			}
 			
 			// Default nullable=true if the key is absent; invert to signal non-nullable use.
-			$nullable = (bool)($columnMap[$field]['nullable'] ?? true);
+			$nullable = (bool)($columnMap[$column]['nullable'] ?? true);
 			
 			// Return value
 			return !$nullable;

@@ -36,9 +36,6 @@
 			// Store the container reference
 			self::$container = $container;
 			self::$initialized = true;
-			
-			// Register a few essential global functions
-			self::registerGlobalFunctions();
 		}
 		
 		/**
@@ -73,26 +70,24 @@
 		public static function container(): Container {
 			return self::$container;
 		}
-		
+	}
+
+	// Declared at file scope, not nested inside a method, so it is only ever
+	// declared once (when this file is first included by the autoloader)
+	// rather than once per LegacyBridge::initialize() call in the same process.
+	// Without a leading "\", PHP registers it under the current namespace
+	// (__NAMESPACE__ . '\canvas'), not the global namespace — the existence
+	// check must match that.
+	if (!function_exists(__NAMESPACE__ . '\\canvas')) {
 		/**
-		 * Register a few essential global functions for legacy code
-		 * @return void
+		 * Global helper function for accessing Canvas services
+		 * @template TService of object
+		 * @param class-string<TService>|null $service Optional service name to retrieve
+		 * @return ($service is null ? Container : TService) If $service provided, returns the service; otherwise returns the container
 		 */
-		private static function registerGlobalFunctions(): void {
-			// Only register the function if it doesn't already exist to avoid conflicts
-			if (!function_exists('canvas')) {
-				/**
-				 * Global helper function for accessing Canvas services
-				 * @template T of object
-				 * @param class-string<T>|null $service Optional service name to retrieve
-				 * @return ($service is null ? Container : T) If $service provided, returns the service; otherwise returns the container
-				 * @phpstan-ignore-next-line
-				 */
-				function canvas(?string $service = null): mixed {
-					// If a service name is provided, get that specific service
-					// Otherwise, return the container itself for advanced usage
-					return $service ? LegacyBridge::get($service) : LegacyBridge::container();
-				}
-			}
+		function canvas(?string $service = null): mixed {
+			// If a service name is provided, get that specific service
+			// Otherwise, return the container itself for advanced usage
+			return $service ? LegacyBridge::get($service) : LegacyBridge::container();
 		}
 	}

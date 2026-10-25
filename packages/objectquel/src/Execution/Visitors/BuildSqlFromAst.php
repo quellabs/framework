@@ -10,6 +10,7 @@
 	use Quellabs\ObjectQuel\Execution\Helpers\ProcessExpression;
 	use Quellabs\ObjectQuel\Execution\Helpers\ResolveType;
 	use Quellabs\ObjectQuel\Execution\SqlGeneratorInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlias;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAny;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAvg;
@@ -23,6 +24,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCount;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCountU;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDenseRank;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstFactor;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
@@ -32,14 +34,20 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsFloat;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsInteger;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIsNumeric;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstLag;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstLead;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMax;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstMin;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNtile;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNot;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabase;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRank;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRowNumber;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineCall;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearch;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchFullText;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSearchLike;
@@ -52,8 +60,10 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstUnaryOperation;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeBinary;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\BooleanExpressionClassifier;
 	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\Capabilities\NullPlatformCapabilities;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCast;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
 	
@@ -70,7 +80,12 @@
 		/** @var array<int, string> SQL fragments that will be concatenated to form the final query */
 		private array $result;
 		
-		/** @var array<string, bool> Track visited nodes to prevent infinite recursion and duplicate processing */
+		/**
+		 * @var array<string, AstInterface> Track visited nodes to prevent infinite
+		 * recursion and duplicate processing. Values are the nodes themselves (not
+		 * just a boolean) so they stay alive for this visitor's lifetime — see
+		 * addToVisitedNodes().
+		 */
 		private array $visitedNodes;
 		
 		/** @var array<string, mixed> Reference to query parameters for parameterized queries */
@@ -94,13 +109,17 @@
 
 		/** @var PlatformCapabilitiesInterface Database engine capability descriptor */
 		private PlatformCapabilitiesInterface $platform;
-		
+
+		/** @var string|null Schema that qualifies routine names, or null for none */
+		private ?string $routineSchema;
+
 		/**
 		 * Initialize the SQL converter with required dependencies
 		 * @param EntityStore $store Entity storage containing schema and metadata
 		 * @param array<string, mixed> $parameters Reference to parameters array for parameterized queries
 		 * @param string $partOfQuery Current query part being processed (default: "VALUES")
 		 * @param PlatformCapabilitiesInterface $platform Database engine capability descriptor
+		 * @param string|null $routineSchema Schema that qualifies routine names, or null for none
 		 * @param string|null $subqueryAliasRangeName When non-null, column aliases in entity
 		 *        expansion use this name instead of the inner range name, so derived table
 		 *        columns match what the outer query expects (e.g. "x.id" instead of "y.id")
@@ -110,6 +129,7 @@
 			array &$parameters,
 			string $partOfQuery = "VALUES",
 			PlatformCapabilitiesInterface $platform = new NullPlatformCapabilities(),
+			?string $routineSchema = null,
 			?string $subqueryAliasRangeName = null
 		) {
 			// Initialize core properties
@@ -119,11 +139,12 @@
 			$this->parameters = &$parameters; // Use reference to allow parameter modification
 			$this->partOfQuery = $partOfQuery;
 			$this->platform = $platform;
-			
+			$this->routineSchema = $routineSchema;
+
 			// Initialize helper classes with proper dependencies and references
-			$this->sqlFragmentBuilder = new BuildSqlFragments($this->entityStore, $this, $subqueryAliasRangeName);
+			$this->sqlFragmentBuilder = new BuildSqlFragments($this->entityStore, $this, $subqueryAliasRangeName, $this->platform, $this->routineSchema);
 			$this->typeInference = new ResolveType($this->entityStore);
-			$this->aggregateHandler = new ProcessAggregate($this->entityStore, $this->partOfQuery, $this->sqlFragmentBuilder, $this);
+			$this->aggregateHandler = new ProcessAggregate($this->entityStore, $this->partOfQuery, $this->sqlFragmentBuilder, $this, $this->platform);
 			$this->expressionHandler = new ProcessExpression($this->entityStore, $this->typeInference, $this->parameters, $this, $this->platform);
 		}
 		
@@ -201,7 +222,39 @@
 			
 			return $sql;
 		}
-		
+
+		/**
+		 * Visit a node in a predicate position and return its SQL. Without boolean
+		 * literals (SQL Server) a scalar BIT value isn't a predicate, so it's compared to 1.
+		 * @param AstInterface $condition The condition node
+		 * @return string The SQL predicate
+		 */
+		public function visitConditionAndReturnSQL(AstInterface $condition): string {
+			$sql = $this->visitNodeAndReturnSQL($condition);
+
+			if (!$this->platform->supportsBooleanLiterals() && BooleanExpressionClassifier::isScalarValue($condition)) {
+				return "{$sql} = 1";
+			}
+
+			return $sql;
+		}
+
+		/**
+		 * Visit a node in a value position and return its SQL. Without boolean literals (SQL Server)
+		 * a predicate isn't a value, so it becomes a CASE yielding 1, 0 or NULL like a BIT would.
+		 * The predicate appears twice in the CASE, so the engine may evaluate it twice.
+		 * @param AstInterface $value The value node
+		 * @return string The SQL value
+		 */
+		public function visitValueAndReturnSQL(AstInterface $value): string {
+			if ($this->platform->supportsBooleanLiterals() || !BooleanExpressionClassifier::isPredicate($value)) {
+				return $this->visitNodeAndReturnSQL($value);
+			}
+
+			$predicate = $this->visitConditionAndReturnSQL($value);
+			return "CASE WHEN {$predicate} THEN 1 WHEN NOT ({$predicate}) THEN 0 END";
+		}
+
 		/**
 		 * Builds a fully qualified column name for SQL queries based on an AST identifier.
 		 * Handles both entity-based ranges (with metadata) and temporary table ranges
@@ -239,7 +292,7 @@
 			$expression = $ast->getExpression();
 			
 			// search_score() aliased as a SELECT column: score=search_score(p.content, :term)
-			// Emit only the MATCH...AGAINST expression — QuelToSQL::getFieldNames() appends
+			// Emit only the MATCH...AGAINST expression — QuelToSQLRetrieve::getFieldNames() appends
 			// AS `name` itself for all non-entity expressions, so we must not add it here.
 			if ($expression instanceof AstSearchScore) {
 				$this->addToVisitedNodes($expression);
@@ -247,6 +300,12 @@
 				return;
 			}
 			
+			// A predicate selected as a value needs converting on engines without boolean literals
+			if (BooleanExpressionClassifier::isPredicate($expression)) {
+				$this->result[] = $this->visitValueAndReturnSQL($expression);
+				return;
+			}
+
 			// Only process if the expression is an identifier
 			if (!$expression instanceof AstIdentifier) {
 				return;
@@ -332,13 +391,10 @@
 		/**
 		 * Process a cast expression node.
 		 *
-		 * Emits either:
-		 *   CAST(col AS TYPE)   for MySQL, MariaDB, SQLite, SQL Server
-		 *   col::TYPE           for PostgreSQL (CastStyle::DoubleColon)
-		 *
-		 * The SQL type token (e.g. SIGNED, DOUBLE, TEXT) is resolved from
-		 * PlatformCapabilitiesInterface::getSupportedCastTypes() using the
-		 * canonical QUEL cast type stored on the node (e.g. int, float, string).
+		 * Emits standard CAST(col AS TYPE), supported by every engine ObjectQuel
+		 * targets. The SQL type token (e.g. SIGNED, DOUBLE, TEXT) is resolved from
+		 * TypeMapper::getSupportedCastTypes() using the canonical QUEL cast
+		 * type stored on the node (e.g. int, float, string).
 		 *
 		 * @param AstCast $ast The cast node to process
 		 */
@@ -353,11 +409,11 @@
 			// Resolve the SQL type token for the target engine.
 			// The semantic analyser has already verified that this cast type is
 			// supported, so the key is guaranteed to exist here.
-			$supportedTypes = $this->platform->getSupportedCastTypes();
+			$supportedTypes = TypeMapper::getSupportedCastTypes($this->platform->getDatabaseType());
 			$sqlType = $supportedTypes[$ast->getCastType()] ?? strtoupper($ast->getCastType());
 
 			// Generate the SQL fragment for the inner expression
-			$innerSql = $this->visitNodeAndReturnSQL($ast->getExpression());
+			$innerSql = $this->visitValueAndReturnSQL($ast->getExpression());
 
 			// Emit standard SQL CAST(), supported by all engines
 			$this->result[] = "CAST({$innerSql} AS {$sqlType})";
@@ -389,14 +445,41 @@
 
 			// date("now") — emit the platform's current-timestamp expression.
 			if ($ast->isNow()) {
-				$this->result[] = $this->platform->getCurrentUnixTimestamp();
+				$this->result[] = $this->currentUnixTimestamp();
 				$this->addToVisitedNodes($ast->getExpression());
 				return;
 			}
 
 			// Column reference or parameter — wrap with the platform's timestamp function.
 			$innerSql = $this->visitNodeAndReturnSQL($ast->getExpression());
-			$this->result[] = sprintf($this->platform->getUnixTimestampFunction(), $innerSql);
+			$this->result[] = $this->unixTimestamp($innerSql);
+		}
+
+		/**
+		 * Converts a datetime expression to integer Unix seconds.
+		 * @param string $valueSql Datetime expression
+		 * @return string SQL expression
+		 */
+		private function unixTimestamp(string $valueSql): string {
+			return match ($this->platform->getDatabaseType()) {
+				'pgsql' => "CAST(EXTRACT(EPOCH FROM {$valueSql}) AS BIGINT)",
+				'sqlite' => "CAST(strftime('%s', {$valueSql}) AS INTEGER)",
+				'sqlsrv' => "DATEDIFF_BIG(SECOND, '1970-01-01', {$valueSql})",
+				default => "UNIX_TIMESTAMP({$valueSql})",
+			};
+		}
+
+		/**
+		 * Returns the current time as integer Unix seconds.
+		 * @return string SQL expression
+		 */
+		private function currentUnixTimestamp(): string {
+			return match ($this->platform->getDatabaseType()) {
+				'pgsql' => 'CAST(EXTRACT(EPOCH FROM NOW()) AS BIGINT)',
+				'sqlite' => "CAST(strftime('%s','now') AS INTEGER)",
+				'sqlsrv' => "DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME())",
+				default => 'UNIX_TIMESTAMP()',
+			};
 		}
 
 		/**
@@ -429,6 +512,15 @@
 		 */
 		protected function handleConcat(AstConcat $concat): void {
 			$this->result[] = $this->sqlFragmentBuilder->handleConcat($concat);
+		}
+
+		/**
+		 * Process a stored routine call
+		 * @param AstRoutineCall $call The call node
+		 * @return void
+		 */
+		protected function handleRoutineCall(AstRoutineCall $call): void {
+			$this->result[] = $this->sqlFragmentBuilder->handleRoutineCall($call);
 		}
 		
 		/**
@@ -676,6 +768,64 @@
 		protected function handleAny(AstAny $ast): void {
 			$this->result[] = $this->aggregateHandler->handleAny($ast);
 		}
+
+		/**
+		 * No-op target for the six sequence-function handlers below. They only run as
+		 * a side effect of ProcessAggregate::markExpressionAsHandled() (bookkeeping to
+		 * mark the node visited) — the real window SQL is built separately by
+		 * ProcessAggregate::buildWindowAggregate(), so there's nothing to append here.
+		 * @param AstAggregate $ast
+		 */
+		private function noOpSequenceFunctionHandler(AstAggregate $ast): void {
+		}
+
+		/**
+		 * Process a RANK() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstRank $ast The RANK function node to process
+		 */
+		protected function handleRank(AstRank $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a DENSE_RANK() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstDenseRank $ast The DENSE_RANK function node to process
+		 */
+		protected function handleDenseRank(AstDenseRank $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a ROW_NUMBER() sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstRowNumber $ast The ROW_NUMBER function node to process
+		 */
+		protected function handleRowNumber(AstRowNumber $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process an NTILE(n) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstNtile $ast The NTILE function node to process
+		 */
+		protected function handleNtile(AstNtile $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a LAG(expr) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstLag $ast The LAG function node to process
+		 */
+		protected function handleLag(AstLag $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
+
+		/**
+		 * Process a LEAD(expr) sequence function — see noOpSequenceFunctionHandler().
+		 * @param AstLead $ast The LEAD function node to process
+		 */
+		protected function handleLead(AstLead $ast): void {
+			$this->noOpSequenceFunctionHandler($ast);
+		}
 		
 		/**
 		 * Handle IFNULL function
@@ -748,8 +898,13 @@
 				return;
 			}
 			
-			// Mark this node as visited using its unique object ID
-			$this->visitedNodes[spl_object_hash($ast)] = true;
+			// Mark this node as visited using its unique object ID. Storing the node
+			// itself (not just `true`) keeps a live reference for the rest of this
+			// visitor's lifetime — without it, a locally-scoped node (e.g. a deep
+			// clone used once and discarded) can be garbage-collected and have its
+			// object handle reused by a later, unrelated node, causing a false
+			// "already visited" hit via a spl_object_hash() collision.
+			$this->visitedNodes[spl_object_hash($ast)] = $ast;
 			
 			// Recursively mark all children
 			foreach ($this->getAstChildren($ast) as $child) {

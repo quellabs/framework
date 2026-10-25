@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\ObjectQuel\Configuration;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -18,7 +19,6 @@
 	 * fully annotated entity class with typed properties, ORM annotations, index
 	 * mappings, and getter/setter methods.
 	 *
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 * @phpstan-import-type IndexDefinition from DatabaseAdapter
 	 */
 	class MakeEntityFromTableCommand extends CommandBase {
@@ -101,21 +101,28 @@ HELP;
 			// Extract all necessary data from the table
 			$tableCamelCase = $this->camelCase($table);
 			$tableDescription = $databaseAdapter->getColumns($table);
-			
+
 			if (empty($tableDescription)) {
 				$this->output->writeLn("Could not extract table description for {$table}.");
 				return 0;
 			}
-			
+
+			// Foreign key detection is opt-in (config: generate_foreign_keys); skip
+			// the read entirely when disabled so output stays byte-identical for
+			// projects that don't want ObjectQuel managing real constraints.
+			$foreignKeys = $this->configuration->getGenerateForeignKeys()
+				? $this->getTableForeignKeys($table)
+				: ['single' => [], 'composite' => []];
+
 			// Generate namespace and imports
 			$entityCode = "<?php\n";
 			$entityCode .= $this->generateNamespace();
 			$entityCode .= $this->generateImports();
-			$entityCode .= $this->generateClassDocBlock($table, $tableCamelCase);
-			
+			$entityCode .= $this->generateClassDocBlock($table, $tableCamelCase, $foreignKeys['composite']);
+
 			// Generate entity code
 			$entityCode .= "    class {$tableCamelCase}Entity {\n";
-			$entityCode .= $this->generateMemberVariables($tableDescription);
+			$entityCode .= $this->generateMemberVariables($tableDescription, $foreignKeys['single']);
 			$entityCode .= $this->generateConstructor($tableDescription);
 			$entityCode .= $this->generateGettersAndSetters($tableDescription);
 			$entityCode .= "    }\n"; // Class closing brace
@@ -162,6 +169,12 @@ HELP;
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\ManyToOne;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\Index;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\UniqueIndex;\n";
+
+			if ($this->configuration->getGenerateForeignKeys()) {
+				$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\ForeignKey;\n";
+				$output .= "    use Quellabs\\ObjectQuel\\Annotations\Orm\ForeignKeyAction;\n";
+			}
+
 			$output .= "    use Quellabs\\ObjectQuel\\Collections\\Collection;\n";
 			$output .= "    use Quellabs\\ObjectQuel\\Collections\\CollectionInterface;\n";
 			$output .= "\n";
@@ -173,15 +186,18 @@ HELP;
 		 * Generate the class docblock with ORM annotations
 		 * @param string $tableName The table name
 		 * @param string $tableCamelCase The camelCase version of the table name
+		 * @param list<array{target: string, localProperties: list<string>, referencedProperties: list<string>, onDelete: string, onUpdate: string}> $compositeForeignKeys
+		 *        Composite (more-than-one-column) foreign keys, which @Orm\ForeignKey can only express at
+		 *        class level. Empty when generate_foreign_keys is disabled.
 		 * @return string The class docblock
 		 */
-		private function generateClassDocBlock(string $tableName, string $tableCamelCase): string {
+		private function generateClassDocBlock(string $tableName, string $tableCamelCase, array $compositeForeignKeys = []): string {
 			$output = "";
 			$output .= "    /**\n";
 			$output .= "     * Class {$tableCamelCase}Entity\n";
 			$output .= "     * @package {$this->configuration->getEntityNameSpace()}\n";
 			$output .= "     * @Orm\\Table(name=\"{$tableName}\")\n";
-			
+
 			foreach ($this->getTableIndexes($tableName) as $name => $indexConfig) {
 				// Index annotations use PHP property names, not database column names.
 				// The database stores 'customer_id' but the entity declares '$customerId',
@@ -190,17 +206,36 @@ HELP;
 					fn(string $col) => lcfirst($this->camelCase($col)),
 					$indexConfig['columns']
 				);
-				
+
 				// Format as a comma-separated list of single-quoted strings for the annotation
 				$columns = "'" . implode("', '", $propertyNames) . "'";
-				
+
 				// UniqueIndex and Index are separate annotation classes — pick the right one
 				$annotationType = $indexConfig['unique'] ? "UniqueIndex" : "Index";
-				
+
 				// Add to output
 				$output .= "     * @Orm\\{$annotationType}(name=\"{$name}\", columns={{$columns}})\n";
 			}
-			
+
+			foreach ($compositeForeignKeys as $foreignKey) {
+				$pairs = array_map(
+					fn(string $localProp, string $targetProp) => "\"{$localProp}\"=\"{$targetProp}\"",
+					$foreignKey['localProperties'],
+					$foreignKey['referencedProperties']
+				);
+
+				$output .= "     * @Orm\\ForeignKey(target={$foreignKey['target']}::class, columns={" . implode(', ', $pairs) . "})\n";
+
+				// Only emit ForeignKeyAction when the live constraint's rule deviates
+				// from the safe defaults (RESTRICT / NO ACTION) — same convention
+				// the property-level case follows below.
+				if ($foreignKey['onDelete'] !== 'RESTRICT' || $foreignKey['onUpdate'] !== 'NO ACTION') {
+					$localColumns = "\"" . implode('", "', $foreignKey['localProperties']) . "\"";
+					$output .= "     * @Orm\\ForeignKeyAction(localColumns={{$localColumns}}, onDelete=\"{$foreignKey['onDelete']}\", " .
+						"onUpdate=\"{$foreignKey['onUpdate']}\")\n";
+				}
+			}
+
 			$output .= "     */\n";
 			return $output;
 		}
@@ -282,35 +317,59 @@ HELP;
 		/**
 		 * Generate the member variables for the entity class
 		 * @param array<string, ColumnDefinition> $tableDescription
+		 * @param array<string, array{target: string, referencedColumn: string, onDelete: string, onUpdate: string}> $foreignKeys
+		 *        Detected foreign keys keyed by local database column name. Empty when
+		 *        generate_foreign_keys is disabled.
 		 * @return string The generated member variables code with proper ORM annotations
 		 */
-		private function generateMemberVariables(array $tableDescription): string {
+		private function generateMemberVariables(array $tableDescription, array $foreignKeys = []): string {
 			// Initialize empty output string to store the generated code
 			$output = "";
-			
+
 			// Iterate through each column in the table description
 			foreach ($tableDescription as $columnName => $column) {
 				// Convert the database column name to camelCase for PHP property naming convention
 				$columnCamelCase = lcfirst($this->camelCase($columnName));
-				
+
 				// Get the PHP type for this column (string, int, \DateTime, etc.)
 				$acceptType = $this->getColumnType($column);
-				
+
 				// Begin generating the PHPDoc comment block with ORM annotations
 				$output .= "        /**\n";
-				
+
 				// Normalize the database-native type to the ORM canonical type before
 				// writing the annotation. PostgreSQL returns 'jsonb' from its schema
 				// catalog but the ORM only knows 'json'.
-				$ormType = $column["type"] === 'jsonb' ? 'json' : $column["type"];
+				$ormType = $column->type === 'jsonb' ? 'json' : $column->type;
 
 				// Add the Column annotation with name and type
 				$output .= "         * @Orm\Column(name=\"{$columnName}\", type=\"{$ormType}\"";
 				$output .= $this->getColumnAnnotationDetails($column);
 				$output .= ")\n";
-				
+
+				// If a real FK constraint was detected on this column, annotate it too.
+				// The property stays a plain scalar (protected int $userId) — this does
+				// not convert the column into a ManyToOne/OneToOne object relation.
+				if (isset($foreignKeys[$columnName])) {
+					$foreignKey = $foreignKeys[$columnName];
+
+					// target is a bare ::class reference (the annotation lexer would corrupt
+					// a namespaced FQCN inside a quoted string); referencedColumn stays quoted
+					// since it's a plain column name, not a class reference.
+					$output .= "         * @Orm\ForeignKey(target={$foreignKey['target']}::class, " .
+						"referencedColumn=\"{$foreignKey['referencedColumn']}\")\n";
+
+					// Only emit ForeignKeyAction when the live constraint's rule deviates
+					// from the safe defaults (RESTRICT / NO ACTION) — presence means
+					// something was actually declared, matching @Orm\Index's own convention.
+					if ($foreignKey['onDelete'] !== 'RESTRICT' || $foreignKey['onUpdate'] !== 'NO ACTION') {
+						$output .= "         * @Orm\ForeignKeyAction(onDelete=\"{$foreignKey['onDelete']}\", " .
+							"onUpdate=\"{$foreignKey['onUpdate']}\")\n";
+					}
+				}
+
 				// If this is an auto-incrementing primary key, add the PrimaryKeyStrategy annotation
-				if ($column["primary_key"] && $column["identity"]) {
+				if ($column->primary_key && $column->identity) {
 					$output .= "         * @Orm\PrimaryKeyStrategy(strategy=\"identity\")\n";
 				}
 				
@@ -342,9 +401,8 @@ HELP;
 		 * even if they can't be NULL in the database. This reflects that new entities will have
 		 * null IDs until they're persisted to the database and receive their auto-generated value.
 		 *
-		 * @param array $column
-		 * @phpstan-param ColumnDefinition $column
-		 *     The column description array containing metadata such as:
+		 * @param ColumnDefinition $column
+		 *     The column description, notably:
 		 *     - php_type: The base PHP type (string, int, float, etc.)
 		 *     - nullable: Whether the column allows NULL values in the database
 		 *     - identity: Whether the column is an auto-increment/identity column
@@ -353,13 +411,13 @@ HELP;
 		 *                - For nullable or identity columns: "?type" (e.g., "?int", "?string")
 		 *                - For non-nullable regular columns: just the type (e.g., "int", "string")
 		 */
-		private function getColumnType(array $column): string {
+		private function getColumnType(ColumnDefinition $column): string {
 			// A column should be nullable in PHP if either:
 			// 1. It allows NULL values in the database, OR
 			// 2. It's an auto-increment identity column (which will be NULL for new entities), OR
 			// 3. It's a complex type without a default value (determined by isNullableInPhpOnly)
-			$phpType = $column["php_type"];
-			$nullable = $column["nullable"] || $column["identity"] || $this->isNullableInPhpOnly($column);
+			$phpType = $column->php_type;
+			$nullable = $column->nullable || $column->identity || $this->isNullableInPhpOnly($column);
 			
 			// For nullable types, prepend a "?" to create a union type with null (PHP 7.4+)
 			// Example: "?int" means "int|null" (can be either an integer or null)
@@ -374,67 +432,65 @@ HELP;
 		/**
 		 * Determines if a column should be made nullable in PHP despite being NOT NULL in the database
 		 * This occurs when complex types have no default value but are marked as NOT NULL
-		 * @param array $column Column metadata from database schema
-		 * @phpstan-param ColumnDefinition $column Column metadata from database schema
+		 * @param ColumnDefinition $column Column metadata from database schema
 		 * @return bool True if the column should be made nullable in PHP despite database constraints
 		 */
-		private function isNullableInPhpOnly(array $column): bool {
+		private function isNullableInPhpOnly(ColumnDefinition $column): bool {
 			// List of complex types that should be nullable when they lack defaults
 			$complexTypes = ['date', 'datetime', 'json', 'blob', 'text'];
-			
+
 			// Check if this is a complex type without default value that's marked as NOT NULL
 			return (
-				in_array($column['type'], $complexTypes) &&
-				!$column['nullable'] &&
-				$column['default'] === null &&
-				!$column['identity'] // Exclude identity columns which are handled separately
+				in_array($column->type, $complexTypes) &&
+				!$column->nullable &&
+				$column->default === null &&
+				!$column->identity // Exclude identity columns which are handled separately
 			);
 		}
 		
 		/**
 		 * Get the column annotation details
-		 * @param array $column The column description
-		 * @phpstan-param ColumnDefinition $column
+		 * @param ColumnDefinition $column The column description
 		 * @return string The column annotation details
 		 */
-		private function getColumnAnnotationDetails(array $column): string {
+		private function getColumnAnnotationDetails(ColumnDefinition $column): string {
 			// Initialize an empty array to collect annotation details
 			$details = [];
-			
+
 			// Add limit annotation if specified
-			if ($column["limit"] !== null) {
-				if (is_int($column["limit"])) {
-					$details[] = "limit={$column["limit"]}";
+			if ($column->limit !== null) {
+				if (is_int($column->limit)) {
+					$details[] = "limit={$column->limit}";
 				} else {
 					// must be array<int,int>
-					$values = implode(', ', $column["limit"]);
+					$values = implode(', ', $column->limit);
 					$details[] = "limit={{$values}}";
 				}
 			}
-			
+
 			// Add nullable annotation if the column is nullable
-			if ($column["nullable"]) {
+			if ($column->nullable) {
 				$details[] = "nullable=true";
 			}
-			
+
 			// Add primary key annotation if the column is a primary key
-			if ($column["primary_key"]) {
+			if ($column->primary_key) {
 				$details[] = "primary_key=true";
 			}
-			
+
 			// Add default value annotation if specified
-			if (is_scalar($column["default"]) && $column["default"] !== '') {
-				$details[] = "default=\"" . $column["default"] . "\"";
+			if (is_scalar($column->default) && $column->default !== '') {
+				$details[] = "default=\"" . $column->default . "\"";
 			}
-			
+
 			// Add precision annotation for decimal/numeric columns if specified
-			if (!empty($column["precision"])) {
-				$details[] = "precision={$column["precision"]}";
+			if (!empty($column->precision)) {
+				$details[] = "precision={$column->precision}";
 			}
-			
+
 			// Add scale annotation for decimal/numeric columns if specified
-			if (!empty($column["scale"])) {
-				$details[] = "scale={$column["scale"]}";
+			if (!empty($column->scale)) {
+				$details[] = "scale={$column->scale}";
 			}
 			
 			// Implode the array with comma separator and prepend a comma if details exist
@@ -444,24 +500,22 @@ HELP;
 		
 		/**
 		 * Returns true if the column has a default value
-		 * @param array $column The column description
-		 * @phpstan-param ColumnDefinition $column The column description
+		 * @param ColumnDefinition $column The column description
 		 * @return bool
 		 */
-		private function hasColumnDefaultValue(array $column): bool {
-			return $column["default"] !== null && $column["default"] !== '';
+		private function hasColumnDefaultValue(ColumnDefinition $column): bool {
+			return $column->default !== null && $column->default !== '';
 		}
-		
+
 		/**
 		 * Get the default value for a column
-		 * @param array $column The column description
-		 * @phpstan-param ColumnDefinition $column The column description
+		 * @param ColumnDefinition $column The column description
 		 * @return string The default value expression
 		 */
-		private function getColumnDefaultValue(array $column): string {
+		private function getColumnDefaultValue(ColumnDefinition $column): string {
 			// Store the default value and type for easier reference
-			$defaultValue = $column["default"];
-			$columnType = $column['type'];
+			$defaultValue = $column->default;
+			$columnType = $column->type;
 			
 			// For datetime properties with a default string value
 			// Convert the string to a DateTime object initialization
@@ -527,18 +581,17 @@ HELP;
 		
 		/**
 		 * Generate a setter method for a column
-		 * @param array $column The column description
-		 * @phpstan-param ColumnDefinition $column The column description
+		 * @param ColumnDefinition $column The column description
 		 * @param string $fieldCamelCase The camelCase field name
 		 * @param string $variableCamelCase The camelCase variable name
 		 * @param string $acceptType The PHP type for the column
 		 * @return string The generated setter method
 		 */
-		private function generateSetter(array $column, string $fieldCamelCase, string $variableCamelCase, string $acceptType): string {
+		private function generateSetter(ColumnDefinition $column, string $fieldCamelCase, string $variableCamelCase, string $acceptType): string {
 			$output = "\n";
-			
+
 			// Only suppress setters for auto-increment primary keys (primary_key=true AND identity=true)
-			if (!$column["primary_key"] || !$column["identity"]) {
+			if (!$column->primary_key || !$column->identity) {
 				$output .= "        public function set{$fieldCamelCase}({$acceptType} \$value): self {\n";
 				$output .= "            \$this->{$variableCamelCase} = \$value;\n";
 				$output .= "            return \$this;\n";
@@ -577,5 +630,73 @@ HELP;
 					'unique'  => strtoupper($index['type']) === 'UNIQUE'  // Convert type to boolean flag for uniqueness
 				];
 			}, $this->provider->getDatabaseAdapter()->getIndexes($tableName));
+		}
+
+		/**
+		 * Retrieves database foreign key constraints for a table and resolves
+		 * each one's target entity class name, split into property-level
+		 * (single-column) and class-level (composite) shapes — the same split
+		 * @Orm\ForeignKey itself draws between its scalar-property and
+		 * class-level placements.
+		 *
+		 * The target table's own entity may not have been generated yet — this
+		 * command is typically run per-table, in whatever order the user chooses.
+		 * The target class name is resolved using this command's own naming
+		 * convention (StudlyCase table name + "Entity" suffix, in the configured
+		 * entity namespace) and emitted as a plain string, regardless of whether
+		 * that file exists yet; annotation parameters are resolved lazily by the
+		 * metadata layer, not required to exist at generation time.
+		 *
+		 * referencedColumn/columns name a PHP property on the target entity, not
+		 * a raw database column name (see EntityMetadataBuilder's resolution of
+		 * these same annotations) — every column name read from introspection is
+		 * converted with the same column→property transform used for index
+		 * columns above.
+		 *
+		 * @param string $tableName The name of the database table to get foreign keys for
+		 * @return array{
+		 *     single: array<string, array{target: string, referencedColumn: string, onDelete: string, onUpdate: string}>,
+		 *     composite: list<array{target: string, localProperties: list<string>, referencedProperties: list<string>, onDelete: string, onUpdate: string}>
+		 * }
+		 */
+		private function getTableForeignKeys(string $tableName): array {
+			$single = [];
+			$composite = [];
+
+			foreach ($this->provider->getDatabaseAdapter()->getForeignKeys($tableName) as $foreignKey) {
+				$targetEntityName = $this->camelCase($foreignKey->referencedTable);
+				$target = "{$this->configuration->getEntityNameSpace()}\\{$targetEntityName}Entity";
+
+				$referencedProperties = array_values(array_map(
+					fn(string $col) => lcfirst($this->camelCase($col)),
+					$foreignKey->referencedColumns
+				));
+
+				if (count($foreignKey->columns) === 1) {
+					$single[$foreignKey->columns[0]] = [
+						'target'           => $target,
+						// Round-trip the source constraint's actual rule — defaulting
+						// to RESTRICT here would silently misrepresent what the
+						// database actually enforces.
+						'referencedColumn' => $referencedProperties[0],
+						'onDelete'         => $foreignKey->onDelete,
+						'onUpdate'         => $foreignKey->onUpdate,
+					];
+					continue;
+				}
+
+				$composite[] = [
+					'target'               => $target,
+					'localProperties'      => array_values(array_map(
+						fn(string $col) => lcfirst($this->camelCase($col)),
+						$foreignKey->columns
+					)),
+					'referencedProperties' => $referencedProperties,
+					'onDelete'             => $foreignKey->onDelete,
+					'onUpdate'             => $foreignKey->onUpdate,
+				];
+			}
+
+			return ['single' => $single, 'composite' => $composite];
 		}
 	}

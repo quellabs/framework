@@ -4,7 +4,7 @@
 [![PHPStan](https://img.shields.io/badge/PHPStan-level%209-brightgreen.svg)](https://phpstan.org)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 
-A PHP framework built for real-world projects — especially the messy ones. Canvas drops into existing PHP codebases without forcing a rewrite, while giving new projects a clean, annotation-driven architecture with aspect-oriented programming and a readable ORM.
+A PHP framework built for real-world projects — especially the messy ones. Canvas drops into existing PHP codebases without forcing a rewrite, while giving new projects a clean, annotation-driven architecture: aspect-oriented programming, a readable ORM, your choice of template engine, and auto-discovered packages for payments, shipments, and scheduling.
 
 ## The legacy problem
 
@@ -29,37 +29,14 @@ Legacy files using `header()`, `die()`, and `exit()` are automatically preproces
 
 Migrate one route at a time. When a Canvas controller claims a URL, it takes precedence over the legacy file. When every route is migrated, set `legacy_enabled` to `false`.
 
+## Templating
+Canvas uses [Smarty](https://www.smarty.net/) as its default template engine. Twig, Latte, Blade, Plates, and Handlebars are each available as a separate package and can be swapped in without touching controller code.
+
 ## Cross-cutting concerns without the mess
 
-Here's what a controller looks like when authentication, caching, and rate limiting are tangled into business logic:
+Canvas separates cross-cutting concerns — auth, caching, rate limiting, logging — into aspects: reusable classes applied via annotations instead of tangled into business logic.
 
 ```php
-// The usual approach
-public function manage() {
-    if (!$this->auth->isAuthenticated()) {
-        return redirect('/login');
-    }
-
-    $key = 'users_' . md5(serialize($params));
-    if ($cached = $this->cache->get($key)) {
-        return $cached;
-    }
-
-    if ($this->rateLimiter->tooManyAttempts($ip, 100)) {
-        return response('Too many requests', 429);
-    }
-
-    $users = $this->em()->findBy(User::class, ['active' => true]);
-    $result = $this->render('admin/users.tpl', compact('users'));
-    $this->cache->set($key, $result, 300);
-    return $result;
-}
-```
-
-Canvas separates cross-cutting concerns into aspects — reusable classes applied via annotations:
-
-```php
-// Canvas: business logic only, concerns declared as aspects
 /**
  * @Route("/admin/users")
  * @InterceptWith(RequireAuthAspect::class, priority=100)
@@ -72,22 +49,47 @@ public function manage() {
 }
 ```
 
-Three lines of business logic. Authentication, caching, and rate limiting are declared, not coded. Each aspect is a standalone class — `BeforeAspect` for auth checks, `AroundAspect` for caching, `AfterAspect` for logging:
+Each aspect is a standalone class — `BeforeAspect` for checks that can short-circuit the request, `AroundAspect` for wrapping behavior like caching, `AfterAspect` for post-processing. Aspects inherit through controller hierarchies — apply `@InterceptWith` on a base class and every child controller gets it automatically — with priority ordering controlling execution sequence within each inheritance level.
+
+## Security headers & CORS
+
+`config/app.php`'s `security_header_policy` accepts a single policy class or an ordered list, applied to every response in that order:
 
 ```php
-class RequireAuthAspect implements BeforeAspect {
-    public function __construct(private AuthService $auth) {}
-
-    public function before(MethodContextInterface $context): ?Response {
-        if (!$this->auth->isAuthenticated()) {
-            return new RedirectResponse('/login');
-        }
-        return null; // proceed to method
-    }
-}
+// config/app.php
+return [
+    'security_header_policy' => [
+        BasicSecurityHeaderPolicy::class,
+        CorsSecurityHeaderPolicy::class,
+    ],
+];
 ```
 
-Aspects inherit through controller hierarchies — apply `@InterceptWith` on a base class and every child controller gets it automatically. Priority ordering controls execution sequence within each inheritance level.
+A route-specific override uses the same syntax and replaces the *entire* list for that route, not just one entry:
+
+```php
+/**
+ * @InterceptWith(SecurityHeadersAspect::class, policyClass={StrictSecurityHeaderPolicy::class, CorsSecurityHeaderPolicy::class})
+ */
+```
+
+`CorsSecurityHeaderPolicy` is opt-in and reads its allowlists from `config/cors.php`, created with `php sculpt cors:init`. The generated file grants no cross-origin access until filled in:
+
+```php
+// config/cors.php
+return [
+    'allowed_origins'   => ['https://app.example.com'],
+    'allowed_methods'   => ['GET', 'POST'],
+    'allowed_headers'   => ['Content-Type', 'Authorization'],
+    'exposed_headers'   => ['Location'],
+    'allow_credentials' => true,
+    'max_age'           => 600,
+];
+```
+
+Only exact `scheme://host(:port)` origins are accepted — `*` and the opaque `null` origin are rejected. A preflight (`OPTIONS` with `Access-Control-Request-Method`) is approved only when the origin, requested method, and every requested header are allowed; Canvas's generated `OPTIONS` response already carries the route's matched methods in `Allow`, which the requested method must also appear in.
+
+Existing single-class configurations keep working unchanged. Basic/Medium/Strict headers (clickjacking, MIME-sniffing, HSTS, CSP) are a separate concern from CORS's cross-origin permission headers — an application opting into CORS still needs one of them, and must list `CorsSecurityHeaderPolicy::class` in any route override that should keep it.
 
 ## ObjectQuel ORM
 
@@ -132,16 +134,17 @@ class BlogController extends BaseController {
 
 Controllers are discovered automatically through Composer metadata. Routes are defined with annotations. Typed route parameters (`{id:int}`) are validated before your method runs. No configuration files, no route registration.
 
-Canvas uses [Smarty](https://www.smarty.net/) as its default template engine. Twig support is available through a separate package.
-
 ## Features
 
 - **Legacy-first integration** — wrap existing PHP apps with route fallthrough, automatic preprocessing of `header()`/`die()`/`exit()`, and a `canvas()` helper for accessing services from legacy code
 - **Aspect-oriented programming** — Before, Around, and After aspects with annotation parameters, priority ordering, and inheritance through controller hierarchies
 - **ObjectQuel ORM** — declarative query language with pattern matching, hybrid JSON sources, and Data Mapper architecture
+- **Template engines** — Smarty by default, with Twig, Latte, Blade, Plates, and Handlebars available as drop-in packages
 - **Contextual dependency injection** — resolve different interface implementations based on request context, without conditional logic in your code
 - **Signal/slot event system** — Qt-style decoupled service communication with type checking and priority-based handlers
-- **Task scheduling** — cron-style background jobs with timeouts and concurrent execution handling
+- **Task scheduling** — cron-style background jobs with timeouts, concurrent execution handling, and optional RabbitMQ/Redis-backed queues
+- **Payments & shipments** — provider-agnostic routers that auto-discover installed payment and carrier packages via Composer metadata
+- **Loom** — definition-driven builder for admin pages, forms, and settings panels with automatic data binding
 - **Validation & sanitization** — declarative rules applied as aspects, keeping controllers clean
 - **Visual inspector** — debug bar with database queries, request analysis, and custom panels
 - **CLI tooling** — route listing, route matching, task management, asset publishing, entity generation

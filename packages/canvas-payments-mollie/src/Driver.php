@@ -3,18 +3,23 @@
 	namespace Quellabs\Payments\Mollie;
 	
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\MandateInfo;
+	use Quellabs\Payments\Contracts\MandateStatus;
 	use Quellabs\Payments\Contracts\PaymentAddress;
 	use Quellabs\Payments\Contracts\PaymentException;
 	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentExchangeException;
 	use Quellabs\Payments\Contracts\PaymentInitiationException;
+	use Quellabs\Payments\Contracts\PaymentMandateException;
 	use Quellabs\Payments\Contracts\PaymentState;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\PaymentStatus;
 	use Quellabs\Payments\Contracts\PaymentRefundException;
+	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\SequenceType;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	
@@ -148,10 +153,18 @@
 		public function initiate(PaymentRequest $request): InitiateResult {
 			// Resolve missing redirect/cancel/webhook URLs from config
 			$this->resolveUrls($request);
-			
+
 			// Map the module name (e.g. 'mollie_ideal') to Mollie's method string (e.g. 'ideal')
 			$paymentMethod = self::MODULE_TYPE_MAP[$request->paymentModule];
-			
+
+			// A First payment establishes a mandate and therefore needs a customer to attach it to.
+			// If the caller didn't already supply one, create it now from the billing address.
+			$customerReference = $request->customerReference;
+
+			if ($request->sequenceType === SequenceType::First && empty($customerReference)) {
+				$customerReference = $this->createCustomer($request->billingAddress);
+			}
+
 			// Build the Mollie payment payload, stripping null fields before sending
 			$payload = array_filter([
 				'amount'          => [
@@ -163,41 +176,191 @@
 				'cancelUrl'       => $request->cancelUrl,
 				'webhookUrl'      => $request->webhookUrl,
 				'metadata'        => $request->metadata,
-				
+
 				// Empty string means no method preference — let the customer choose on Mollie's hosted page
 				'method'          => !empty($paymentMethod) ? $paymentMethod : null,
-				
+
 				// Only included for methods that require issuer pre-selection (KBC, gift cards).
 				// iDEAL no longer accepts an issuer — bank selection moved to the hosted page in iDEAL 2.0.
 				'issuer'          => !empty($request->issuerId) ? $request->issuerId : null,
 				'billingAddress'  => $request->billingAddress !== null ? $this->serializeAddress($request->billingAddress) : null,
 				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
+				'sequenceType'    => $request->sequenceType?->value,
+				'customerId'      => !empty($customerReference) ? $customerReference : null,
 				'testmode'        => $this->getGateway()->testMode(),
 			], fn($v) => $v !== null);
-			
+
 			// Call the API
 			$response = $this->getGateway()->createPayment($payload);
-			
+
 			// If API call failed, throw error
 			if ($response["request"]["result"] == 0) {
 				throw new PaymentInitiationException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
-			
+
 			// Response data has to be there
 			$r             = $response["response"] ?? [];
 			$transactionId = $this->normalizeString($r["id"] ?? null);
 			$checkoutHref  = $this->normalizeString($this->arrayGet($r, '_links.checkout.href'));
-			
+
 			if ($transactionId === '' || $checkoutHref === '') {
 				throw new PaymentInitiationException(self::DRIVER_NAME, "204", "Invalid gateway response. Missing id and/or redirect url");
 			}
-			
+
+			// Mollie echoes the customerId back on the payment resource — prefer that, falling back
+			// to the customer id we resolved above (covers the case where Mollie omits the field)
+			$responseCustomerId = $this->normalizeString($r["customerId"] ?? null);
+			$resolvedCustomerReference = $responseCustomerId !== '' ? $responseCustomerId : (!empty($customerReference) ? $customerReference : null);
+
 			// Extract the hosted checkout URL Mollie generated for this payment
 			return new InitiateResult(
 				provider: self::DRIVER_NAME,
 				transactionId: $transactionId,
-				redirectUrl: $checkoutHref
+				redirectUrl: $checkoutHref,
+				customerReference: $resolvedCustomerReference,
 			);
+		}
+
+		/**
+		 * Charge an existing mandate for a recurring, off-session payment.
+		 * @url https://docs.mollie.com/reference/v2/payments-api/create-payment
+		 * @param RecurringChargeRequest $request
+		 * @return InitiateResult
+		 * @throws PaymentInitiationException
+		 */
+		public function chargeRecurring(RecurringChargeRequest $request): InitiateResult {
+			// Fall back to the configured webhook URL when none is given
+			$webhookUrl = $request->webhookUrl ?: ($this->normalizeString($this->getConfig()["webhook_url"] ?? null) ?: null);
+
+			// Build the Mollie payment payload, stripping null fields before sending
+			$payload = array_filter([
+				'amount'       => [
+					'currency' => $request->currency,
+					'value'    => number_format($request->amount / 100, 2, '.', ''),
+				],
+				'description'  => $request->description,
+				'customerId'   => $request->customerReference,
+				'sequenceType' => SequenceType::Recurring->value,
+				'mandateId'    => $request->mandateId,
+				'webhookUrl'   => $webhookUrl,
+				'metadata'     => $request->metadata,
+				'testmode'     => $this->getGateway()->testMode(),
+			], fn($v) => $v !== null);
+
+			// Call the API
+			$response = $this->getGateway()->createPayment($payload);
+
+			// If API call failed, throw error
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			// Response data has to be there
+			$r             = $response["response"] ?? [];
+			$transactionId = $this->normalizeString($r["id"] ?? null);
+
+			if ($transactionId === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "204", "Invalid gateway response. Missing id");
+			}
+
+			// A recurring charge never produces a checkout redirect — it's initiated off-session
+			return new InitiateResult(
+				provider: self::DRIVER_NAME,
+				transactionId: $transactionId,
+				redirectUrl: null,
+				customerReference: $request->customerReference,
+			);
+		}
+
+		/**
+		 * Returns all mandates registered for the given customer.
+		 * @url https://docs.mollie.com/reference/v2/mandates-api/list-mandates
+		 * @param string $customerReference
+		 * @return array<int, MandateInfo>
+		 * @throws PaymentMandateException
+		 */
+		public function getMandates(string $customerReference): array {
+			// Fetch mandates from Mollie
+			$response = $this->getGateway()->listMandates($customerReference);
+
+			// Return error if the gateway call failed
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentMandateException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			// Map Mollie statuses to internal states
+			$stateMap = [
+				'PENDING' => MandateStatus::Pending,
+				'VALID'   => MandateStatus::Valid,
+				'INVALID' => MandateStatus::Invalid,
+			];
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $mandate */
+				function (array $mandate) use ($customerReference, $stateMap): MandateInfo {
+					$mollieStatus = $this->normalizeString($mandate["status"] ?? null);
+
+					return new MandateInfo(
+						provider: self::DRIVER_NAME,
+						mandateId: $this->normalizeString($mandate["id"] ?? null),
+						customerReference: $customerReference,
+						status: $stateMap[strtoupper($mollieStatus)] ?? MandateStatus::Invalid,
+						method: $this->normalizeString($mandate["method"] ?? null),
+						internalState: $mollieStatus,
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
+		 * Revokes a mandate, preventing any further recurring charges against it.
+		 * @url https://docs.mollie.com/reference/v2/mandates-api/revoke-mandate
+		 * @param string $customerReference
+		 * @param string $mandateId
+		 * @return void
+		 * @throws PaymentMandateException
+		 */
+		public function revokeMandate(string $customerReference, string $mandateId): void {
+			$response = $this->getGateway()->revokeMandate($customerReference, $mandateId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentMandateException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+		}
+
+		/**
+		 * Creates a new Mollie customer, sourcing name/email from a billing address when available.
+		 * @param PaymentAddress|null $billingAddress
+		 * @return string
+		 * @throws PaymentInitiationException
+		 */
+		private function createCustomer(?PaymentAddress $billingAddress): string {
+			$name = trim(($billingAddress->givenName ?? '') . ' ' . ($billingAddress->familyName ?? ''))
+				?: ($billingAddress->organizationName ?? null);
+
+			$payload = array_filter([
+				'name'  => $name,
+				'email' => $billingAddress?->email,
+			], fn($v) => $v !== null && $v !== '');
+
+			$response = $this->getGateway()->createCustomer($payload);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			$r          = $response["response"] ?? [];
+			$customerId = $this->normalizeString($r["id"] ?? null);
+
+			if ($customerId === '') {
+				throw new PaymentInitiationException(self::DRIVER_NAME, "204", "Invalid gateway response. Missing customer id");
+			}
+
+			return $customerId;
 		}
 		
 		/**

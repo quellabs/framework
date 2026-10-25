@@ -98,4 +98,20 @@
 			$config = new RecommendationConfig();
 			$this->assertSame(1, $config->resolveCategory(null));
 		}
+
+		/** Invalid numeric settings cannot reach pair calculations.
+		 * @return void
+		 */
+		public function testRejectsNonfiniteThreshold(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new RecommendationConfig(thresholdRating: NAN);
+		}
+
+		/** The internal absence marker requires the fixed disinterest sentinel.
+		 * @return void
+		 */
+		public function testRejectsDifferentDisinterestSentinel(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new RecommendationConfig(notInterested: -0.5);
+		}
 	}

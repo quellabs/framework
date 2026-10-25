@@ -1,13 +1,13 @@
 <?php
 	
 	namespace Quellabs\ObjectQuel\Capabilities;
-	
+
 	/**
 	 * Conservative no-op platform used when no database connection is available.
 	 *
 	 * All capability flags return false, causing ObjectQuel to emit the most
 	 * broadly-compatible SQL — plain REGEXP instead of REGEXP_LIKE(), etc.
-	 * This is the default injected by QuelToSQL when the caller does not supply
+	 * This is the default injected by QuelToSQLRetrieve when the caller does not supply
 	 * a platform instance.
 	 */
 	class NullPlatformCapabilities implements PlatformCapabilitiesInterface {
@@ -16,6 +16,13 @@
 		 * @inheritDoc
 		 */
 		public function supportsNativeEnums(): bool {
+			return false;
+		}
+		
+		/**
+		 * @inheritDoc
+		 */
+		public function supportsUnsignedIntegers(): bool {
 			return false;
 		}
 		
@@ -32,6 +39,13 @@
 		public function supportsWindowFunctions(): bool {
 			return false;
 		}
+
+		/**
+		 * @inheritDoc
+		 */
+		public function supportsOffsetPagination(): bool {
+			return false;
+		}
 		
 		/**
 		 * @inheritDoc
@@ -39,7 +53,7 @@
 		public function supportsIndexHiding(): bool {
 			return false;
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
@@ -49,16 +63,6 @@
 		 */
 		public function getFulltextIndexStyle(): FulltextIndexStyle {
 			return FulltextIndexStyle::Fulltext;
-		}
-		
-		/**
-		 * @inheritDoc
-		 *
-		 * Falls back to 'json', the most broadly-compatible type, when no database
-		 * connection is available to detect the actual engine.
-		 */
-		public function getNativeJsonType(): string {
-			return 'json';
 		}
 		
 		/**
@@ -72,55 +76,73 @@
 		/**
 		 * @inheritDoc
 		 *
-		 * Returns the baseline cast types supported by MySQL/MariaDB, which are the
-		 * most conservative valid set. Callers that need engine-specific types should
-		 * inject a real PlatformCapabilities instance instead of relying on this null
-		 * implementation.
+		 * Conservative default: false, so callers neither write nor rely on a
+		 * constraint name, and drop by column list instead of by name.
 		 */
-		public function getSupportedCastTypes(): array {
-			return [
-				'int'     => 'SIGNED',
-				'float'   => 'DOUBLE',
-				'string'  => 'CHAR',
-				'decimal' => 'DECIMAL',
-			];
+		public function supportsNamedForeignKeys(): bool {
+			return false;
 		}
 
 		/**
 		 * @inheritDoc
 		 *
-		 * Defaults to MySQL/MariaDB syntax, the most widely deployed engine in the
-		 * Canvas/ObjectQuel target stack.
+		 * Conservative default: false, so callers never treat an empty
+		 * DatabaseAdapter::getForeignKeys() result as "no foreign keys exist"
+		 * without knowing whether this engine can even report them.
 		 */
-		public function getUnixTimestampFunction(): string {
-			return 'UNIX_TIMESTAMP(%s)';
+		public function supportsForeignKeyIntrospection(): bool {
+			return false;
 		}
 
 		/**
 		 * @inheritDoc
 		 *
-		 * Defaults to MySQL/MariaDB syntax.
+		 * Conservative default: false, so callers never wrap a DDL sequence
+		 * in a transaction without knowing whether this engine actually
+		 * honors DDL rollback.
 		 */
-		public function getCurrentUnixTimestamp(): string {
-			return 'UNIX_TIMESTAMP()';
+		public function supportsTransactionalDDL(): bool {
+			return false;
 		}
 
 		/**
 		 * @inheritDoc
 		 *
-		 * Defaults to MySQL/MariaDB syntax, which PostgreSQL also accepts as-is.
+		 * Conservative default: false, so callers always qualify SET targets
+		 * with a bare column name rather than risk a qualified one on an
+		 * engine that would reject it.
 		 */
-		public function getCurrentDatetimeFunction(): string {
-			return 'NOW()';
+		public function supportsQualifiedSetTarget(): bool {
+			return false;
 		}
-		
+
 		/**
 		 * @inheritDoc
 		 *
-		 * Defaults to MySQL/MariaDB syntax, the most broadly recognised default
-		 * when no database connection is available to detect the actual engine.
+		 * Defaults to MySQL/MariaDB behavior.
 		 */
-		public function getRegexpFallbackOperators(): array {
-			return ['match' => 'REGEXP', 'notMatch' => 'NOT REGEXP'];
+		public function supportsAliasAfterDmlTarget(): bool {
+			return true;
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Defaults to MySQL/MariaDB behavior.
+		 */
+		public function supportsBooleanLiterals(): bool {
+			return true;
+		}
+
+		/**
+		 * @inheritDoc
+		 *
+		 * Defaults to 'mysql', the most widely deployed engine in the
+		 * Canvas/ObjectQuel target stack. Callers that need the real engine must
+		 * inject a real PlatformCapabilities instance instead of relying on this
+		 * null implementation.
+		 */
+		public function getDatabaseType(): string {
+			return 'mysql';
 		}
 	}

@@ -9,7 +9,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Token;
 	
 	/**
-	 * AbstractExpressionRule is the base class for expression rule classes.
+	 * Base class for expression parsing rules.
 	 *
 	 * It owns the Lexer instance and token-level parsing primitives that are
 	 * shared across multiple levels of the expression hierarchy. Rule classes
@@ -86,15 +86,15 @@
 			
 			do {
 				$next = $this->lexer->lookahead();
-				
+
 				if ($next !== Token::Identifier) {
 					if (!empty($identifiers) && $next === Token::ParenthesesClose) {
 						throw new ParserException("Unexpected token after comma in identifier list. Expected a field identifier.");
 					}
-					
+
 					break;
 				}
-				
+
 				$identifiers[] = $this->parsePropertyChain();
 			} while ($this->lexer->optionalMatch(Token::Comma));
 			

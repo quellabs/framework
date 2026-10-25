@@ -1,6 +1,6 @@
-# Sculpt: Modern CLI Framework for Quellabs Ecosystem
+<img src="assets/sculpt-logo.webp" alt="Sculpt logo" width="200">
 
-![Sculpt Logo](https://via.placeholder.com/150x150.png?text=Sculpt)
+# Sculpt: Modern CLI Framework for Quellabs Ecosystem
 
 A powerful, extensible command-line toolkit that seamlessly integrates with ObjectQuel ORM.
 
@@ -17,10 +17,15 @@ Sculpt provides an elegant command-line interface for rapid development, code ge
 - **Unified Command Interface** — Access commands from across the Quellabs ecosystem through a single CLI tool
 - **Service Provider Architecture** — Robust plugin system allowing packages to register commands and services
 - **Extensible Design** — Built from the ground up for customization and extension
-- **Smart Discovery** — Automatically detects and loads commands from installed packages
+- **Smart Discovery** — Automatically detects and loads commands from installed packages via Composer
 - **Cross-Package Integration** — Enables seamless interaction between ObjectQuel and other components
-- **Developer-Friendly** — Intuitive command structure with helpful documentation and auto-completion
-- **Parameter Management** — Sophisticated handling of command-line parameters with validation and type checking
+- **Developer-Friendly** — Colored output, tables, interactive prompts, and per-command help text
+- **Parameter Management** — Simple, predictable handling of named parameters, flags, and positional arguments
+
+## 📋 Requirements
+
+- PHP 8.2 or higher
+- Composer
 
 ## 📦 Installation
 
@@ -30,13 +35,13 @@ composer require quellabs/sculpt
 
 ## 🔍 Quick Start
 
-Once installed, you can run Sculpt commands using:
+Once installed, Composer creates the `sculpt` binary in your `vendor/bin` directory:
 
 ```bash
 vendor/bin/sculpt <command>
 ```
 
-To see all available commands:
+To see all available commands (grouped by namespace):
 
 ```bash
 vendor/bin/sculpt
@@ -54,9 +59,9 @@ vendor/bin/sculpt help <command>
 
 Sculpt is built around a few key concepts:
 
-1. **Commands** — The primary way users interact with Sculpt
-2. **Service Providers** — Register commands and extend functionality
-3. **Configuration Manager** — Handles command parameters and options
+1. **Commands** — The primary way users interact with Sculpt. Each command implements `CommandInterface` (usually via the `CommandBase` abstract class).
+2. **Service Providers** — Extend `Quellabs\Sculpt\ServiceProvider` to register one or more commands with the application.
+3. **Configuration Manager** — `ConfigurationManager` parses and exposes command-line parameters, flags, and positional arguments to a running command.
 
 ### Command Structure
 
@@ -66,24 +71,25 @@ Commands in Sculpt follow a namespace pattern:
 namespace:command
 ```
 
-For example:
-- `db:migrate` — Run database migrations
-- `make:model` — Generate a model class
-- `cache:clear` — Clear application cache
+Real examples shipped by packages in this ecosystem:
+- `quel:migrate` — Run, roll back, or check the status of database migrations (ObjectQuel)
+- `make:entity` — Interactively create or update an entity class (ObjectQuel)
+- `make:controller` — Create a new controller class (Canvas)
+- `cache:init` — Create the cache configuration file (Canvas)
 
 ### Using Command Parameters
 
-Sculpt supports various parameter formats:
+`ConfigurationManager` recognizes three kinds of arguments:
 
 ```bash
-# Named parameters
-vendor/bin/sculpt make:model --name=User --table=users
+# Named parameters (--name=value or --name value)
+vendor/bin/sculpt quel:migrate --target=20240101120000
 
-# Flags
-vendor/bin/sculpt migrate --force --verbose
+# Flags (--flag or -f)
+vendor/bin/sculpt quel:migrate --force --dry-run
 
-# Short flags
-vendor/bin/sculpt migrate -fv
+# Short flags (each character is its own flag)
+vendor/bin/sculpt quel:migrate -fd
 
 # Positional parameters
 vendor/bin/sculpt make:controller User
@@ -93,7 +99,7 @@ vendor/bin/sculpt make:controller User
 
 ### Creating a Service Provider
 
-Sculpt uses a service provider pattern to discover and register commands from packages.
+Sculpt uses Composer package discovery to find and register service providers from installed packages. A service provider extends `Quellabs\Sculpt\ServiceProvider` and registers one or more commands.
 
 #### 1. Create a Service Provider Class
 
@@ -103,18 +109,17 @@ Sculpt uses a service provider pattern to discover and register commands from pa
 namespace Your\Package;
 
 use Quellabs\Sculpt\Application;
-use Quellabs\Sculpt\Contracts\ServiceProvider;
+use Quellabs\Sculpt\ServiceProvider;
 
 class SculptServiceProvider extends ServiceProvider {
 
     /**
-     * Register your package's commands and services
+     * Register your package's commands
      */
-    public function register(mixed $container): void {
-        // Register commands
-        $container->registerCommands($app, [
+    public function register(Application $application): void {
+        $this->registerCommands($application, [
             \Your\Package\Commands\YourCommand::class,
-            \Your\Package\Commands\AnotherCommand::class
+            \Your\Package\Commands\AnotherCommand::class,
         ]);
     }
 }
@@ -122,33 +127,37 @@ class SculptServiceProvider extends ServiceProvider {
 
 #### 2. Configure Package Discovery
 
-In your package's composer.json:
+Sculpt discovers providers through the `extra.discover.sculpt` section of your package's `composer.json`. A single provider:
 
 ```json
 {
     "name": "your/package",
     "extra": {
         "discover": {
-          "sculpt": {
-            "provider": "Your\\Package\\SculptServiceProvider"
-          }
+            "sculpt": {
+                "provider": "Your\\Package\\SculptServiceProvider"
+            }
         }
     }
 }
 ```
 
-Or:
+Multiple providers, or a provider that ships a config file to publish:
 
 ```json
 {
     "name": "your/package",
     "extra": {
-      "discover": {
-        "sculpt": {
-            "providers": [
-              "Your\\Package\\SculptServiceProvider",
-              "Your\\Package\\SculptServiceProvider2",
-            ]
+        "discover": {
+            "sculpt": {
+                "providers": [
+                    {
+                        "class": "Your\\Package\\SculptServiceProvider",
+                        "config": "config/your-package.php"
+                    },
+                    "Your\\Package\\AnotherServiceProvider"
+                ]
+            }
         }
     }
 }
@@ -156,49 +165,65 @@ Or:
 
 ### Creating Custom Commands
 
-Commands should implement the `CommandInterface` or extend the `BaseCommand` class:
+Commands implement `CommandInterface`, normally by extending `Quellabs\Sculpt\Contracts\CommandBase`:
 
 ```php
 <?php
 
 namespace Your\Package\Commands;
 
-use Quellabs\Sculpt\Commands\BaseCommand;
 use Quellabs\Sculpt\ConfigurationManager;
+use Quellabs\Sculpt\Contracts\CommandBase;
 
-class YourCommand extends BaseCommand {
+class YourCommand extends CommandBase {
+
     /**
-     * Get signature of this command
+     * Command signature used to invoke it from the CLI
      */
     public function getSignature(): string {
         return 'your:command';
     }
-    
+
     /**
-     * Get the description
+     * Short description shown in the command list
      */
     public function getDescription(): string {
         return 'Description of your command';
     }
-    
+
+    /**
+     * Detailed help shown by "sculpt help your:command"
+     */
+    public function getHelp(): string {
+        return <<<HELP
+USAGE:
+    php sculpt your:command [name] [--force]
+
+ARGUMENTS:
+    name    Name to operate on (optional)
+
+OPTIONS:
+    --force    Skip confirmation prompts
+HELP;
+    }
+
     /**
      * Execute the command with parsed configuration
      */
     public function execute(ConfigurationManager $config): int {
-        // Access command parameters
-        $name = $config->get('name', 'default-name');
+        // Positional argument, named parameter, and flag access
+        $name = $config->getPositional(0, 'default-name');
         $force = $config->hasFlag('force');
-        
-        // Display information
+
         $this->output->writeLn("<bold>Executing command for: {$name}</bold>");
-        
+
         if ($force) {
-            $this->output->warning("Force flag is enabled!");
+            $this->output->warning('Force flag is enabled!');
         }
-        
+
         // Command implementation here...
-        $this->output->writeLn("<green>Command completed successfully!</green>");
-        
+        $this->output->success('Command completed successfully!');
+
         return 0; // Return 0 for success, non-zero for errors
     }
 }
@@ -206,28 +231,55 @@ class YourCommand extends BaseCommand {
 
 ### Using the Configuration Manager
 
-The `ConfigurationManager` provides a clean way to access command parameters:
+The `ConfigurationManager` provides access to the parsed command parameters:
 
 ```php
 // Get a named parameter with a default value
 $name = $config->get('name', 'default-value');
+$name = $config->getAsString('name', 'default-value');
+$count = $config->getAsInt('limit', 10);
+
+// Check if a named parameter was passed at all
+if ($config->has('name')) {
+    // ...
+}
 
 // Check if a flag is set
 if ($config->hasFlag('force') || $config->hasFlag('f')) {
     // Do something forcefully
 }
 
-// Get a positional parameter
+// Get a positional parameter by index
 $firstArg = $config->getPositional(0);
 
-// Validate parameter format
-$email = $config->getValidated('email', '/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/');
+// Get everything at once (named, flags, positional)
+$all = $config->all();
+```
 
-// Validate parameter is one of allowed values
-$env = $config->getEnum('environment', ['development', 'staging', 'production']);
+### Console Output
 
-// Require certain parameters
-$config->requireParameters(['name', 'type']);
+`CommandBase` exposes `$this->output` (`ConsoleOutput`) and `$this->input` (`ConsoleInput`):
+
+```php
+// Styled text — tags map to ANSI codes and are stripped automatically
+// when output isn't a TTY
+$this->output->writeLn('<bold><green>Done!</green></bold>');
+
+// Pre-built message styles
+$this->output->success('Everything worked');
+$this->output->warning('Proceed with caution');
+$this->output->error('Something went wrong');
+
+// Tables
+$this->output->table(['Name', 'Type'], [
+    ['id', 'integer'],
+    ['email', 'string'],
+]);
+
+// Interactive prompts
+$name = $this->input->ask('What is your name?', 'Anonymous');
+$proceed = $this->input->confirm('Continue?', true);
+$choice = $this->input->choice('Pick one', ['a', 'b', 'c'], 1);
 ```
 
 ## 🤝 Contributing

@@ -1,30 +1,21 @@
 <?php
-    
-    namespace Quellabs\ObjectQuel\Annotations\Orm;
-    
-    use Quellabs\AnnotationReader\AnnotationInterface;
-    
-    /**
-     * @Annotation
-     */
-    class Immutable implements AnnotationInterface {
-        
-        /** @var array<string, mixed> */
-        protected array $parameters;
-        
-        /**
-         * PreDelete constructor.
-         * @param array<string, mixed> $parameters
-         */
-        public function __construct(array $parameters) {
-            $this->parameters = $parameters;
-        }
-	    
-	    /**
-	     * Returns the parameters for this annotation
-	     * @return array<string, mixed>
-	     */
-	    public function getParameters(): array {
-		    return $this->parameters;
-	    }
-    }
+	
+	namespace Quellabs\ObjectQuel\Annotations\Orm;
+	
+	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
+	
+	/**
+	 * @Annotation
+	 */
+	#[\Attribute(\Attribute::TARGET_CLASS)]
+	class Immutable implements AnnotationInterface {
+		use ReflectsAnnotationParameters;
+		
+		/**
+		 * Constructs the Immutable annotation.
+		 * @return void
+		 */
+		public function __construct() {
+		}
+	}

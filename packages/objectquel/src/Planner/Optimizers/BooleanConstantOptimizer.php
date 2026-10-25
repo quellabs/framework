@@ -5,11 +5,11 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBool;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNot;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstNumber;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\BooleanExpressionClassifier;
 	
 	/**
 	 * Propagates boolean constants upward through the WHERE clause, collapsing
@@ -69,38 +69,50 @@
 				}
 				
 				$node->setExpression($inner);
+				$inner->setParent($node);
 				return $node;
 			}
-			
+
 			if ($node instanceof AstBinaryOperator) {
 				// Recurse first so constants from deeper nodes are visible here
 				$left = $this->propagate($node->getLeft());
 				$right = $this->propagate($node->getRight());
-				
+
 				$result = $this->foldBinaryOperator($node->getOperator(), $left, $right);
-				
+
 				if ($result !== null) {
 					return $result;
 				}
-				
-				// No rule fired — reattach the (possibly rewritten) children and continue
+
+				// No rule fired — reattach the (possibly rewritten) children and continue.
+				// setLeft()/setRight() don't update the child's own parent pointer (by
+				// this codebase's convention, only constructors do that), so it's done
+				// explicitly here — otherwise a node that foldComparison() unwrapped and
+				// handed back unchanged (e.g. `expr = 1` → `expr`) keeps pointing at the
+				// AstExpression it used to live in instead of this node, and a later
+				// getParent() call on it (e.g. AstNodeReplacer) finds a stale parent
+				// whose left/right no longer holds it.
 				$node->setLeft($left);
 				$node->setRight($right);
+				$left->setParent($node);
+				$right->setParent($node);
 				return $node;
 			}
-			
+
 			if ($node instanceof AstExpression) {
 				$left = $this->propagate($node->getLeft());
 				$right = $this->propagate($node->getRight());
-				
+
 				$result = $this->foldComparison($node->getOperator(), $left, $right);
-				
+
 				if ($result !== null) {
 					return $result;
 				}
-				
+
 				$node->setLeft($left);
 				$node->setRight($right);
+				$left->setParent($node);
+				$right->setParent($node);
 				return $node;
 			}
 			
@@ -180,11 +192,12 @@
 			/** @var AstBool $right */
 			$constValue = $right->getValue();
 
-			// Do not fold comparisons like `p.published = true` when the non-constant
-			// side is a plain column identifier. ConditionFilter only accepts
-			// AstExpression leaves, so reducing to AstIdentifier drops the WHERE clause.
+			// Do not fold comparisons like `p.published = true` or `f(x) = 1` when the
+			// non-constant side is a scalar value: ConditionFilter only accepts
+			// AstExpression leaves, so reducing to AstIdentifier drops the WHERE clause,
+			// and a non-boolean value (an integer routine result) isn't a predicate.
 			// Folding is only safe for derived boolean expressions (e.g. is_float()).
-			if ($left instanceof AstIdentifier) {
+			if (!$left instanceof AstBool && BooleanExpressionClassifier::isScalarValue($left)) {
 				return null;
 			}
 			

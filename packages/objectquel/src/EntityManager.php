@@ -101,10 +101,15 @@
 		}
 		
 		/**
-		 * Remove signal from hub
+		 * Remove signal from hub. Uses isset() rather than !== null so a
+		 * constructor-bypassed instance (e.g. a PHPUnit mock with the
+		 * constructor disabled) destructs safely instead of fataling on
+		 * the uninitialized typed property — isset() returns false for an
+		 * uninitialized typed property instead of throwing, unlike a direct
+		 * read.
 		 */
 		public function __destruct() {
-			if ($this->debugQuerySignal !== null) {
+			if (isset($this->debugQuerySignal)) {
 				$this->signalHub->unregisterSignal($this->debugQuerySignal);
 			}
 		}
@@ -117,6 +122,14 @@
 			return $this->connection;
 		}
 		
+		/**
+		 * Returns the configuration
+		 * @return Configuration
+		 */
+		public function getConfiguration(): Configuration {
+			return $this->configuration;
+		}
+
 		/**
 		 * Returns the unit of work
 		 * @return UnitOfWork
@@ -143,12 +156,8 @@
 		
 		/**
 		 * Persists (inserts) an entity into the database
-		 *
-		 * For entities with composite primary keys where multiple keys use the identity strategy,
-		 * only the first identity key will receive the database-generated value. Other identity
-		 * keys must be set manually before calling flush().
-		 *
 		 * @param object $entity The entity to be inserted into the database
+		 * @throws EntityResolutionException
 		 */
 		public function persist(object $entity): bool {
 			return $this->unitOfWork->persistNew($entity);
@@ -169,16 +178,22 @@
 		 * Detach an entity from the EntityManager.
 		 * This will remove the entity from the identity map and stop tracking its changes.
 		 * @param object $entity The entity to detach.
+		 * @throws EntityResolutionException
 		 */
 		public function detach(object $entity): void {
 			$this->unitOfWork->detach($entity);
 		}
 		
 		/**
-		 * Execute a decomposed query plan
+		 * Execute an ObjectQuel statement — `retrieve`, DDL, or a write verb
+		 * (`append`/`replace`/`delete`) alike; all go through this one entry
+		 * point. A write verb bypasses the identity map and change tracking
+		 * entirely, so its QuelResult carries no fetchable rows, just how many
+		 * rows were affected and, when applicable, a generated primary key
+		 * (see QuelResult::fromWriteStatement() and objectquel-append-plan.md).
 		 * @param string $query The query to execute
 		 * @param array<string, mixed> $parameters Initial parameters for the plan
-		 * @return QuelResult|null The results of the execution plan
+		 * @return QuelResult|null Null for statements with no rows to return (e.g. `create`)
 		 * @throws QuelException
 		 */
 		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
@@ -196,7 +211,7 @@
 				$query,
 				$this->queryExecutor->getLastExecutedSql(),
 				$end - $start,
-				$result->recordCount(),
+				$result?->recordCount() ?? 0,
 			);
 			
 			// In development mode, emit a debug signal with the full query plan
@@ -207,8 +222,21 @@
 				$memoryUsage = memory_get_usage(true) / 1024;
 				$memoryPeakUsage = memory_get_peak_usage(true) / 1024;
 				
-				// Explain the query
-				$plan = $this->queryExecutor->explainQuery($query, $parameters);
+				// Explain the query. QueryExecutor::explainQuery() only supports
+				// retrieve statements. DDL/write-verb statements have already been
+				// executed above, so explaining them would either require rerunning
+				// the write or fabricating a plan. For those statements, fall back
+				// to an empty plan rather than letting the unsupported-operation
+				// error fail an otherwise successful call.
+				try {
+					$plan = $this->queryExecutor->explainQuery($query, $parameters);
+				} catch (QuelException $e) {
+					if ($e->type !== 'not_plannable') {
+						throw $e;
+					}
+					
+					$plan = new QueryPlan([], []);
+				}
 				
 				// Emit the query plan + additional query info
 				$this->debugQuerySignal?->emit([
@@ -302,18 +330,22 @@
 		
 		/**
 		 * Searches for a single entity based on the given entity type and primary key.
+		 * A composite primary key takes an associative array keyed by property name
+		 * instead of a scalar.
 		 * @template T of object
 		 * @param class-string<T> $entityType The fully qualified class name of the entity
-		 * @param int|string $primaryKey The primary key of the entity
+		 * @param int|string|array<string, int|string> $primaryKey The primary key of the entity
 		 * @return T|null The found entity or null if not found
 		 * @throws EntityResolutionException If the entity cannot be instantiated or hydrated.
+		 * @throws \InvalidArgumentException If $primaryKey is incomplete, unknown, or malformed
 		 * @throws QuelException If the underlying query fails.
 		 */
-		public function find(string $entityType, int|string $primaryKey): ?object {
-			// Normalize the primary key
-			$firstKey = $this->entityStore->getMetadata($entityType)->getPrimaryKey();
-			$primaryKeys = $firstKey ? [$firstKey => $primaryKey] : [];
-			
+		public function find(string $entityType, int|string|array $primaryKey): ?object {
+			// Validate and normalize the lookup key into a complete, ordered map —
+			// an unknown/missing/null component, or a scalar against a composite
+			// key, fails here rather than silently querying with a partial key.
+			$primaryKeys = $this->entityStore->getMetadata($entityType)->normalizeIdentifier($primaryKey);
+
 			// Return early if the entity is already tracked and fully initialized
 			$existingEntity = $this->unitOfWork->findEntity($entityType, $primaryKeys);
 			
@@ -356,13 +388,14 @@
 		 *
 		 * @template T of object
 		 * @param class-string<T> $entityType The fully qualified class name of the entity to retrieve.
-		 * @param int|string $primaryKey The primary key value to look up.
+		 * @param int|string|array<string, int|string> $primaryKey The primary key value to look up.
 		 * @return T The resolved entity instance.
 		 * @throws EntityNotFoundException    If no entity with the given primary key exists.
 		 * @throws EntityResolutionException  If the entity cannot be instantiated or hydrated.
+		 * @throws \InvalidArgumentException  If $primaryKey is incomplete, unknown, or malformed
 		 * @throws QuelException              If the underlying query fails.
 		 */
-		public function findOrFail(string $entityType, int|string $primaryKey): object {
+		public function findOrFail(string $entityType, int|string|array $primaryKey): object {
 			$result = $this->find($entityType, $primaryKey);
 			
 			if ($result === null) {
@@ -378,16 +411,22 @@
 		 * @param class-string<T> $entityType The fully qualified class name of the container
 		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
 		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
+		 * @param bool $ignoreSoftDelete When true, also matches soft-deleted rows
 		 * @return T[] The found entities
 		 * @throws QuelException
 		 * @throws EntityResolutionException
 		 */
-		public function findBy(string $entityType, array $searchData, ?array $sortBy = null): array {
+		public function findBy(string $entityType, array $searchData, ?array $sortBy = null, bool $ignoreSoftDelete = false): array {
 			// Prepare a query in case the entity is not found
-			$query = $this->queryBuilder->prepareQuery($entityType, $searchData, $sortBy);
+			$flags = $ignoreSoftDelete ? ['ignoreSoftDelete'] : [];
+			$query = $this->queryBuilder->prepareQuery($entityType, $searchData, $sortBy, $flags);
+			
+			// Null-valued keys become "is_null(main.{key})" in $query, with
+			// no ":{key}" placeholder, so they must be excluded from binding.
+			$boundParameters = array_filter($searchData, static fn(mixed $value): bool => $value !== null);
 			
 			// Execute query and retrieve result
-			$result = $this->getAll($query, $searchData);
+			$result = $this->getAll($query, $boundParameters);
 			
 			// Extract the main column from the result
 			$filteredResult = array_column($result, "main");
@@ -402,32 +441,45 @@
 		 * @param class-string<T> $entityType The fully qualified class name of the container
 		 * @param array<string, mixed> $searchData Associative array of field names and values to filter by
 		 * @param array<string, string>|null $sortBy Associative array of field names and sort directions
+		 * @param bool $ignoreSoftDelete When true, also matches soft-deleted rows
 		 * @return T|null The found entity or null if not found
 		 * @throws QuelException
 		 * @throws EntityResolutionException
 		 */
-		public function findOneBy(string $entityType, array $searchData, ?array $sortBy = null): ?object {
-			$results = $this->findBy($entityType, $searchData, $sortBy);
+		public function findOneBy(string $entityType, array $searchData, ?array $sortBy = null, bool $ignoreSoftDelete = false): ?object {
+			$results = $this->findBy($entityType, $searchData, $sortBy, $ignoreSoftDelete);
 			return $results[0] ?? null;
 		}
 		
 		/**
 		 * Schedules an entity for removal
 		 * @param object $entity
+		 * @param bool $hardDelete When true, forces a real DELETE even if the entity is soft-deletable
 		 * @return void
 		 * @throws EntityResolutionException
 		 */
-		public function remove(object $entity): void {
-			$this->unitOfWork->scheduleForDelete($entity);
+		public function remove(object $entity, bool $hardDelete = false): void {
+			$this->unitOfWork->scheduleForDelete($entity, $hardDelete);
 		}
-		
+
+		/**
+		 * Reverts a soft delete on an already-managed $entity, written on the next flush().
+		 * @param object $entity
+		 * @return void
+		 * @throws EntityResolutionException
+		 * @throws OrmException If $entity has no soft-delete column
+		 */
+		public function restore(object $entity): void {
+			$this->unitOfWork->restore($entity);
+		}
+
 		/**
 		 * Returns the validation rules of a given entity
 		 * @param object $entity
 		 * @return array<int|string, array<int, ValidationInterface>>
 		 */
 		public function getValidationRules(object $entity): array {
-			$validate = new EntityToValidation();
+			$validate = new EntityToValidation($this->entityStore->getAnnotationReader());
 			return $validate->convert($entity);
 		}
 	}

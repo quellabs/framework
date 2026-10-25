@@ -12,8 +12,8 @@ composer require quellabs/canvas-payments-contracts
 
 | Class / Interface            | Description                                                  |
 |------------------------------|--------------------------------------------------------------|
-| `PaymentInterface`           | Interface for application code — exposes `initiate`, `refund`, `getRefunds`, `getPaymentOptions` |
-| `PaymentProviderInterface`   | Interface all driver packages must implement — extends `PaymentInterface`, adds discovery methods |
+| `PaymentInterface`           | Interface for application code — exposes `initiate`, `refund`, `chargeRecurring`, `getPaymentOptions`, plus the driver-selecting `exchange`, `getRefunds`, `getMandates`, `revokeMandate` |
+| `PaymentProviderInterface`   | Interface all driver packages must implement for discovery — same method set as `PaymentInterface`, but `exchange`/`getRefunds`/`getMandates`/`revokeMandate` take no driver selector, since a driver is already provider-specific |
 | `PaymentRequest`             | Input for initiating a payment                               |
 | `InitiateResult`             | Result of a successful payment initiation                    |
 | `PaymentState`               | Payment snapshot delivered via the `payment_exchange` signal |

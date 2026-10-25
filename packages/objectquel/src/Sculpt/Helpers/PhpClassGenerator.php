@@ -4,7 +4,7 @@
 	
 	use Quellabs\Support\StringInflector;
 	use Quellabs\ObjectQuel\Sculpt\SculptTypes;
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	
 	/**
 	 * Generic PHP class source editor.
@@ -83,12 +83,43 @@
 		 */
 		public function generatePropertyDocComment(array $property): string {
 			$propertiesString = implode(", ", $this->buildColumnAnnotationAttributes($property));
-			
+
 			$code = "/**\n";
 			$code .= " * @Orm\\Column({$propertiesString})\n";
+			$code .= $this->buildForeignKeyAnnotationLines($property);
 			$code .= " */";
-			
+
 			return $code;
+		}
+
+		/**
+		 * Builds the @Orm\ForeignKey (and, when the rule deviates from the safe
+		 * defaults, @Orm\ForeignKeyAction) docblock lines for a property carrying
+		 * FK constraint data. Returns an empty string when the property has none.
+		 *
+		 * ForeignKeyAction is only emitted on deviation from RESTRICT/NO ACTION —
+		 * same "presence means declared" convention as MakeEntityFromTableCommand,
+		 * so a bare ForeignKey line always means the safe defaults apply.
+		 * @param array $property
+		 * @phpstan-param PropertyDefinition $property
+		 * @return string
+		 */
+		private function buildForeignKeyAnnotationLines(array $property): string {
+			if (!isset($property['foreignKey'])) {
+				return "";
+			}
+
+			$foreignKey = $property['foreignKey'];
+
+			// Bare ::class reference, not a quoted string: the annotation lexer eats
+			// backslashes inside quoted strings as escapes, corrupting a namespaced FQCN.
+			$lines = " * @Orm\\ForeignKey(target={$foreignKey['target']}::class)\n";
+
+			if ($foreignKey['onDelete'] !== 'RESTRICT' || $foreignKey['onUpdate'] !== 'NO ACTION') {
+				$lines .= " * @Orm\\ForeignKeyAction(onDelete=\"{$foreignKey['onDelete']}\", onUpdate=\"{$foreignKey['onUpdate']}\")\n";
+			}
+
+			return $lines;
 		}
 		
 		/**
@@ -423,21 +454,24 @@
 		 */
 		private function buildRelationshipSetterBody(array $property): string {
 			$propertyName = $property['name'];
-			
+
 			// Identity check short-circuits the setter when the value hasn't actually changed,
 			// which prevents infinite loops in bidirectional sync chains
 			$body = "\t// Prevent redundant updates\n";
 			$body .= "\tif (\$this->{$propertyName} === \${$propertyName}) {\n";
 			$body .= "\t\treturn \$this;\n";
 			$body .= "\t}\n";
-			
-			if ($property['relationshipType'] !== 'ManyToOne' || empty($property['referencedColumn'])) {
+
+			// Sync only applies when this owning side was created with a matching @InverseOf
+			// collection on the target entity (inverseProperty). Without one, there is no
+			// known collection to keep in sync, so the setter just assigns the relation.
+			if ($property['relationshipType'] !== 'ManyToOne' || empty($property['inverseProperty'])) {
 				$body .= "\n\t// Set new property\n";
 				$body .= "\t\$this->{$propertyName} = \${$propertyName};";
 				return $body;
 			}
-			
-			$singularName = StringInflector::singularize($property['referencedColumn']);
+
+			$singularName = StringInflector::singularize($property['inverseProperty']);
 			$removerMethod = 'remove' . ucfirst($singularName);
 			$adderMethod = 'add' . ucfirst($singularName);
 			

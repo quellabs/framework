@@ -4,10 +4,12 @@
 	
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Payments\Contracts\InitiateResult;
+	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\PaymentInterface;
 	use Quellabs\Payments\Contracts\PaymentProviderInterface;
 	use Quellabs\Payments\Contracts\PaymentRequest;
 	use Quellabs\Payments\Contracts\PaymentState;
+	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
@@ -90,6 +92,15 @@
 		 */
 		public function refund(RefundRequest $request): RefundResult {
 			return $this->resolve($request->paymentModule)->refund($request);
+		}
+
+		/**
+		 * Charge an existing mandate using the provider registered for the request's payment module
+		 * @param RecurringChargeRequest $request
+		 * @return InitiateResult
+		 */
+		public function chargeRecurring(RecurringChargeRequest $request): InitiateResult {
+			return $this->resolve($request->paymentModule)->chargeRecurring($request);
 		}
 		
 		/**
@@ -185,5 +196,26 @@
 		 */
 		public function getRefunds(string $driver, string $paymentReference): array {
 			return $this->resolveDriver($driver)->getRefunds($paymentReference);
+		}
+
+		/**
+		 * Returns all mandates registered for the given customer.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $customerReference
+		 * @return array<int, MandateInfo>
+		 */
+		public function getMandates(string $driver, string $customerReference): array {
+			return $this->resolveDriver($driver)->getMandates($customerReference);
+		}
+
+		/**
+		 * Revokes a mandate, preventing any further recurring charges against it.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $customerReference
+		 * @param string $mandateId
+		 * @return void
+		 */
+		public function revokeMandate(string $driver, string $customerReference, string $mandateId): void {
+			$this->resolveDriver($driver)->revokeMandate($customerReference, $mandateId);
 		}
 	}

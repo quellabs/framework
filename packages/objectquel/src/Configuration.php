@@ -64,6 +64,27 @@
 		 * Only used when $useMetadataCache is true.
 		 */
 		private string $metadataCachePath = '';
+
+		private string $annotationSource = \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS;
+
+		/**
+		 * Returns the metadata source used for entity annotations.
+		 * @return string
+		 */
+		public function getAnnotationSource(): string {
+			return $this->annotationSource;
+		}
+
+		/**
+		 * Selects the source used for entity annotations.
+		 * @param string $source
+		 * @return void
+		 */
+		public function setAnnotationSource(string $source): void {
+			$readerConfiguration = new \Quellabs\AnnotationReader\Configuration();
+			$readerConfiguration->setSource($source);
+			$this->annotationSource = $source;
+		}
 		
 		/**
 		 * @var string Migration path
@@ -72,7 +93,14 @@
 		 * and ensure consistent database structure across environments.
 		 */
 		private string $migrationsPath = '';
-		
+
+		/**
+		 * @var string Name of the table quel:migrate tracks applied migrations in
+		 * Defaults to 'quel_migrations' — the ObjectQuel-native tracking table,
+		 * unrelated to Phinx's 'phinxlog'.
+		 */
+		private string $migrationTable = 'quel_migrations';
+
 		/**
 		 * @var int|null Window size to use for pagination, or null if none
 		 * Default number of records to return per page in paginated queries.
@@ -103,7 +131,22 @@
 		 * duration. Has no effect when $slowQueryLog is null.
 		 */
 		private float $slowQueryThreshold = 0.0;
-		
+
+		/**
+		 * @var bool Whether make:entity-from-table should detect existing database
+		 * foreign key constraints and emit a matching @Orm\ForeignKey annotation.
+		 * Off by default so a project with real FK constraints in a legacy database
+		 * doesn't have its generated entities change shape the next time it
+		 * regenerates one, unless it deliberately opts in.
+		 */
+		private bool $generateForeignKeys = false;
+
+		/**
+		 * @var string|null Collation of string variables and return values in MySQL/MariaDB routines.
+		 * Null leaves them on the database default collation in effect when the routine is created.
+		 */
+		private ?string $collation = null;
+
 		/**
 		 * Retrieves entity path
 		 * @return string Primary entity path
@@ -228,7 +271,24 @@
 		public function setMigrationsPath(string $migrationsPath): void {
 			$this->migrationsPath = $migrationsPath;
 		}
-		
+
+		/**
+		 * Returns the name of the table quel:migrate tracks applied migrations in
+		 * @return string
+		 */
+		public function getMigrationTable(): string {
+			return $this->migrationTable;
+		}
+
+		/**
+		 * Sets the name of the table quel:migrate tracks applied migrations in
+		 * @param string $migrationTable
+		 * @return void
+		 */
+		public function setMigrationTable(string $migrationTable): void {
+			$this->migrationTable = $migrationTable;
+		}
+
 		/**
 		 * Returns the standard window size for pagination
 		 * @return int|null Default page size or null if not configured
@@ -299,6 +359,43 @@
 		 */
 		public function setSlowQueryThreshold(float $slowQueryThreshold): self {
 			$this->slowQueryThreshold = $slowQueryThreshold;
+			return $this;
+		}
+
+		/**
+		 * Returns whether make:entity-from-table should detect and annotate
+		 * existing database foreign key constraints.
+		 * @return bool
+		 */
+		public function getGenerateForeignKeys(): bool {
+			return $this->generateForeignKeys;
+		}
+
+		/**
+		 * Enables or disables foreign key detection during entity generation.
+		 * @param bool $generateForeignKeys
+		 * @return self
+		 */
+		public function setGenerateForeignKeys(bool $generateForeignKeys): self {
+			$this->generateForeignKeys = $generateForeignKeys;
+			return $this;
+		}
+
+		/**
+		 * Returns the collation for string variables in MySQL/MariaDB routines.
+		 * @return string|null Collation name, or null for the database default
+		 */
+		public function getCollation(): ?string {
+			return $this->collation;
+		}
+
+		/**
+		 * Sets the collation for string variables in MySQL/MariaDB routines.
+		 * @param string|null $collation Collation name, or null for the database default
+		 * @return self
+		 */
+		public function setCollation(?string $collation): self {
+			$this->collation = $collation;
 			return $this;
 		}
 	}

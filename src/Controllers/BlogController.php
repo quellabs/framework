@@ -8,6 +8,7 @@
 	use App\Entities\TestEntity;
 	use App\Entities\UserEntity;
 	use Quellabs\SignalHub\SignalHub;
+	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\Canvas\Annotations\WithContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
@@ -24,18 +25,16 @@
 		/**
 		 * @Route("/posts/")
 		 * @WithContext(parameter="engine", context="blade")
-		 * @InterceptWith(TrackingParamsAspect ::class)
-		 * @param TemplateEngineInterface $engine
+		 * @InterceptWith(TrackingParamsAspect::class)
 		 * @return Response
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 * @throws TemplateRenderException
+		 * @throws OrmException
 		 */
-		public function index(SignalHub $hub, TemplateEngineInterface $engine): Response {
-			$this->em()->find(UserEntity::class, 1);
-			
+		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
-			
+
 			return $this->render("blog/index.tpl", [
 				'posts' => $posts
 			]);
@@ -43,19 +42,19 @@
 		
 		/**
 		 * @Route("/posts/{id:int}")
-		 * @param PostEntity|null $entity
+		 * @param PostEntity|null $id
 		 * @return Response
 		 * @throws TemplateRenderException
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		public function show(?PostEntity $entity): Response {
-			if (!$entity) {
+		public function show(?PostEntity $id): Response {
+			if (!$id) {
 				return $this->notFound('Post does not exist.');
 			}
-			
+
 			return $this->render("blog/show.tpl", [
-				'post' => $entity
+				'post' => $id
 			]);
 		}
 	}

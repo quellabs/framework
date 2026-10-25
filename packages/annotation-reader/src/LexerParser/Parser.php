@@ -1,6 +1,7 @@
 <?php
 	
 	namespace Quellabs\AnnotationReader\LexerParser;
+	use Quellabs\AnnotationReader\Annotation\AnnotationFactory;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
@@ -14,19 +15,29 @@
 		private const string DEFAULT_VALUE_KEY = 'value';
 		private const string SWAGGER_PREFIX = 'OA\\';
 		
-		/** @var Lexer The lexer instance for tokenizing input */
+		/**
+		 * @var Lexer The lexer instance for tokenizing input
+		 */
 		private Lexer $lexer;
 		
-		/** @var array<int, string> List of annotation names to ignore during parsing */
+		/**
+		 * @var array<int, string> List of annotation names to ignore during parsing
+		 */
 		private array $ignore_annotations;
 		
-		/** @var array<string, int> Fast lookup set for ignored annotations (using array keys for O(1) lookup) */
+		/**
+		 * @var array<string, int> Fast lookup set for ignored annotations (using array keys for O(1) lookup)
+		 */
 		private array $ignore_annotations_set;
 		
-		/** @var array<string, mixed> Configuration array for resolving configuration placeholders */
+		/**
+		 * @var array<string, mixed> Configuration array for resolving configuration placeholders
+		 */
 		private array $configuration;
 		
-		/** @var \ReflectionClass<object>|null Reflection class */
+		/**
+		 * @var \ReflectionClass<object>|null Reflection class
+		 */
 		private ?\ReflectionClass $reflection;
 		
 		/**
@@ -83,7 +94,9 @@
 		 */
 		public function parse(): AnnotationCollection {
 			try {
-				/** @var array<int, AnnotationInterface> $result */
+				/**
+				 * @var array<int, AnnotationInterface> $result
+				 */
 				$result = [];
 				$token = $this->lexer->get();
 				
@@ -382,10 +395,16 @@
 					continue;
 				}
 				
+				// Handle a class constant reference as a plain array element (e.g. {A::class, B::class})
+				if ($this->isClassConstant()) {
+					$attributes[] = $this->parseClassConstant();
+					continue;
+				}
+
 				// Try to match a string token for the attribute key
 				// If not a string, try to match a number token
 				$peekType = $this->lexer->peek()->getType();
-				
+
 				// If neither string nor number, throw an exception
 				if ($peekType !== Token::String && $peekType !== Token::Number) {
 					$next = $this->lexer->peek();
@@ -431,7 +450,9 @@
 		 * @throws LexerException|ParserException|\ReflectionException
 		 */
 		private function parseParameters(): array {
-			/** @var array<string, mixed> $parameters */
+			/**
+			 * @var array<string, mixed> $parameters
+			 */
 			$parameters = [];
 			$isFirstParameter = true;
 			
@@ -575,13 +596,12 @@
 				$this->lexer->match(Token::ParenthesesClose);
 			}
 			
-			// Instantiate the annotation class
-			$instance = new $tokenName($parameters);
-			
-			// Check if the class implements AnnotationInterface
-			if (!$instance instanceof AnnotationInterface) {
+			if (!is_a($tokenName, AnnotationInterface::class, true)) {
 				throw new ParserException("Annotation must implement AnnotationInterface: {$tokenName}");
 			}
+
+			// Instantiate the annotation class
+			$instance = AnnotationFactory::create($tokenName, $parameters);
 			
 			return $instance;
 		}

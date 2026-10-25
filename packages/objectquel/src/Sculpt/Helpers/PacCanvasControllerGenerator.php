@@ -22,8 +22,8 @@
 			$routePath = StringInflector::pluralize(strtolower($baseName));
 			$currentDateTime = date('Y-m-d H:i:s');
 			$qualifiedClassName = $this->entityStore->normalizeEntityClass($this->entityName);
-			
-			return sprintf('<?php
+
+			$code = sprintf('<?php
 
     // Auto-generated WakePAC controller for %s
     // Generated on %s
@@ -34,7 +34,8 @@
     use Symfony\Component\HttpFoundation\Request;
     use Quellabs\Canvas\Annotations\Route;
     use Quellabs\Canvas\Controllers\JsonApiController;
-    
+    use Quellabs\Canvas\Controllers\WriteOperation;
+
     class %s extends JsonApiController {
     
         /**
@@ -52,7 +53,8 @@
         protected function getResourceType(): string {
             return \'%s\';
         }
-    
+
+        __WRITABLE_FIELDS_PLACEHOLDER__
         /**
          * Get a single %s resource by ID
          * @param int $id The resource ID
@@ -109,5 +111,41 @@
 				$baseName,
 				$routePath
 			);
+
+			return str_replace(
+				'__WRITABLE_FIELDS_PLACEHOLDER__',
+				$this->buildWritableFieldsStub($baseName),
+				$code
+			);
+		}
+
+		/**
+		 * Build the isAttributeWritable() stub. Every non-identifier property is
+		 * writable by default — this override is a discoverable reminder to
+		 * review that, not a required gate: deny specific fields here if they're
+		 * server-owned (role, status, ownership, timestamps). The non-identifier
+		 * properties are listed in a comment purely as a starting point for that
+		 * review.
+		 * @param string $baseName Entity base name, used only in the docblock
+		 * @return string The stub method declaration, indented to match the template
+		 */
+		private function buildWritableFieldsStub(string $baseName): string {
+			$entityData = $this->prepareEntityData();
+			$candidates = array_values(array_diff(array_keys($entityData['columns']), $entityData['identifiers']));
+			$candidateList = empty($candidates) ? '(none found)' : implode(', ', $candidates);
+
+			return sprintf('/**
+         * Decide whether a specific attribute may be written to a %s. Every
+         * non-identifier property is writable by default — deny the ones that
+         * shouldn\'t be client-writable. Non-identifier properties: %s
+         * @param object $entity The entity being created or updated
+         * @param string $key The attribute name (already confirmed to exist on the entity)
+         * @param WriteOperation $operation Whether this is a create or an update
+         * @return bool
+         */
+        protected function isAttributeWritable(object $entity, string $key, WriteOperation $operation): bool {
+            return true;
+        }
+    ', $baseName, $candidateList);
 		}
 	}

@@ -2,9 +2,18 @@
 	
 	namespace Quellabs\ObjectQuel\Execution\Executors;
 	
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\DDLTypeMapper;
+	use Quellabs\ObjectQuel\ObjectQuel\Helpers\SqlDialect\SqlIdentifierQuoter;
+	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
+	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Planner\TempTableStage;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	
 	/**
@@ -13,10 +22,12 @@
 	 *      handles JSON and database stages correctly via the existing flow).
 	 *   2. Inspecting the first result row to infer a column schema, or falling back
 	 *      to the inner query's projection list when the result is empty.
-	 *   3. Creating a MySQL temporary table with that schema.
+	 *   3. Creating a session-scoped temporary table with that schema, using DDL
+	 *      appropriate to the connected engine (see DDLTypeMapper).
 	 *   4. Inserting all result rows in batches.
-	 *   5. Mutating the AstRangeDatabase: setQuery(null) + setTableName(), so that
-	 *      QuelToSQL will reference the temp table as a plain table.
+	 *   5. Mutating the AstRangeDatabase via setTableName() with the resolved
+	 *      physical table name, so QuelToSQLRetrieve will reference the temp table as a
+	 *      plain table.
 	 *   6. Registering the temp table name for cleanup after the outer query completes.
 	 *
 	 * Cleanup must be called explicitly by the orchestrating code (PlanExecutor)
@@ -33,16 +44,17 @@
 	 *     nodes), since there are no result rows to infer the schema from.
 	 *
 	 * Column type inference:
-	 *   All columns are created as VARCHAR(255) NULL on first use. This is intentional:
-	 *   the exact MySQL type does not matter for a session-scoped temporary table that
-	 *   is only used within a single query's execution. Refinement (e.g. detecting
-	 *   INT from PHP int values) can be added later without changing the contract.
+	 *   Each column's SQL type is resolved from the source entity's declared @Column
+	 *   type via EntityStore metadata, when the projected value is a plain entity
+	 *   property reference. Columns that don't trace back to a single entity property
+	 *   (function calls, computed expressions, literals) fall back to VARCHAR(255).
 	 *
 	 * Batch size:
-	 *   Rows are inserted in batches of INSERT_BATCH_SIZE to avoid hitting MySQL's
-	 *   max_allowed_packet limit on very large result sets.
+	 *   Rows are inserted in batches of INSERT_BATCH_SIZE to avoid hitting
+	 *   per-statement/packet size limits (e.g. MySQL's max_allowed_packet) on
+	 *   very large result sets.
 	 */
-	class TempTableExecutor {
+	class TempTableExecutor implements StageExecutorInterface {
 		
 		/**
 		 * Number of rows to insert per batch
@@ -54,38 +66,72 @@
 		 * @var DatabaseAdapter
 		 */
 		private DatabaseAdapter $connection;
-		
+
 		/**
-		 * Names of temporary tables created during this execution, registered for cleanup
+		 * Entity metadata source used to resolve declared column types for the
+		 * temp table schema.
+		 * @var EntityStore
+		 */
+		private EntityStore $entityStore;
+
+		/**
+		 * Renders temp table DDL (CREATE/DROP keywords, physical name, column
+		 * types) correctly for whichever engine is connected.
+		 * @var DDLTypeMapper
+		 */
+		private DDLTypeMapper $ddlTypeMapper;
+
+		/**
+		 * Quotes table/column identifiers correctly for whichever engine is connected.
+		 * @var SqlIdentifierQuoter
+		 */
+		private SqlIdentifierQuoter $identifierQuoter;
+
+		/**
+		 * Names of temporary tables created during this execution, registered for cleanup.
+		 * These are physical names (see DDLTypeMapper::getTempTableName()),
+		 * not the logical range table name.
 		 * @var string[]
 		 */
 		private array $createdTables = [];
-		
+
 		/**
 		 * TempTableExecutor constructor
 		 * @param DatabaseAdapter $connection
+		 * @param EntityStore $entityStore
+		 * @param PlatformCapabilitiesInterface $platform
 		 */
-		public function __construct(DatabaseAdapter $connection) {
+		public function __construct(DatabaseAdapter $connection, EntityStore $entityStore, PlatformCapabilitiesInterface $platform) {
 			$this->connection = $connection;
+			$this->entityStore = $entityStore;
+			$this->ddlTypeMapper = new DDLTypeMapper($platform);
+			$this->identifierQuoter = new SqlIdentifierQuoter($platform);
 		}
 		
 		/**
-		 * Execute a TempTableStage.
-		 *
-		 * Runs the inner query through the provided callable (which wraps the full
-		 * decomposition pipeline so JSON stages are handled), materialises the results
-		 * into a temp table, then mutates the stage's AstRangeDatabase so downstream
-		 * SQL generation treats it as an ordinary table reference.
-		 *
-		 * @param TempTableStage $stage The stage to materialise
-		 * @param callable $runner
-		 * @return void
+		 * Execute a TempTableStage: run the inner query through the context's
+		 * stage runner, materialise the results into a temp table, then mutate
+		 * the stage's AstRangeDatabase so downstream SQL generation treats it
+		 * as an ordinary table reference. $stage is narrowed to TempTableStage
+		 * via assert() — PlanExecutor only ever dispatches one here.
+		 * @param ExecutionStageInterface $stage The stage to materialise
+		 * @param ExecutionContext $context Bound query parameters and the stage runner
+		 * @return list<array<string, mixed>> Always empty — see class docblock
 		 * @throws QuelException On execution or DDL failure
 		 */
-		public function execute(TempTableStage $stage, callable $runner): void {
+		public function execute(ExecutionStageInterface $stage, ExecutionContext $context): array {
+			assert($stage instanceof TempTableStage);
+
+			$runner = $context->getStageRunnerOrFail();
 			$range = $stage->getRange();
-			$tableName = $range->getTableName();
 			$innerQuery = $stage->getQuery();
+
+			// Resolve the physical table name for the connected engine (SQL Server
+			// prefixes with '#'; every other engine uses the logical name as-is)
+			// and store it back on the range so downstream SQL generation
+			// (QuelToSQLRetrieve) references the same physical table this method creates.
+			$tableName = $this->ddlTypeMapper->getTempTableName($range->getTableName());
+			$range->setTableName($tableName);
 			
 			// Execute the inner query through the full pipeline.
 			// This handles JSON stages, sub-decomposition, etc. transparently.
@@ -94,7 +140,7 @@
 			// INNER JOIN: an empty source means the outer query can produce no rows.
 			// Skip table creation entirely — PlanExecutor will produce an empty result set.
 			if (empty($rows) && $range->isRequired()) {
-				return;
+				return [];
 			}
 			
 			// Infer column schema from result rows when available, or fall back to the
@@ -105,8 +151,13 @@
 				$columns = array_map(fn($key) => (string)$key, array_keys($rows[0]));
 			}
 			
+			// Resolve each column's SQL type from the source entity's declared
+			// @Column metadata, so joins against typed columns don't run through
+			// implicit VARCHAR conversion (see class docblock).
+			$columnTypes = $this->resolveColumnTypes($innerQuery);
+
 			// Create the temporary table and populate it
-			$this->createTable($tableName, $columns);
+			$this->createTable($tableName, $columns, $columnTypes);
 			
 			if (!empty($rows)) {
 				$this->insertRows($tableName, $columns, $rows);
@@ -114,6 +165,8 @@
 			
 			// Register the table name so cleanup() can DROP it later
 			$this->createdTables[] = $tableName;
+
+			return [];
 		}
 		
 		/**
@@ -121,13 +174,14 @@
 		 * Must be called in a finally block after the outer query completes,
 		 * whether execution succeeded or failed.
 		 * Errors during cleanup are silently swallowed to avoid masking the real result:
-		 * MySQL will drop session-scoped temporary tables automatically when the
-		 * connection closes anyway.
+		 * every supported engine drops session-scoped temporary tables automatically
+		 * when the connection closes anyway.
 		 */
 		public function cleanup(): void {
 			foreach ($this->createdTables as $tableName) {
 				try {
-					$this->connection->execute("DROP TEMPORARY TABLE IF EXISTS `{$tableName}`");
+					$quotedName = $this->identifierQuoter->quoteIdentifier($tableName);
+					$this->connection->execute("{$this->ddlTypeMapper->getDropTempTableKeyword()} {$quotedName}");
 				} catch (\Throwable) {
 					// Silently ignore cleanup failures — see docblock above
 				}
@@ -153,23 +207,85 @@
 			
 			return $columns;
 		}
-		
+
+		/**
+		 * Resolves the SQL column type for every projected value, keyed by output
+		 * column name (the AstAlias name), by inspecting the query's projection list.
+		 * @param AstRetrieve $query
+		 * @return array<string, string> Column name => SQL type
+		 */
+		private function resolveColumnTypes(AstRetrieve $query): array {
+			$types = [];
+
+			foreach ($query->getValues() as $value) {
+				$types[$value->getName()] = $this->resolveColumnType($value->getExpression());
+			}
+
+			return $types;
+		}
+
+		/**
+		 * Resolves the SQL type for a single projected expression. Only a plain
+		 * entity property reference (e.g. `p.price`) can be traced back to a
+		 * declared @Column type; anything else (function calls, computed
+		 * expressions, literals) falls back to VARCHAR(255).
+		 * @param AstInterface $expression
+		 * @return string
+		 */
+		private function resolveColumnType(AstInterface $expression): string {
+			try {
+				// Function calls, computed expressions, and literals have no
+				// entity property behind them to look up a declared type for.
+				if (!$expression instanceof AstIdentifier) {
+					throw new \UnexpectedValueException();
+				}
+
+				// No entity range behind this identifier (e.g. a subquery column).
+				$entityName = $expression->getEntityName();
+				
+				if ($entityName === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				// getMetadata() throws EntityResolutionException if $entityName
+				// isn't a real, mapped entity.
+				$metadata = $this->entityStore->getMetadata($entityName);
+				$columnName = $metadata->getColumnName($expression->getPropertyName());
+				$columnDefinition = $columnName !== null ? ($metadata->columnDefinitions[$columnName] ?? null) : null;
+
+				// Property has no backing column (e.g. a virtual/computed property).
+				if ($columnDefinition === null) {
+					throw new \UnexpectedValueException();
+				}
+
+				return $this->ddlTypeMapper->getTempTableColumnType($columnDefinition);
+			} catch (EntityResolutionException | \UnexpectedValueException) {
+				// Any of the above "can't resolve a real declared type" cases
+				// fall back to the same untyped default.
+				return 'VARCHAR(255)';
+			}
+		}
+
 		/**
 		 * Creates a temporary table with the given name and columns.
-		 * All columns are VARCHAR(255) NULL — see class docblock for rationale.
+		 * Each column uses the SQL type resolved by resolveColumnTypes(), falling
+		 * back to VARCHAR(255) for columns that couldn't be resolved — see class
+		 * docblock for rationale.
 		 * @param string $tableName
 		 * @param string[] $columns
+		 * @param array<string, string> $columnTypes Column name => SQL type
 		 * @throws QuelException
 		 */
-		private function createTable(string $tableName, array $columns): void {
+		private function createTable(string $tableName, array $columns, array $columnTypes): void {
 			$columnDefs = array_map(
-				fn(string $col) => "`{$col}` VARCHAR(255) NULL",
+				fn(string $col) => $this->identifierQuoter->quoteIdentifier($col) . ' ' . ($columnTypes[$col] ?? 'VARCHAR(255)') . " NULL",
 				$columns
 			);
-			
+
 			$sql = sprintf(
-				"CREATE TEMPORARY TABLE `%s` (%s)",
-				$tableName,
+				"%s %s (%s)",
+				$this->ddlTypeMapper->getTemporaryCreateTableKeyword(),
+				$this->identifierQuoter->quoteIdentifier($tableName),
 				implode(', ', $columnDefs)
 			);
 			
@@ -187,19 +303,21 @@
 		
 		/**
 		 * Inserts rows into the temporary table in batches.
-		 * Batching avoids hitting MySQL's max_allowed_packet limit on large result sets.
+		 * Batching avoids hitting per-statement/packet size limits (e.g. MySQL's
+		 * max_allowed_packet) on large result sets.
 		 * @param string $tableName
 		 * @param string[] $columns
-		 * @param list<array<string, bool|float|int|string|null>> $rows
+		 * @param list<array<string, mixed>> $rows
 		 * @throws QuelException
 		 */
 		private function insertRows(string $tableName, array $columns, array $rows): void {
-			$columnList = implode(', ', array_map(fn($c) => "`{$c}`", $columns));
+			$columnList = implode(', ', array_map(fn($c) => $this->identifierQuoter->quoteIdentifier($c), $columns));
+			$quotedTableName = $this->identifierQuoter->quoteIdentifier($tableName);
 			$placeholderRow = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
-			
+
 			foreach (array_chunk($rows, self::INSERT_BATCH_SIZE) as $batch) {
 				$placeholders = implode(', ', array_fill(0, count($batch), $placeholderRow));
-				$sql = "INSERT INTO `{$tableName}` ({$columnList}) VALUES {$placeholders}";
+				$sql = "INSERT INTO {$quotedTableName} ({$columnList}) VALUES {$placeholders}";
 				
 				// Flatten the batch of rows into a single parameter array.
 				// Missing keys are treated as null; objects are cast to string defensively.

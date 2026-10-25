@@ -41,6 +41,16 @@
 			$this->assertFalse($this->engine->setRating(1, 10, 1.5));
 			$this->assertFalse($this->engine->setRating(1, 10, -0.5));
 		}
+
+		/** Reject nonfinite values and IDs outside the unsigned schema.
+		 * @return void
+		 */
+		public function testSetRatingRejectsInvalidNumericInput(): void {
+			$this->assertFalse($this->engine->setRating(1, 10, NAN));
+			$this->assertFalse($this->engine->setRating(1, 10, INF));
+			$this->assertFalse($this->engine->setRating(-1, 10, 0.5));
+			$this->assertFalse($this->engine->setRating(1, -10, 0.5));
+		}
 		
 		public function testSetRatingAcceptsNotInterestedSentinel(): void {
 			$result = $this->engine->setRating(1, 10, $this->config->getNotInterested());
@@ -241,6 +251,15 @@
 			$this->engine->automaticRating(1, 10, purchase: false);
 			$result = $this->engine->getRating(1, 10);
 			$this->assertEqualsWithDelta(1.0, $result['rating'], 0.0001);
+		}
+
+		/** A click near the upper boundary clamps before rating validation.
+		 * @return void
+		 */
+		public function testAutomaticRatingClickClampsNearOne(): void {
+			$this->engine->setRating(1, 10, 0.995);
+			$this->assertTrue($this->engine->automaticRating(1, 10, purchase: false));
+			$this->assertEqualsWithDelta(1.0, $this->engine->getRating(1, 10)['rating'], 0.00001);
 		}
 		
 		// =========================================================================

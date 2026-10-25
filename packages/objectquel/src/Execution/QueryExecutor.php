@@ -2,14 +2,30 @@
 	
 	namespace Quellabs\ObjectQuel\Execution;
 	
-	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
-	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilities;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAlterTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAppend;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCall;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstCreateTable;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDelete;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroy;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyEventBinding;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDestroyRoutine;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstEventBinding;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstHideIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstReplace;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRoutineDefinition;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstShowIndex;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstStatement;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Exception\HydrationException;
 	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\Exception\TransformationException;
+	use Quellabs\ObjectQuel\OrmException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 	use Quellabs\ObjectQuel\ObjectQuel\LexerException;
@@ -17,16 +33,31 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Parser;
 	use Quellabs\ObjectQuel\ObjectQuel\ParserException;
 	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
-	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
-	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
-	use Quellabs\ObjectQuel\ObjectQuel\QueryNormalizer;
+	use Quellabs\ObjectQuel\Execution\Executors\AlterTableExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\AppendExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\BindEventExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyTriggerExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\CallExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\CreateIndexExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\CreateTableExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\RetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DeleteExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyIndexExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DestroyRoutineExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DefineRoutineExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\HideIndexExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\ShowIndexExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\JsonRetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\ReplaceExecutor;
+	use Quellabs\ObjectQuel\Execution\Helpers\RoutineCallTyper;
+	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\DateTimeParameterCoercer;
+	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\IdentifierTypeResolver;
+	use Quellabs\ObjectQuel\ObjectQuel\Pipeline\QueryNormalizer;
 	use Quellabs\ObjectQuel\ObjectQuel\SemanticAnalyzer;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolveIdentifierRange;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolvePropertyType;
-	use Quellabs\ObjectQuel\ObjectQuel\Visitors\ResolveRootIdentifierType;
 	use Quellabs\ObjectQuel\Planner\ExecutionPlanBuilder;
 	use Quellabs\ObjectQuel\Planner\QueryOptimizer;
-	use Quellabs\ObjectQuel\Execution\Executors\DryRunDatabaseQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\DryRunRetrieveExecutor;
 	use Quellabs\ObjectQuel\Planner\QueryPlan\PlanLog;
 	use Quellabs\ObjectQuel\Planner\QueryPlan\QueryPlan;
 	
@@ -40,23 +71,41 @@
 	class QueryExecutor {
 		
 		private EntityManager $entityManager;
-		private PlatformCapabilities $capabilities;
+		private PlatformCapabilitiesInterface $capabilities;
 		private DatabaseAdapter $connection;
 		private PlanExecutor $planExecutor;
 		private QueryOptimizer $optimizer;
 		private QueryNormalizer $queryNormalizer;
 		private SemanticAnalyzer $semanticAnalyser;
-		private DatabaseQueryExecutor $databaseExecutor;
-		private JsonQueryExecutor $jsonExecutor;
+		private IdentifierTypeResolver $identifierTypeResolver;
+		private DateTimeParameterCoercer $dateTimeParameterCoercer;
+		private RetrieveExecutor $databaseExecutor;
+		private JsonRetrieveExecutor $jsonExecutor;
+		private CreateTableExecutor $createTableExecutor;
+		private CreateIndexExecutor $createIndexExecutor;
+		private AlterTableExecutor $alterTableExecutor;
+		private DestroyExecutor $destroyExecutor;
+		private DestroyIndexExecutor $destroyIndexExecutor;
+		private DefineRoutineExecutor $defineRoutineExecutor;
+		private DestroyRoutineExecutor $destroyRoutineExecutor;
+		private BindEventExecutor $bindEventExecutor;
+		private DestroyTriggerExecutor $destroyTriggerExecutor;
+		private HideIndexExecutor $hideIndexExecutor;
+		private ShowIndexExecutor $showIndexExecutor;
+		private AppendExecutor $appendExecutor;
+		private ReplaceExecutor $replaceExecutor;
+		private DeleteExecutor $deleteExecutor;
+		private CallExecutor $callExecutor;
+		private RoutineCallTyper $routineCallTyper;
 		
 		/**
 		 * Constructor
 		 * @param EntityManager $entityManager
-		 * @param DatabaseQueryExecutor|null $databaseExecutor
+		 * @param RetrieveExecutor|null $databaseExecutor
 		 */
 		public function __construct(
 			EntityManager $entityManager,
-			?DatabaseQueryExecutor $databaseExecutor = null
+			?RetrieveExecutor $databaseExecutor = null
 		) {
 			// Init the capabilities class for engine specific optimizations
 			$this->entityManager = $entityManager;
@@ -64,16 +113,38 @@
 			$this->capabilities = $this->entityManager->getUnitOfWork()->getPlatformCapabilities();
 			
 			// Create specialized executors
-			$this->databaseExecutor = $databaseExecutor ?? new DatabaseQueryExecutor($entityManager, $this->capabilities);
-			$this->jsonExecutor = new JsonQueryExecutor();
-			
-			// Init the plan executor
+			$this->databaseExecutor = $databaseExecutor ?? new RetrieveExecutor($entityManager, $this->capabilities);
+			$this->jsonExecutor = new JsonRetrieveExecutor();
+
+			// Built before AppendExecutor, which needs it (for insert-from-select
+			// sources requiring JSON/temp-table materialization) — its
+			// dependencies (databaseExecutor, jsonExecutor, connection) are
+			// already set above.
 			$this->planExecutor = new PlanExecutor($this);
-			
+
+			$this->createTableExecutor = new CreateTableExecutor($this->connection, $this->capabilities);
+			$this->createIndexExecutor = new CreateIndexExecutor($this->connection, $this->capabilities);
+			$this->alterTableExecutor = new AlterTableExecutor($this->connection, $this->capabilities);
+			$this->destroyExecutor = new DestroyExecutor($this->connection, $this->capabilities);
+			$this->destroyIndexExecutor = new DestroyIndexExecutor($this->connection, $this->capabilities);
+			$this->defineRoutineExecutor = new DefineRoutineExecutor($entityManager, $this->capabilities);
+			$this->destroyRoutineExecutor = new DestroyRoutineExecutor($this->connection, $this->capabilities);
+			$this->bindEventExecutor = new BindEventExecutor($entityManager, $this->capabilities);
+			$this->destroyTriggerExecutor = new DestroyTriggerExecutor($entityManager, $this->capabilities);
+			$this->hideIndexExecutor = new HideIndexExecutor($this->connection, $this->capabilities);
+			$this->showIndexExecutor = new ShowIndexExecutor($this->connection, $this->capabilities);
+			$this->appendExecutor = new AppendExecutor($this->connection, $entityManager, $this->capabilities, $this->planExecutor);
+			$this->replaceExecutor = new ReplaceExecutor($this->connection, $entityManager, $this->capabilities);
+			$this->deleteExecutor = new DeleteExecutor($this->connection, $entityManager->getEntityStore(), $this->capabilities);
+			$this->routineCallTyper = new RoutineCallTyper($this->connection);
+			$this->callExecutor = new CallExecutor($this->connection, $entityManager->getEntityStore(), $this->capabilities);
+
 			// Init the transformers
 			$this->optimizer = new QueryOptimizer($entityManager, $this->capabilities);
 			$this->queryNormalizer = new QueryNormalizer($entityManager->getEntityStore());
 			$this->semanticAnalyser = new SemanticAnalyzer($entityManager->getEntityStore(), $this->capabilities);
+			$this->identifierTypeResolver = new IdentifierTypeResolver($entityManager->getEntityStore());
+			$this->dateTimeParameterCoercer = new DateTimeParameterCoercer();
 		}
 		
 		/**
@@ -94,29 +165,34 @@
 		
 		/**
 		 * Returns the database executor
-		 * @return DatabaseQueryExecutor
+		 * @return RetrieveExecutor
 		 */
-		public function getDatabaseExecutor(): DatabaseQueryExecutor {
+		public function getDatabaseExecutor(): RetrieveExecutor {
 			return $this->databaseExecutor;
 		}
 		
 		/**
 		 * Return the JSON executor
-		 * @return JsonQueryExecutor
+		 * @return JsonRetrieveExecutor
 		 */
-		public function getJsonExecutor(): JsonQueryExecutor {
+		public function getJsonExecutor(): JsonRetrieveExecutor {
 			return $this->jsonExecutor;
 		}
 		
 		/**
-		 * Executes a query and returns the hydrated result.
-		 * To inspect planner decisions without executing, use explain() instead.
+		 * Executes a query and returns the hydrated result. Every ObjectQuel
+		 * statement goes through this single entry point — `retrieve`, DDL
+		 * (`create`/`destroy`/index), and the write verbs (`append`/`replace`/
+		 * `delete`) alike — so slow-query logging and the development-mode
+		 * debug signal in EntityManager::executeQuery() see all of them, not
+		 * just `retrieve`.
+		 * To inspect planner decisions without executing, use explainQuery() instead.
 		 * @param string $query The ObjectQuel query string
 		 * @param array<int|string, mixed> $parameters Query parameters
-		 * @return QuelResult
+		 * @return QuelResult|null Null for statements with no rows to return (e.g. `create`)
 		 * @throws QuelException
 		 */
-		public function executeQuery(string $query, array $parameters = []): QuelResult {
+		public function executeQuery(string $query, array $parameters = []): ?QuelResult {
 			try {
 				// Normalize parameters
 				$normalizedParameters = $this->normalizeParams($parameters);
@@ -125,14 +201,84 @@
 				$this->databaseExecutor->resetLastExecutedSql();
 				
 				// Parse the input query string into an Abstract Syntax Tree (AST)
-				$ast = $this->parse($query);
+				$ast = $this->parseQuery($query);
+
+				// Create the execution context
+				$context = new ExecutionContext($normalizedParameters);
+
+				// DDL statements bypass the retrieve pipeline entirely — none
+				// of it applies to a statement with no rows to return.
+				if (
+					$ast instanceof AstCreateTable ||
+					$ast instanceof AstAlterTable ||
+					$ast instanceof AstDestroy ||
+					$ast instanceof AstDestroyIndex ||
+					$ast instanceof AstCreateIndex ||
+					$ast instanceof AstHideIndex ||
+					$ast instanceof AstShowIndex ||
+					$ast instanceof AstRoutineDefinition ||
+					$ast instanceof AstDestroyRoutine ||
+					$ast instanceof AstEventBinding ||
+					$ast instanceof AstDestroyEventBinding
+				) {
+					match (true) {
+						$ast instanceof AstCreateTable => $this->createTableExecutor->execute($ast, $context),
+						$ast instanceof AstAlterTable => $this->alterTableExecutor->execute($ast, $context),
+						$ast instanceof AstDestroy => $this->destroyExecutor->execute($ast, $context),
+						$ast instanceof AstDestroyIndex => $this->destroyIndexExecutor->execute($ast, $context),
+						$ast instanceof AstHideIndex => $this->hideIndexExecutor->execute($ast, $context),
+						$ast instanceof AstShowIndex => $this->showIndexExecutor->execute($ast, $context),
+						$ast instanceof AstRoutineDefinition => $this->defineRoutineExecutor->execute($ast, $context),
+						$ast instanceof AstDestroyRoutine => $this->destroyRoutineExecutor->execute($ast, $context),
+						$ast instanceof AstEventBinding => $this->bindEventExecutor->execute($ast, $context),
+						$ast instanceof AstDestroyEventBinding => $this->destroyTriggerExecutor->execute($ast, $context),
+						default => $this->createIndexExecutor->execute($ast, $context),
+					};
+
+					return null;
+				}
+
+				// Write-verb statements bypass the retrieve pipeline entirely too
+				// (no semantic analysis, no identifier resolution — see each
+				// executor's own docblock) but, unlike DDL, do return a QuelResult
+				// (affected-row count and, for append, a generated primary key).
+				if ($ast instanceof AstAppend || $ast instanceof AstReplace || $ast instanceof AstDelete) {
+					// Typed calls convert like columns of their return type, e.g. an integer written to a datetime column
+					$this->routineCallTyper->typeCalls($ast);
+
+					return match (true) {
+						$ast instanceof AstAppend => $this->appendExecutor->execute($ast, $context),
+						$ast instanceof AstReplace => $this->replaceExecutor->execute($ast, $context),
+						default => $this->deleteExecutor->execute($ast, $context),
+					};
+				}
+				
+				if ($ast instanceof AstCall) {
+					return $this->callExecutor->execute($ast, $context);
+				}
+
+				// Every other AstStatement variant was handled by one of the
+				// blocks above, so this is always AstRetrieve — parse()'s
+				// return type just can't say so, since AstStatement doesn't
+				// enumerate its implementors.
+				if (!$ast instanceof AstRetrieve) {
+					throw new \LogicException('Unreachable: AstStatement is neither a DDL, write-verb, nor AstRetrieve node — ' . get_class($ast));
+				}
 				
 				// Resolve all identifier types. Note: this does no semantic checking.
 				// It just flags the type based on AST hierarchy
-				$this->resolveAndSetIdentifierTypes($ast);
-				
+				$this->identifierTypeResolver->resolve($ast);
+
+				// Type routine calls from the catalog, so inference and hydration treat them like columns
+				$this->routineCallTyper->typeCalls($ast);
+
 				// Processing phase #1 - Transform and enhance the AST
 				$this->queryNormalizer->transform($ast);
+
+				// Coerce parameters bound against \DateTime columns (DateTimeInterface,
+				// formatted strings) into Unix timestamps, mirroring the column-side
+				// conversion NormalizeDateTime just applied.
+				$this->dateTimeParameterCoercer->coerce($ast, $normalizedParameters);
 				
 				// Validation phase - Ensure AST integrity and correctness
 				$this->semanticAnalyser->validate($ast);
@@ -148,17 +294,19 @@
 				$result = $this->planExecutor->execute($executionPlan);
 				
 				// Hydrate and return the query result.
-				return new QuelResult($this->entityManager, $ast, $result);
+				return QuelResult::fromRetrieve($this->entityManager, $ast, $result);
 			} catch (ParserException|LexerException $e) {
 				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
 			} catch (SemanticException $e) {
 				throw new QuelException($e->getMessage(), 'semantic_error', 0, $e);
 			} catch (TransformationException $e) {
 				throw new QuelException($e->getMessage(), 'transformation_error', 0, $e);
-			} catch (HydrationException $e) {
+			} catch (HydrationException|\DateInvalidTimeZoneException|\DateMalformedStringException $e) {
 				throw new QuelException($e->getMessage(), 'hydration_error', 0, $e);
-			} catch (EntityResolutionException $e) {
+			} catch (EntityResolutionException|\ReflectionException $e) {
 				throw new QuelException($e->getMessage(), 'resolution_error', 0, $e);
+			} catch (OrmException $e) {
+				throw new QuelException($e->getMessage(), 'orm_error', 0, $e);
 			}
 		}
 		
@@ -169,7 +317,47 @@
 		public function getLastExecutedSql(): array {
 			return $this->databaseExecutor->getLastExecutedSql();
 		}
-		
+
+		/**
+		 * Returns planner decisions and generated SQL for a retrieve query
+		 * without executing it. Combines explain() with a SQL dry-run into one
+		 * coherent result.
+		 *
+		 * DDL and write-verb statements have no optimizer/planner pipeline to
+		 * report decisions from, and replaying them via the retrieve
+		 * pipeline's dry-run executor would re-run the write for real — so
+		 * they're rejected outright rather than explained.
+		 * @param string $query The ObjectQuel query string
+		 * @param array<int|string, mixed> $parameters Query parameters
+		 * @return QueryPlan Planning decisions and generated SQL
+		 * @throws QuelException If $query isn't a retrieve statement, or on a syntax error
+		 * @throws \ReflectionException Errors when inspecting entity classes
+		 */
+		public function explainQuery(string $query, array $parameters = []): QueryPlan {
+			try {
+				$ast = $this->parseQuery($query);
+			} catch (ParserException|LexerException $e) {
+				throw new QuelException("Syntax error: " . $e->getMessage(), 'syntax_error', 0, $e);
+			}
+
+			if (!$ast instanceof AstRetrieve) {
+				throw new QuelException("explain is not supported for DDL or write-verb statements", 'not_plannable');
+			}
+
+			return $this->explainRetrieveQuery($query, $parameters);
+		}
+
+		/**
+		 * Parses a query into a fresh AST.
+		 * @param string $query The ObjectQuel query string
+		 * @return AstStatement
+		 * @throws LexerException|ParserException|\ReflectionException
+		 */
+		private function parseQuery(string $query): AstStatement {
+			$lexer = new Lexer($query);
+			$parser = new Parser($lexer, $this->entityManager->getEntityStore());
+			return $parser->parse();
+		}
 		
 		/**
 		 * Runs the planning pipeline and returns a log of every decision made.
@@ -177,7 +365,7 @@
 		 * @param string $query The ObjectQuel query string
 		 * @param array<int|string, mixed> $parameters Query parameters
 		 * @return PlanLog Planning decisions in pipeline order
-		 * @throws QuelException
+		 * @throws QuelException|\ReflectionException
 		 */
 		private function explain(string $query, array $parameters = []): PlanLog {
 			try {
@@ -185,11 +373,22 @@
 				$normalizedParameters = $this->normalizeParams($parameters);
 				
 				// Parse and resolve identifiers
-				$ast = $this->parse($query);
-				$this->resolveAndSetIdentifierTypes($ast);
+				$ast = $this->parseQuery($query);
 				
+				// explainQuery() already rejects anything but a retrieve statement
+				// before ever calling explain() — this check is a defensive
+				// backstop, not a reachable path.
+				if (!$ast instanceof AstRetrieve) {
+					throw new QuelException("explain() only supports retrieve statements", 'not_plannable');
+				}
+				
+				// Resolve types
+				$this->identifierTypeResolver->resolve($ast);
+				$this->routineCallTyper->typeCalls($ast);
+
 				// Normalize and validate the AST before handing it to the optimizer
 				$this->queryNormalizer->transform($ast);
+				$this->dateTimeParameterCoercer->coerce($ast, $normalizedParameters);
 				$this->semanticAnalyser->validate($ast);
 				
 				// Run the optimizer and planner with an active log so every decision is recorded
@@ -214,75 +413,26 @@
 		}
 		
 		/**
-		 * Returns planner decisions and generated SQL for a query without executing it.
-		 * Combines explain() with a SQL dry-run into one coherent result.
+		 * Returns planner decisions and generated SQL for a retrieve query
+		 * without executing it. Combines explain() with a SQL dry-run into
+		 * one coherent result.
 		 * @param string $query The ObjectQuel query string
 		 * @param array<int|string, mixed> $parameters Query parameters
 		 * @return QueryPlan Planning decisions and generated SQL
 		 * @throws QuelException
 		 */
-		public function explainQuery(string $query, array $parameters = []): QueryPlan {
+		private function explainRetrieveQuery(string $query, array $parameters): QueryPlan {
 			// Collect planner decisions by running the optimization pipeline
 			$log = $this->explain($query, $parameters);
 			
 			// Run the full pipeline again through a dry-run executor to capture
 			// generated SQL without touching the database. The dry-run is cheap
 			// since it skips all I/O.
-			$dryRun = new DryRunDatabaseQueryExecutor($this->entityManager, $this->capabilities);
+			$dryRun = new DryRunRetrieveExecutor($this->entityManager, $this->capabilities);
 			$dryRunExecutor = new self($this->entityManager, $dryRun);
 			$dryRunExecutor->executeQuery($query, $parameters);
 			
 			return new QueryPlan($log->getNotes(), $dryRun->getCapturedSql());
-		}
-		
-		/**
-		 * Parses a Quel query and returns its validated AST representation.
-		 * @param string $query The Quel query string to parse
-		 * @return AstRetrieve The validated AST or null if parsing fails
-		 * @throws LexerException
-		 * @throws ParserException
-		 * @throws QuelException If parsing, validation, or processing fails
-		 */
-		private function parse(string $query): AstRetrieve {
-			// Convert the raw query string into an Abstract Syntax Tree
-			// Create a lexer to break the query string into tokens (keywords, identifiers, operators, etc.)
-			$lexer = new Lexer($query);
-			
-			// Create a parser that takes the tokenized input and builds an Abstract Syntax Tree
-			$parser = new Parser($lexer);
-			
-			// Execute the parsing process to generate the AST representation of the query
-			// This transforms the linear token sequence into a hierarchical tree structure
-			$ast = $parser->parse();
-			
-			// Ensure the parsed AST represents a RETRIEVE operation
-			// This method specifically handles RETRIEVE queries
-			if (!$ast instanceof AstRetrieve) {
-				throw new QuelException("Invalid query type: expected retrieve operation");
-			}
-			
-			// The AST is now fully validated
-			return $ast;
-		}
-		
-		/**
-		 * Walk through all identifiers and set their type
-		 * @param AstRetrieve $retrieve
-		 * @return void
-		 */
-		private function resolveAndSetIdentifierTypes(AstRetrieve $retrieve): void {
-			// First, recursively set types all nested queries in temporary ranges
-			// This ensures inner queries are fully resolved before outer query processing
-			foreach ($retrieve->getRanges() as $range) {
-				if ($range instanceof AstRangeDatabaseSubquery) {
-					$this->resolveAndSetIdentifierTypes($range->getQuery());
-				}
-			}
-			
-			// Then set types on current query
-			$retrieve->accept(new ResolveRootIdentifierType($retrieve));
-			$retrieve->accept(new ResolvePropertyType($this->entityManager->getEntityStore()));
-			$retrieve->accept(new ResolveIdentifierRange($retrieve));
 		}
 		
 		/**

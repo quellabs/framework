@@ -44,6 +44,7 @@
 				'proxy_namespace'      => 'Quellabs\\ObjectQuel\\Proxy\\Runtime', // Namespace for generated proxy classes
 				'proxy_path'           => null,                                    // Directory for generated proxy classes
 				'metadata_cache_path'  => '',                                      // Path for cached entity metadata
+				'annotation_source'    => \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS,
 				'slow_query_log'       => null,                                    // Absolute path to slow query log file; null to disable
 				'slow_query_threshold' => 0.0                                     // Minimum query time in seconds to log; 0.0 logs all queries
 			];
@@ -87,6 +88,16 @@
 			$defaultProxyPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'proxies';
 			$proxyPath = $configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath;
 			$config->setProxyDir(is_string($proxyPath) ? $proxyPath : $defaultProxyPath);
+
+			// Configure entity annotation metadata cache directory
+			$defaultMetadataCachePath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'annotations';
+			$metadataCachePath = $configData["metadata_cache_path"] ?? $defaults["metadata_cache_path"] ?? $defaultMetadataCachePath;
+			$config->setMetadataCachePath((is_string($metadataCachePath) && $metadataCachePath !== '') ? $metadataCachePath : $defaultMetadataCachePath);
+			$annotationSource = $configData['annotation_source'] ?? $defaults['annotation_source'];
+			if (!is_string($annotationSource)) {
+				throw new \InvalidArgumentException('annotation_source must be a string');
+			}
+			$config->setAnnotationSource($annotationSource);
 			
 			// Configure entity class namespace
 			$defaultEntityNamespace = 'App\\Entities';
@@ -103,7 +114,11 @@
 			$slowQueryThreshold = $configData["slow_query_threshold"] ?? $defaults["slow_query_threshold"];
 			$config->setSlowQueryLog(is_string($slowQueryLog) ? $slowQueryLog : null);
 			$config->setSlowQueryThreshold(is_float($slowQueryThreshold) || is_int($slowQueryThreshold) ? (float)$slowQueryThreshold : 0.0);
-			
+
+			// Routine string collation; absent means the database default
+			$collation = $configData["collation"] ?? null;
+			$config->setCollation(is_string($collation) && $collation !== '' ? $collation : null);
+
 			// Cache and return the instance
 			self::$instance = $config;
 			return self::$instance;

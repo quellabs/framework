@@ -138,7 +138,7 @@ HELP;
 		'username'         => '',                       // Database username for authentication
 		'password'         => '',                       // Database password for authentication
 		'port'             => 3306,                     // Database server port (3306 is MySQL default)
-		'charset'          => 'utf8mb4',                // Character set for database connection
+		'encoding'         => 'utf8mb4',                // Character set for database connection
 		'collation'        => 'utf8mb4_unicode_ci',     // Collation for text comparison and sorting
 		
 		// Entity namespace
@@ -152,6 +152,10 @@ HELP;
 		
 		// Path to the migrations folder
 		'migrations_path'  => dirname(__FILE__) . '/../migrations',
+
+		// Detect existing database foreign key constraints when running
+		// make:entity-from-table and emit a matching @Orm\ForeignKey annotation
+		'generate_foreign_keys' => false,
 	];
 PHP;
 		}

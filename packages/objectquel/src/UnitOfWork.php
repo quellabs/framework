@@ -28,7 +28,10 @@
 	use Quellabs\ObjectQuel\Collections\EntityCollection;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
+	use Quellabs\ObjectQuel\Metadata\RelationColumnMapping;
 	use Quellabs\ObjectQuel\Persistence\DeletePersister;
+	use Quellabs\ObjectQuel\Persistence\DeleteType;
 	use Quellabs\ObjectQuel\Persistence\InsertPersister;
 	use Quellabs\ObjectQuel\Persistence\UpdatePersister;
 	use Quellabs\ObjectQuel\Persistence\VersionValueHandler;
@@ -64,14 +67,16 @@
 		/** @var \WeakMap<object, array<string, mixed>> */
 		protected \WeakMap $entitySnapshots;
 		
-		/** @var \WeakMap<object, bool> */
+		/** @var \WeakMap<object, bool> Value is the $hardDelete flag passed to scheduleForDelete(). */
 		protected \WeakMap $entityRemovalList;
 		
 		public Signal $signalPrePersist;
 		public Signal $signalPostPersist;
 		public Signal $signalPreUpdate;
 		public Signal $signalPostUpdate;
+		/** Emitted as (object $entity, DeleteType $deleteType) — see the Deleted case in flush(). */
 		public Signal $signalPreDelete;
+		/** Emitted as (object $entity, DeleteType $deleteType) — see the Deleted case in flush(). */
 		public Signal $signalPostDelete;
 		
 		/**
@@ -110,7 +115,7 @@
 			
 			// Instantiate persisters once for reuse across commits
 			$primaryKeyFactory = new PrimaryKeyFactory();
-			$this->versionValueHandler = new VersionValueHandler($this->connection, $this->entityStore, $this, $this->propertyHandler);
+			$this->versionValueHandler = new VersionValueHandler($this->connection, $this->entityStore, $this, $this->propertyHandler, $this->platformCapabilities);
 			$this->insertPersister = new InsertPersister($this, $primaryKeyFactory);
 			$this->updatePersister = new UpdatePersister($this);
 			$this->deletePersister = new DeletePersister($this);
@@ -199,17 +204,33 @@
 		public function findEntity(string $entityType, array $primaryKeys): ?object {
 			// Normalize the entity name for dealing with proxies
 			$normalizedEntityName = $this->getEntityStore()->normalizeEntityClass($entityType);
-			
+
 			// Check if the class exists in the entity store and return null if it doesn't
 			if (empty($this->entitiesByClass[$normalizedEntityName])) {
 				return null;
 			}
-			
-			// Convert the primary keys to a string
-			$primaryKeyString = $this->serializePrimaryKeys($primaryKeys);
-			
+
+			// Fetch the entity's metadata
+			$metadata = $this->getEntityStore()->getMetadata($normalizedEntityName);
+
+			// The index only ever stores complete identities (see indexEntityByIdentity()),
+			// so a key that doesn't name every identifier property exactly once, or carries
+			// a null component, can never match an indexed entry — some existing callers
+			// (e.g. RelationshipLoader's single-column lazy lookup against a composite-PK
+			// target) still pass such a partial key, and must keep getting "not found" here
+			// rather than an exception; a complete-key validation error belongs to the
+			// caller building that key, not to this lookup.
+			if (
+				in_array(null, $primaryKeys, true) ||
+				array_diff($metadata->identifierKeys, array_keys($primaryKeys)) !== [] ||
+				array_diff(array_keys($primaryKeys), $metadata->identifierKeys) !== []
+			) {
+				return null;
+			}
+
 			// Look up the object hash via the index, then return the entity
-			$hash = $this->indexByClass[$normalizedEntityName][$primaryKeyString] ?? null;
+			$key = $metadata->resolveIdentityKey($primaryKeys);
+			$hash = $this->indexByClass[$normalizedEntityName][$key] ?? null;
 			return $hash !== null ? ($this->entitiesByClass[$normalizedEntityName][$hash] ?? null) : null;
 		}
 
@@ -251,21 +272,12 @@
 			// This hash serves as a consistent reference to this specific object instance
 			$hash = spl_object_hash($entity);
 			
-			// Get the primary key values for this entity
-			// These are used to uniquely identify the entity in the database
-			$primaryKeys = $this->getIdentifiers($entity);
-			
-			// Convert the primary keys to a string representation for indexing
-			// This allows for composite keys to be used as array indexes
-			$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
-			
-			// Store the hash in the index for quick lookup by primary key
-			// This mapping enables finding entities by their database identifiers
-			$this->indexByClass[$class][$primaryKeysString] = $hash;
-			
 			// Add the actual entity object to the identity map
 			// This creates a two-way reference system: hash→entity and primaryKey→hash
 			$this->entitiesByClass[$class][$hash] = $entity;
+
+			// Index by primary key, if every component is already populated
+			$this->indexEntityByIdentity($class, $entity, $hash);
 			
 			// Create a snapshot of the entity's current state by serializing it
 			// This baseline is used later to detect changes when flush() is called
@@ -304,25 +316,16 @@
 			// This provides a consistent way to reference this specific object in memory
 			$hash = spl_object_hash($entity);
 			
-			// Extract primary key values from the entity
-			// For new entities, these might be null or empty until after database insertion
-			$primaryKeys = $this->getIdentifiers($entity);
-			
-			// Convert primary keys to a string format for use as array index
-			// For new entities without generated IDs, this might be an empty string
-			$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
-			
 			// Add the entity object to the identity map using its hash as the key
 			// This registers the entity for tracking in the current unit of work
 			$this->entitiesByClass[$class][$hash] = $entity;
-			
-			// Only index by primary key if the entity already has primary key values
-			// This handles both cases: entities with manually set IDs and those awaiting generated IDs
-			if (!empty($primaryKeysString)) {
-				// Store a reference to the entity by its primary key for quick lookups
-				$this->indexByClass[$class][$primaryKeysString] = $hash;
-			}
-			
+
+			// Index by primary key only once every component is populated — a new
+			// entity with an unassigned (e.g. not-yet-generated) component stays
+			// reachable only by object hash until indexEntityByIdentity() is called
+			// again with a complete key, in resetAfterCommit() after insert.
+			$this->indexEntityByIdentity($class, $entity, $hash);
+
 			// Return true to indicate successful registration of the new entity
 			return true;
 		}
@@ -337,10 +340,15 @@
 		 * @throws OrmException if an error occurs during the database process.
 		 */
 		public function commit(object|array|null $entity = null): void {
+			// Whether beginTrans() below actually ran. rollbackTrans() throws if
+			// called without a matching beginTrans(), so the catch block must
+			// only call it when a transaction was really started.
+			$transactionStarted = false;
+
 			try {
 				// Process cascading persists first to ensure all related entities are managed
 				$this->executeCascadingPersists();
-				
+
 				// Determine the list of entities to process
 				if ($entity === null) {
 					$sortedEntities = $this->scheduleEntitiesForPersistence();
@@ -349,11 +357,12 @@
 				} else {
 					$sortedEntities = [$entity];
 				}
-				
+
 				if (!empty($sortedEntities)) {
 					// Start a database transaction.
 					$this->connection->beginTrans();
-					
+					$transactionStarted = true;
+
 					// Determine the state of each entity and perform the corresponding action.
 					$changed = [];
 					$deleted = [];
@@ -407,9 +416,12 @@
 
 								$deleted[] = $entity; // Add entity to the deleted list
 								
-								$this->signalPreDelete->emit($entity);
-								$this->deletePersister->persist($entity); // Delete if the entity is marked for deletion.
-								$this->signalPostDelete->emit($entity);
+								$hardDelete = $this->isEntityScheduledForHardDelete($entity);
+								$deleteType = (!$hardDelete && $metadata->hasSoftDelete()) ? DeleteType::Soft : DeleteType::Hard;
+
+								$this->signalPreDelete->emit($entity, $deleteType);
+								$this->deletePersister->persist($entity, $hardDelete); // Delete if the entity is marked for deletion.
+								$this->signalPostDelete->emit($entity, $deleteType);
 								break;
 						}
 					}
@@ -421,14 +433,17 @@
 					$this->resetAfterCommit($changed, $deleted);
 				}
 			} catch (\Throwable $e) {
-				// Roll back the transaction if any error or exception occurs.
-				$this->connection->rollbackTrans();
-				
+				// Roll back the transaction if any error or exception occurs —
+				// but only if one was actually started; see $transactionStarted above.
+				if ($transactionStarted) {
+					$this->connection->rollbackTrans();
+				}
+
 				// Wrap non-ORM exceptions for a consistent exception contract
 				if (!$e instanceof OrmException) {
 					throw new OrmException($e->getMessage(), (int) $e->getCode(), $e);
 				}
-				
+
 				throw $e;
 			}
 		}
@@ -487,22 +502,203 @@
 		/**
 		 * Adds an entity to the removal list and handles cascading delete operations
 		 * @param object $entity The entity to schedule for deletion
+		 * @param bool $hardDelete When true, forces a real DELETE even if the entity is soft-deletable
 		 * @return void
 		 * @throws EntityResolutionException
 		 */
-		public function scheduleForDelete(object $entity): void {
+		public function scheduleForDelete(object $entity, bool $hardDelete = false): void {
 			// Skip if already scheduled for deletion to prevent duplicate processing
 			if ($this->isEntityScheduledForDeletion($entity)) {
 				return;
 			}
-			
+
 			// Mark entity for deletion first (prevents infinite recursion with circular references)
-			$this->entityRemovalList[$entity] = true;
-			
+			$this->entityRemovalList[$entity] = $hardDelete;
+
+			// An entity with no soft-delete column always ends up really deleted.
+			$metadata = $this->entityStore->getMetadata($entity);
+			$effectiveHardDelete = $hardDelete || !$metadata->hasSoftDelete();
+
 			// Process dependent entities that should be cascade deleted
-			$this->executeCascadingDeletions($entity);
+			$this->executeCascadingDeletions($entity, $effectiveHardDelete);
 		}
-		
+
+		/**
+		 * Whether $entity was scheduled for deletion with $hardDelete = true.
+		 * @param object $entity
+		 * @return bool
+		 */
+		private function isEntityScheduledForHardDelete(object $entity): bool {
+			return $this->entityRemovalList[$entity] ?? false;
+		}
+
+		/**
+		 * Reverts a soft delete on $entity and cascade-restores any currently
+		 * soft-deleted Cascade(remove) dependent, written on the next commit().
+		 * @param object $entity
+		 * @return void
+		 * @throws EntityResolutionException
+		 * @throws OrmException If $entity has no soft-delete column
+		 */
+		public function restore(object $entity): void {
+			$this->restoreEntityAndCascade($entity, []);
+		}
+
+		/**
+		 * @param object $entity
+		 * @param array<string, true> $visited Guards against infinite recursion via circular cascade references
+		 * @return void
+		 * @throws EntityResolutionException
+		 * @throws OrmException
+		 */
+		private function restoreEntityAndCascade(object $entity, array $visited): void {
+			$hash = spl_object_hash($entity);
+
+			if (isset($visited[$hash])) {
+				return;
+			}
+
+			$visited[$hash] = true;
+
+			$metadata = $this->entityStore->getMetadata($entity);
+
+			if (!$metadata->hasSoftDelete()) {
+				throw new OrmException(sprintf('%s has no @SoftDelete column to restore', $metadata->className));
+			}
+
+			$activeValue = $this->softDeleteActiveValue($metadata);
+
+			// Non-null here: hasSoftDelete() confirmed softDeleteProperty is set.
+			$softDeleteProperty = $metadata->softDeleteProperty ?? throw new \LogicException('restore() called on entity without @SoftDelete');
+
+			$this->propertyHandler->set($entity, $softDeleteProperty, $activeValue);
+
+			$this->executeCascadingRestores($entity, $visited);
+		}
+
+		/**
+		 * The "active" value for a recognised soft-delete column type (null/datetime, false/boolean).
+		 * @param EntityMetadataRecord $metadata
+		 * @return mixed
+		 * @throws OrmException If the column type isn't 'datetime' or 'boolean'
+		 */
+		private function softDeleteActiveValue(EntityMetadataRecord $metadata): mixed {
+			return match ($metadata->softDeleteColumnType) {
+				'datetime' => null,
+				'boolean'  => false,
+				default    => throw new OrmException(sprintf(
+					"%s's @SoftDelete column type '%s' is not supported",
+					$metadata->className,
+					$metadata->softDeleteColumnType
+				)),
+			};
+		}
+
+		/**
+		 * Walks the same Cascade(remove) relation graph as
+		 * executeCascadingDeletions(), restoring any dependent that is
+		 * currently soft-deleted.
+		 * @param object $entity The entity just restored
+		 * @param array<string, true> $visited
+		 * @return void
+		 * @throws EntityResolutionException|QuelException
+		 */
+		private function executeCascadingRestores(object $entity, array $visited): void {
+			$normalizedClass = $this->entityStore->normalizeEntityClass($entity);
+			$dependentEntityClasses = $this->entityStore->getDependentEntities($entity);
+
+			foreach ($dependentEntityClasses as $dependentEntityClass) {
+				$this->handleDependentEntityClassForRestore($dependentEntityClass, $normalizedClass, $entity, $visited);
+			}
+		}
+
+		/**
+		 * @param class-string $dependentEntityClass
+		 * @param string $normalizedClass
+		 * @param object $entity
+		 * @param array<string, true> $visited
+		 * @return void
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		private function handleDependentEntityClassForRestore(string $dependentEntityClass, string $normalizedClass, object $entity, array $visited): void {
+			$metadata = $this->getEntityStore()->getMetadata($dependentEntityClass);
+
+			// Only a soft-deletable dependent can have anything to restore.
+			if (!$metadata->hasSoftDelete()) {
+				return;
+			}
+
+			$manyToOneDependencies = $metadata->getManyToOneDependencies();
+			$oneToOneDependencies = $metadata->getOneToOneDependencies();
+
+			foreach (array_merge($manyToOneDependencies, $oneToOneDependencies) as $property => $annotation) {
+				if ($this->entityStore->normalizeEntityClass($annotation->getTargetEntity()) !== $normalizedClass) {
+					continue;
+				}
+
+				$cascadeInfo = $this->getCascadeInfo($dependentEntityClass, $property);
+
+				if (!$cascadeInfo || !$this->shouldCascadeRemove($cascadeInfo)) {
+					continue;
+				}
+
+				$mapping = $metadata->getRelationColumnMapping($property);
+
+				if ($mapping === null) {
+					throw new \LogicException("No resolved column mapping for relation '{$property}' on '{$dependentEntityClass}'.");
+				}
+
+				$this->cascadeRestoreDependentObjects($dependentEntityClass, $mapping, $entity, $metadata, $visited);
+			}
+		}
+
+		/**
+		 * Finds every dependent row referencing $parentEntity and restores the ones currently soft-deleted.
+		 * @param class-string $dependentEntityClass
+		 * @param RelationColumnMapping $mapping
+		 * @param object $parentEntity
+		 * @param EntityMetadataRecord $dependentMetadata
+		 * @param array<string, true> $visited
+		 * @return void
+		 * @throws EntityResolutionException|QuelException
+		 */
+		private function cascadeRestoreDependentObjects(string $dependentEntityClass, RelationColumnMapping $mapping, object $parentEntity, EntityMetadataRecord $dependentMetadata, array $visited): void {
+			// Unrecognised column type — skip rather than break an unrelated restore().
+			if (!in_array($dependentMetadata->softDeleteColumnType, ['datetime', 'boolean'], true)) {
+				return;
+			}
+
+			// Build one criterion per relation pair, keyed by the dependent entity's own
+			// local (FK) property name. A parent whose identity isn't fully known (never
+			// persisted, or only partially resolved) has no rows in the database that could
+			// reference it — querying with an incomplete criteria set would risk matching
+			// unrelated rows, so this never issues a query in that case.
+			$criteria = [];
+
+			foreach ($mapping->pairs as $pair) {
+				$value = $this->propertyHandler->get($parentEntity, $pair->targetProperty);
+
+				if ($value === null) {
+					return;
+				}
+
+				$criteria[$pair->localProperty] = $value;
+			}
+
+			// ignoreSoftDelete: the rows being looked for are the ones marked deleted.
+			$dependentObjects = $this->entityManager->findBy($dependentEntityClass, $criteria, null, ignoreSoftDelete: true);
+
+			$softDeleteProperty = $dependentMetadata->softDeleteProperty ?? throw new \LogicException('cascadeRestoreDependentObjects called on entity without @SoftDelete');
+			$activeValue = $this->softDeleteActiveValue($dependentMetadata);
+
+			foreach ($dependentObjects as $dependentObject) {
+				if ($this->propertyHandler->get($dependentObject, $softDeleteProperty) !== $activeValue) {
+					$this->restoreEntityAndCascade($dependentObject, $visited);
+				}
+			}
+		}
+
 		/**
 		 * Determines the state of an entity (e.g., new, modified, not managed, etc.).
 		 * @param object $entity The entity whose state needs to be determined.
@@ -540,16 +736,49 @@
 		}
 		
 		/**
-		 * Convert primary keys to a string
-		 * @param array<string, mixed> $primaryKeys
-		 * @return string
+		 * Indexes $entity by its primary key, if and only if every identifier
+		 * component already has a value. An entity with any unset composite
+		 * component (e.g. awaiting a database-generated id) stays reachable only
+		 * by object hash until this is called again with a complete key — see
+		 * resetAfterCommit(), which does so once insert has populated it.
+		 *
+		 * Detects two distinct managed objects claiming the same complete
+		 * identity and fails explicitly rather than silently overwriting the
+		 * existing index entry, which would make the first object unreachable
+		 * by primary key while still being tracked.
+		 * @param string $class Normalized entity class name
+		 * @param object $entity
+		 * @param string $hash spl_object_hash($entity)
+		 * @throws EntityResolutionException
 		 */
-		private function serializePrimaryKeys(array $primaryKeys): string {
-			// Ensure consistent order
-			ksort($primaryKeys);
-			
-			// Use http_build_query for performance and simplicity
-			return str_replace(['&', '='], [';', ':'], http_build_query($primaryKeys));
+		private function indexEntityByIdentity(string $class, object $entity, string $hash): void {
+			$primaryKeys = $this->getIdentifiers($entity);
+
+			if (in_array(null, $primaryKeys, true)) {
+				return;
+			}
+
+			$metadata = $this->getEntityStore()->getMetadata($class);
+			$key = $metadata->resolveIdentityKey($primaryKeys);
+			$existingHash = $this->indexByClass[$class][$key] ?? null;
+
+			if (
+				$existingHash !== null &&
+				$existingHash !== $hash &&
+				isset($this->entitiesByClass[$class][$existingHash])
+			) {
+				$description = implode(', ', array_map(
+					static fn($property, $value) => $property . '=' . (is_scalar($value) ? (string) $value : get_debug_type($value)),
+					array_keys($primaryKeys),
+					$primaryKeys
+				));
+
+				throw new EntityResolutionException(
+					"Two distinct managed '{$class}' instances share the same identity ({$description})."
+				);
+			}
+
+			$this->indexByClass[$class][$key] = $hash;
 		}
 		
 		/**
@@ -658,44 +887,43 @@
 			// Fetch the identity map as one linear list
 			$flattenedIdentityMap = $this->getFlattenedIdentityMap();
 			
-			// Prepare the graph and inDegree counters for each entity.
-			// This initializes every entity with an empty list of dependents and zero dependencies.
+			// Build the dependency graph by examining each entity's relationships.
+			// $graph[hash] lists the entities that depend on it (children); $inDegree[hash]
+			// counts how many parents it still needs processed first. Both default lazily
+			// via ??= so every entity gets an entry even if it has no relationships at all.
 			$graph = [];
 			$inDegree = [];
-			
+
 			foreach ($flattenedIdentityMap as $hash => $entity) {
-				$graph[$hash] = []; // Initialize an empty array of dependent entities (children)
-				$inDegree[$hash] = 0; // Initially, assume entity has no dependencies on other entities
-			}
-			
-			// Build the dependency graph by examining each entity's relationships
-			foreach ($flattenedIdentityMap as $hash => $entity) {
+				$graph[$hash] ??= [];
+				$inDegree[$hash] ??= 0;
+
 				// Fetch metadata
 				$metadata = $this->getEntityStore()->getMetadata($entity);
-				
+
 				// Get all ManyToOne relationships where this entity is the "many" side
 				// These are dependencies where this entity depends on a parent entity
 				$manyToOneParents = $metadata->getManyToOneDependencies();
-				
-				// Get all OneToOne relationships where this entity is the owning side
+
+				// Get all OneToOne relationships where this entity is the owning side.
+				// All of them hold a real FK column needing a value — 'referencedColumn'
+				// only affects bidirectional setter-sync codegen and has nothing to do
+				// with whether this entity owns the FK, so a unidirectional OneToOne
+				// (no referencedColumn) still needs parent-before-child ordering here
+				// exactly like ManyToOne does. See extractParentPrimaryKeyData() and
+				// handleDependentEntityClass() for the same reasoning.
 				$oneToOneParents = $metadata->getOneToOneDependencies();
-				
-				// Filter OneToOne relationships to only include those that are bidirectional
-				// This is determined by checking if inversedBy is not empty
-				$oneToOneParents = array_filter($oneToOneParents, function ($e) {
-					return !empty($e->getReferencedColumn());
-				});
-				
-				// Process all parent dependencies (both ManyToOne and qualifying OneToOne)
+
+				// Process all parent dependencies (both ManyToOne and OneToOne)
 				foreach (array_merge($manyToOneParents, $oneToOneParents) as $property => $annotation) {
 					// Get the actual parent entity object from the current entity's property
 					$parentEntity = $this->propertyHandler->get($entity, $property);
-					
+
 					// Skip if the relationship is not an object (no parent entity assigned)
 					if (!is_object($parentEntity)) {
 						continue;
 					}
-					
+
 					// Skip if the parent is a proxy (lazy-loaded) that hasn't been initialized
 					// Including uninitialized proxies could trigger unwanted database queries
 					if (($parentEntity instanceof ProxyInterface) && !$parentEntity->isInitialized()) {
@@ -704,12 +932,21 @@
 
 					// Get a unique identifier for the parent entity
 					$parentId = spl_object_hash($parentEntity);
-					
+
+					// Skip parents outside this commit (already persisted and untouched, or
+					// unmanaged and not cascaded) — checked against $flattenedIdentityMap
+					// rather than $inDegree since, with the single-pass build above, a
+					// parent visited later in iteration order wouldn't have an $inDegree
+					// entry yet even though it is part of this commit.
+					if (!isset($flattenedIdentityMap[$parentId])) {
+						continue;
+					}
+
 					// Register the dependency in our graph:
 					// 1. Add current entity as a dependent (child) of the parent
 					// This means: "When processing parentId, we'll need to process hash afterwards"
 					$graph[$parentId][] = $hash;
-					
+
 					// 2. Increment the dependency counter for the current entity
 					// This means: "This entity depends on one more entity that must be processed first"
 					$inDegree[$hash]++;
@@ -788,10 +1025,10 @@
 				// Get the normalized class name of the entity
 				$class = $this->getEntityStore()->normalizeEntityClass($entity);
 				
-				// Add primary key to index cache for easy lookup
-				$primaryKeys = $this->getIdentifiers($entity);
-				$primaryKeysString = $this->serializePrimaryKeys($primaryKeys);
-				$this->indexByClass[$class][$primaryKeysString] = $hash;
+				// Add primary key to index cache for easy lookup — reindexes a new
+				// entity whose components (e.g. a database-generated id) only became
+				// available once the insert completed.
+				$this->indexEntityByIdentity($class, $entity, $hash);
 				
 				// Store the original data of the entity for later comparison
 				// This helps track changes in the entity over time
@@ -809,14 +1046,28 @@
 		/**
 		 * This function retrieves the parent entity and the corresponding ManyToOne annotation
 		 * for the given entity. If the parent entity doesn't exist, null is returned.
+		 *
+		 * Reads every pair of the relation's resolved column mapping directly off the parent
+		 * object — not just the first component, and not only the parent's own identifier
+		 * properties, since a singular relation may target a non-PK property. A component
+		 * whose value isn't available at all (e.g. a new, uncascaded parent that was never
+		 * persisted) is not an error — every pair is still emitted, with a null value, exactly
+		 * as before: the caller writes it onto the child's FK column(s), which is a no-op when
+		 * they were already null and otherwise clears a stale prior value. Only a *partial*
+		 * resolution — some of a composite relation's pairs available and others not — is
+		 * reported, since silently writing part of a composite FK while leaving the rest at
+		 * whatever it was before would leave the row in an inconsistent state no legitimate
+		 * caller intends.
 		 * @param object $entity The entity for which to retrieve the parent entity and annotation.
 		 * @return array<int, array{entity: object, property: string, value: mixed}> An associative array with 'entity' and 'annotation' as keys, or null if not found.
 		 * @throws EntityResolutionException
+		 * @throws OrmException When only some of a composite relation's pairs have a resolvable parent value
 		 */
 		private function extractParentPrimaryKeyData(object $entity): array {
 			// Retrieve metadata for entity
 			$metadata = $this->getEntityStore()->getMetadata($entity);
-			
+			$entityClass = $metadata->className;
+
 			// Loop through each set of annotations for each property of the entity.
 			// Each property might have multiple annotations defining its behavior
 			$result = [];
@@ -824,50 +1075,65 @@
 			foreach ($metadata->getAnnotations() as $property => $annotations) {
 				// Loop through the annotations for a single property of the entity.
 				foreach ($annotations as $annotation) {
-					// Check if the current annotation is a ManyToOne annotation or a bidirectional OneToOne.
-					// These types indicate a dependency on a parent entity
-					if (
-						!($annotation instanceof ManyToOne) &&
-						(!($annotation instanceof OneToOne) || is_null($annotation->getReferencedColumn()))
-					) {
+					// Check if the current annotation is a ManyToOne or OneToOne annotation.
+					// Both are owning sides that hold a real FK column needing a value —
+					// 'referencedColumn' only affects bidirectional setter sync codegen and
+					// has nothing to do with whether this entity owns the FK, so a
+					// unidirectional OneToOne (no referencedColumn) still needs its FK
+					// column populated here exactly like ManyToOne does.
+					if (!($annotation instanceof ManyToOne) && !($annotation instanceof OneToOne)) {
 						continue; // Skip this annotation if it's not a relationship to a parent
 					}
-					
+
 					// Use the property_handler to retrieve the value of the related parent entity.
 					// This is the actual object reference to the parent entity
 					$parentEntity = $this->propertyHandler->get($entity, $property);
-					
-					// If the parent entity exists, add it to the result with its relationship details.
-					if (!empty($parentEntity) && is_object($parentEntity)) {
-						// Get the relation column name, or fall back to a convention
-						$relationColumn = $annotation->getLocalColumn() ?? "{$property}Id";
-						
-						// Get the parent entity's primary key value(s)
-						$parentPrimaryKeys = $this->getIdentifiers($parentEntity);
 
-						// Only handle simple primary keys, skip composite ones
-						if (count($parentPrimaryKeys) !== 1) {
-							continue;
+					// If the parent entity exists, add every one of its mapped column pairs.
+					if (!empty($parentEntity) && is_object($parentEntity)) {
+						$mapping = $metadata->getRelationColumnMapping($property);
+
+						if ($mapping === null) {
+							throw new \LogicException("No resolved column mapping for relation '{$property}' on '{$entityClass}'.");
 						}
-						
-						// Fetch the first primary key
-						$primaryKey = array_key_first($parentPrimaryKeys);
-						$primaryKeyValue = $parentPrimaryKeys[$primaryKey];
-						
-						// Add it to the result
-						$result[] = [
-							'entity'   => $parentEntity, // The parent entity itself
-							'property' => $relationColumn, // The name of the property that defines the relationship
-							'value'    => $primaryKeyValue // The primary key value of the parent entity
-						];
+
+						// Read the parent's referenced property directly for every pair — covers
+						// both a composite PK and a singular relation targeting a non-PK property,
+						// neither of which getIdentifiers() (PK-only) would resolve.
+						$values = [];
+
+						foreach ($mapping->pairs as $pair) {
+							$values[] = $this->propertyHandler->get($parentEntity, $pair->targetProperty);
+						}
+
+						$resolvedCount = count(array_filter($values, static fn($value) => $value !== null));
+
+						if ($resolvedCount > 0 && $resolvedCount < count($values)) {
+							throw new OrmException(
+								"Cannot synchronize relation '{$property}' on '{$entityClass}': parent " .
+								get_class($parentEntity) . " has only some of its referenced key components " .
+								"available (" . implode(', ', $mapping->targetProperties()) . "). Ensure the " .
+								"parent is fully persisted — every key component assigned or generated — " .
+								"before this entity is flushed."
+							);
+						}
+
+						foreach ($mapping->pairs as $index => $pair) {
+							// Add it to the result
+							$result[] = [
+								'entity'   => $parentEntity, // The parent entity itself
+								'property' => $pair->localProperty, // The local FK property that defines the relationship
+								'value'    => $values[$index] // The parent's referenced property value
+							];
+						}
 					}
-					
+
 					// We don't need to read more annotations for this property.
 					// Move on to the next property.
 					continue 2; // Skip to the next property in the outer loop
 				}
 			}
-			
+
 			// Return the found parent entities as an array.
 			// This will be used to ensure proper order of operations during persistence
 			return $result;
@@ -901,25 +1167,26 @@
 		 * This maintains referential integrity in the database by removing child records
 		 * that would otherwise become orphaned.
 		 * @param object $entity The parent entity being deleted
+		 * @param bool $parentEffectiveHardDelete Whether $entity is actually being removed, or merely soft-deleted
 		 * @return void
 		 * @throws EntityResolutionException|QuelException
 		 */
-		private function executeCascadingDeletions(object $entity): void {
+		private function executeCascadingDeletions(object $entity, bool $parentEffectiveHardDelete): void {
 			// Normalize the entity class name to ensure consistent format
 			// Normalization handles variations in namespace notation
 			$normalizedClass = $this->entityStore->normalizeEntityClass($entity);
-			
+
 			// Retrieve all entity classes that depend on this entity
 			// These are entities that have relationships annotated with cascade="remove"
 			// or similar configurations that indicate cascading deletes
 			$dependentEntityClasses = $this->entityStore->getDependentEntities($entity);
-			
+
 			// Process each dependent entity class to find and mark instances for deletion
 			foreach ($dependentEntityClasses as $dependentEntityClass) {
-				$this->handleDependentEntityClass($dependentEntityClass, $normalizedClass, $entity);
+				$this->handleDependentEntityClass($dependentEntityClass, $normalizedClass, $entity, $parentEffectiveHardDelete);
 			}
 		}
-		
+
 		/**
 		 * Process a specific dependent entity class for cascading deletion.
 		 * This method examines relationships from the dependent entity to the parent,
@@ -927,11 +1194,12 @@
 		 * @param class-string $dependentEntityClass The fully qualified class name of the dependent entity type
 		 * @param string $normalizedClass The normalized class name of the parent entity being deleted
 		 * @param object $entity The parent entity object instance being deleted
+		 * @param bool $parentEffectiveHardDelete Whether the parent is actually being removed, or merely soft-deleted
 		 * @return void
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
-		private function handleDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity): void {
+		private function handleDependentEntityClass(string $dependentEntityClass, string $normalizedClass, object $entity, bool $parentEffectiveHardDelete): void {
 			// Fetch metadata for this entity
 			$metadata = $this->getEntityStore()->getMetadata($dependentEntityClass);
 			
@@ -940,48 +1208,51 @@
 			$manyToOneDependencies = $metadata->getManyToOneDependencies();
 			
 			// Retrieve all OneToOne relationships defined in the dependent entity class
-			// These are one-to-one associations between entities
+			// These are one-to-one associations between entities. Cascade-remove is
+			// driven purely by the Cascade annotation below, exactly like ManyToOne —
+			// 'referencedColumn' only affects bidirectional setter sync codegen, so
+			// filtering on it here would silently skip cascade-remove for a
+			// unidirectional OneToOne that explicitly declares Cascade(remove).
 			$oneToOneDependencies = $metadata->getOneToOneDependencies();
-			
-			// Filter OneToOne relationships to only include bidirectional ones
-			// We only want relationships where both sides reference each other
-			// This is determined by checking if the inversedBy property is set
-			$oneToOneDependencies = array_filter($oneToOneDependencies, function ($e) {
-				return !empty($e->getReferencedColumn());
-			});
-			
-			// Process both ManyToOne and filtered OneToOne relationships together
+
+			// Process both ManyToOne and OneToOne relationships together
 			foreach (array_merge($manyToOneDependencies, $oneToOneDependencies) as $property => $annotation) {
 				// Skip if this relationship doesn't point to our parent entity class
 				// This ensures we only process relationships relevant to the deleted entity
 				if ($this->entityStore->normalizeEntityClass($annotation->getTargetEntity()) !== $normalizedClass) {
 					continue;
 				}
-				
-				// Fetch relation column
-				$relationColumn = $annotation->getLocalColumn() ?? "{$property}Id";
-				
+
 				// Get cascade configuration information for this relationship
 				// This tells us how changes to the parent should propagate to dependents
 				$cascadeInfo = $this->getCascadeInfo($dependentEntityClass, $property);
-				
+
 				// Skip if no cascade configuration exists or if cascade remove isn't enabled
 				// Not all relationships should trigger cascading deletions
 				if (!$cascadeInfo || !$this->shouldCascadeRemove($cascadeInfo)) {
 					continue;
 				}
-				
+
+				// Resolved column pairs for this relation — one pair for a singular FK,
+				// one pair per array position for a composite one.
+				$mapping = $metadata->getRelationColumnMapping($property);
+
+				if ($mapping === null) {
+					throw new \LogicException("No resolved column mapping for relation '{$property}' on '{$dependentEntityClass}'.");
+				}
+
 				// If we reach here, this relationship should trigger cascading deletion
 				// Find and mark for deletion all dependent objects that reference this parent
-				// The relationship column is used to identify which dependent objects reference this parent
 				$this->cascadeDeleteDependentObjects(
 					$dependentEntityClass,             // The class of dependent objects to search for
-					$relationColumn,                   // The property that references the parent
-					$entity                            // The parent entity being deleted
+					$property,                         // The object-reference property, e.g. "customer"
+					$mapping,                           // Resolved local/target column pairs for this relation
+					$entity,                            // The parent entity being deleted
+					$parentEffectiveHardDelete
 				);
 			}
 		}
-		
+
 		/**
 		 * Get cascade configuration for a property
 		 * @param string $entityClass Entity class name
@@ -1022,13 +1293,7 @@
 		 * @return bool True if cascading removal should be performed
 		 */
 		private function shouldCascadeRemove(Cascade $cascadeAnnotation): bool {
-			// Skip if 'remove' operation not present in the cascade operations list
-			if (!in_array('remove', $cascadeAnnotation->getOperations())) {
-				return false;
-			}
-			// Skip database-level cascades (handled by DB itself)
-			// Yes, cascading removal should be performed
-			return $cascadeAnnotation->getStrategy() !== 'database';
+			return in_array('remove', $cascadeAnnotation->getOperations());
 		}
 		
 		/**
@@ -1043,37 +1308,96 @@
 		/**
 		 * Find and schedule deletion of dependent objects
 		 * @param class-string $dependentEntityClass Class name of dependent entity
-		 * @param string $property Property name with the relationship
+		 * @param string $relationProperty Object-reference property holding the parent, e.g. "customer"
+		 * @param RelationColumnMapping $mapping Resolved local/target column pairs for this relation
 		 * @param object $parentEntity The parent entity object
+		 * @param bool $parentEffectiveHardDelete Whether the parent is actually being removed, or merely soft-deleted
 		 * @return void
 		 * @throws EntityResolutionException|Exception\QuelException
 		 */
-		private function cascadeDeleteDependentObjects(string $dependentEntityClass, string $property, object $parentEntity): void {
-			// Extract the primary key identifiers from the parent entity
-			// This returns an array of primary key field names and their values
-			$parentPrimaryKeys = $this->getIdentifiers($parentEntity);
-			
-			// Composite primary keys are not supported for cascade delete lookup;
-			// the dependent objects query expects a single scalar foreign key value.
-			if (count($parentPrimaryKeys) !== 1) {
+		private function cascadeDeleteDependentObjects(string $dependentEntityClass, string $relationProperty, RelationColumnMapping $mapping, object $parentEntity, bool $parentEffectiveHardDelete): void {
+			// Schedule any managed, not-yet-persisted dependents first. These
+			// can never be found by the DB-driven lookup below — they don't
+			// exist in the database yet — but without this they'd still get
+			// inserted afterward, pointing at a parent row that's about to
+			// be removed.
+			$this->cascadeDeleteUnpersistedDependents($dependentEntityClass, $relationProperty, $parentEntity, $parentEffectiveHardDelete);
+
+			// A dependent with no soft-delete column is left untouched while the
+			// parent is only soft-deleted; it must follow for real once the parent is.
+			$dependentMetadata = $this->entityStore->getMetadata($dependentEntityClass);
+
+			if (!$parentEffectiveHardDelete && !$dependentMetadata->hasSoftDelete()) {
 				return;
 			}
-			
-			// Get the first (and only) primary key value
-			$parentId = $parentPrimaryKeys[array_key_first($parentPrimaryKeys)];
-			
+
+			// Build one criterion per relation pair, keyed by the dependent entity's own
+			// local (FK) property name, reading each value straight off the parent object
+			// rather than through getIdentifiers() — covers a singular relation targeting
+			// a non-PK property too, not just the parent's own primary key.
+			//
+			// A parent that was never persisted, or whose identity is only partially
+			// resolved, has no complete row in the database that could match — querying
+			// with an incomplete criteria set would risk matching unrelated rows whose FK
+			// columns happen to be genuinely NULL rather than rows that actually reference
+			// this parent, so this never issues a query in that case.
+			$criteria = [];
+
+			foreach ($mapping->pairs as $pair) {
+				$value = $this->propertyHandler->get($parentEntity, $pair->targetProperty);
+
+				if ($value === null) {
+					return;
+				}
+
+				$criteria[$pair->localProperty] = $value;
+			}
+
 			// Query the entity manager to find all dependent objects
 			// that have a foreign key relationship to the parent entity
-			// Uses the specified property name to match against the parent's ID
-			$dependentObjects = $this->entityManager->findBy($dependentEntityClass, [
-				$property => $parentId
-			]);
-			
+			$dependentObjects = $this->entityManager->findBy($dependentEntityClass, $criteria);
+
 			// Iterate through each found dependent object and mark it for deletion
 			// This doesn't immediately delete the objects, but schedules them for deletion
 			// when the entity manager flushes changes to the database
 			foreach ($dependentObjects as $dependentObject) {
-				$this->scheduleForDelete($dependentObject);
+				$this->scheduleForDelete($dependentObject, $parentEffectiveHardDelete);
+			}
+		}
+
+		/**
+		 * Schedules for deletion any managed, not-yet-persisted (New) instances
+		 * of $dependentEntityClass whose $relationProperty still holds a direct
+		 * reference to $parentEntity. Covers the gap the DB-driven lookup in
+		 * cascadeDeleteDependentObjects() can't: an entity that was persist()ed
+		 * in this same unit of work but never flushed has no row in the
+		 * database yet, so it would otherwise slip through cascade-remove and
+		 * get inserted afterward pointing at a parent that no longer exists.
+		 * @param class-string $dependentEntityClass Class name of dependent entity
+		 * @param string $relationProperty Object-reference property holding the parent, e.g. "customer"
+		 * @param object $parentEntity The parent entity object
+		 * @param bool $parentEffectiveHardDelete Whether the parent is actually being removed, or merely soft-deleted
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function cascadeDeleteUnpersistedDependents(string $dependentEntityClass, string $relationProperty, object $parentEntity, bool $parentEffectiveHardDelete): void {
+			$normalizedClass = $this->entityStore->normalizeEntityClass($dependentEntityClass);
+
+			// See cascadeDeleteDependentObjects(): same soft-delete exemption applies here.
+			$dependentMetadata = $this->entityStore->getMetadata($dependentEntityClass);
+
+			if (!$parentEffectiveHardDelete && !$dependentMetadata->hasSoftDelete()) {
+				return;
+			}
+
+			foreach ($this->entitiesByClass[$normalizedClass] ?? [] as $candidate) {
+				if ($this->getEntityState($candidate) !== DirtyState::New) {
+					continue;
+				}
+
+				if ($this->propertyHandler->get($candidate, $relationProperty) === $parentEntity) {
+					$this->scheduleForDelete($candidate, $parentEffectiveHardDelete);
+				}
 			}
 		}
 		
@@ -1116,9 +1440,61 @@
 		private function executeCascadingPersistsForEntity(object $entity): void {
 			// Process InverseOf relationships
 			$this->processCascadingInverseOfPersists($entity);
-			
+
+			// Process ManyToOne relationships
+			$this->processCascadingManyToOnePersists($entity);
+
 			// Process OneToOne relationships
 			$this->processCascadingOneToOnePersists($entity);
+		}
+
+		/**
+		 * Cascades persist to the parent held by a ManyToOne relation — e.g.
+		 * persisting a new Order whose ->customer is itself new and unmanaged.
+		 * Mirrors processCascadingOneToOnePersists(): both hold a direct
+		 * object reference, so both walk the same way.
+		 * @param object $entity The entity whose ManyToOne relationships should be processed
+		 * @return void
+		 * @throws EntityResolutionException
+		 */
+		private function processCascadingManyToOnePersists(object $entity): void {
+			// Fetch metadata of this entity
+			$metadata = $this->getEntityStore()->getMetadata($entity);
+
+			// Check each ManyToOne relationship defined in this entity
+			foreach ($metadata->getManyToOneDependencies() as $property => $annotation) {
+				// Retrieve cascade configuration from metadata for this property
+				$cascadeInfo = $this->getCascadeInfo(get_class($entity), $property);
+
+				// Skip this relationship if cascade persist is not enabled
+				if (!$cascadeInfo || !$this->shouldCascadePersist($cascadeInfo)) {
+					continue;
+				}
+
+				// Get the single related entity from the entity's property
+				$relatedEntity = $this->propertyHandler->get($entity, $property);
+
+				// Skip if no related entity exists (the property is null)
+				if ($relatedEntity === null) {
+					continue;
+				}
+
+				// Skip uninitialized proxies to prevent lazy loading
+				if ($relatedEntity instanceof ProxyInterface && !$relatedEntity->isInitialized()) {
+					continue;
+				}
+
+				// Check if the related entity is already being tracked
+				if (!is_object($relatedEntity) || $this->isInIdentityMap($relatedEntity)) {
+					continue;
+				}
+
+				// Add the related entity to the identity map for tracking
+				$this->persistNew($relatedEntity);
+
+				// Recursively process the related entity's own cascading relationships
+				$this->executeCascadingPersistsForEntity($relatedEntity);
+			}
 		}
 		
 		/**

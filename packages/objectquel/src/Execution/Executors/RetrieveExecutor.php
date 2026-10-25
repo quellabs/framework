@@ -1,0 +1,114 @@
+<?php
+	
+	namespace Quellabs\ObjectQuel\Execution\Executors;
+	
+	use Cake\Database\StatementInterface;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
+	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
+	use Quellabs\ObjectQuel\Capabilities\PlatformCapabilitiesInterface;
+	use Quellabs\ObjectQuel\Execution\Transformers\PaginationTransformer;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
+	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelToSQL\QuelToSQLRetrieve;
+
+	/**
+	 * Handles database-specific query execution including SQL conversion and temp tables
+	 */
+	class RetrieveExecutor implements StageExecutorInterface {
+		
+		/** @var EntityManager Orchestrator for ObjectQuel queries and ORM */
+		protected EntityManager $entityManager;
+		
+		/** @var DatabaseAdapter Database connection */
+		protected DatabaseAdapter $connection;
+		
+		/** @var PlatformCapabilitiesInterface Shows capabilities and nuances of database system */
+		protected PlatformCapabilitiesInterface $capabilities;
+		
+		/** @var PaginationTransformer Transformer adds pagination (LIMIT, OFFSET) */
+		protected PaginationTransformer $queryTransformer;
+		
+		/** @var list<string> */
+		protected array $lastExecutedSql = [];
+		
+		/**
+		 * Constructor
+		 * @param EntityManager $entityManager
+		 */
+		public function __construct(EntityManager $entityManager, PlatformCapabilitiesInterface $capabilities) {
+			$this->entityManager = $entityManager;
+			$this->connection = $entityManager->getConnection();
+			$this->capabilities = $capabilities;
+			$this->queryTransformer = new PaginationTransformer($this->entityManager, $this->capabilities);
+		}
+		
+		/**
+		 * Execute a database query stage
+		 * @param ExecutionStageInterface $stage
+		 * @param ExecutionContext $context
+		 * @return list<array<string, mixed>>
+		 * @throws QuelException
+		 * @throws EntityResolutionException
+		 */
+		public function execute(ExecutionStageInterface $stage, ExecutionContext $context): array {
+			$initialParams = $context->getParameters();
+
+			// Transform the query
+			$this->queryTransformer->transform($stage->getQuery(), $initialParams);
+
+			// Convert the query to SQL
+			$sql = $this->convertToSQL($stage->getQuery(), $initialParams);
+
+			// Store SQL
+			$this->lastExecutedSql[] = $sql;
+
+			// Execute the SQL query
+			$rs = $this->connection->execute($sql, $initialParams);
+			
+			// If the query is incorrect, throw an exception
+			if ($rs === null) {
+				throw new QuelException($this->connection->getLastErrorMessage());
+			}
+			
+			// Retrieve all data
+			$result = [];
+			while ($row = $rs->fetch(StatementInterface::FETCH_TYPE_ASSOC)) {
+				$result[] = $row;
+			}
+			
+			/** @var list<array<string, mixed>> $result */
+			return $result;
+		}
+		
+		/**
+		 * Return the last executed SQL
+		 * @return list<string>
+		 */
+		public function getLastExecutedSql(): array {
+			return $this->lastExecutedSql;
+		}
+
+		/**
+		 * Clear the lastExecutedSql list
+		 * @return void
+		 */
+		public function resetLastExecutedSql(): void {
+			$this->lastExecutedSql = [];
+		}
+		
+		/**
+		 * Convert AstRetrieve node to SQL
+		 * @param AstRetrieve $retrieve The AST to convert
+		 * @param array<string, mixed> $parameters Query parameters (passed by reference)
+		 * @return string The generated SQL query
+		 * @throws EntityResolutionException
+		 * @throws QuelException
+		 */
+		protected function convertToSQL(AstRetrieve $retrieve, array &$parameters): string {
+			$quelToSQL = new QuelToSQLRetrieve($this->entityManager->getEntityStore(), $parameters, $this->capabilities, $this->connection->getRoutineSchema());
+			return $quelToSQL->convertToSQL($retrieve);
+		}
+	}

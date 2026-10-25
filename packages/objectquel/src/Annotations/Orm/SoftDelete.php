@@ -3,26 +3,20 @@
 	namespace Quellabs\ObjectQuel\Annotations\Orm;
 	
 	use Quellabs\AnnotationReader\AnnotationInterface;
+	use Quellabs\AnnotationReader\Annotation\ReflectsAnnotationParameters;
 	
 	/**
 	 * @Annotation
 	 * @package Quellabs\ObjectQuel\Annotations\Orm
 	 */
+	#[\Attribute(\Attribute::TARGET_PROPERTY)]
 	class SoftDelete implements AnnotationInterface {
-		
-		/** @var array<string, mixed> */
-		protected array $parameters;
+		use ReflectsAnnotationParameters;
 		
 		/**
-		 * SoftDelete constructor.
-		 * @param array<string, mixed> $parameters
+		 * Constructs the SoftDelete annotation.
+		 * @return void
 		 */
-		public function __construct(array $parameters) {
-			$this->parameters = $parameters;
-		}
-		
-		/** @return array<string, mixed> */
-		public function getParameters(): array {
-			return $this->parameters;
+		public function __construct() {
 		}
 	}

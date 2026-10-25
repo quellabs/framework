@@ -4,10 +4,12 @@
 	
 	use Quellabs\ObjectQuel\Annotations\Orm\Column;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstDate;
-	use Quellabs\ObjectQuel\DatabaseAdapter\TypeMapper;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Mapper\TypeMapper;
 	use Quellabs\ObjectQuel\EntityStore;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstAggregate;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstBinaryOperator;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstUnaryOperation;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\NodeBinary;
@@ -82,15 +84,18 @@
 		public function inferReturnType(AstInterface $ast): ?string {
 			// Process identifiers - lookup their type from entity annotations
 			if ($ast instanceof AstIdentifier) {
-				return $this->inferReturnTypeOfIdentifier($ast);
+				return $this->inferReturnTypeOfIdentifier($this->columnNode($ast));
 			}
 			
 			// Aggregates (SUM, AVG, MIN, MAX, and their DISTINCT variants) produce the
 			// same type as their argument. SUM(floatCol) is float, MIN(intCol) is integer.
 			// AstCount/AstCountU are intentionally excluded — they always return integer
 			// regardless of the argument type, and they declare that via getReturnType().
+			// No-argument sequence functions (rank, dense_rank, row_number) have no
+			// identifier to recurse into; they fall through to their own getReturnType().
 			if ($ast instanceof AstAggregate) {
-				return $this->inferReturnType($ast->getIdentifier());
+				$identifier = $ast->getIdentifier();
+				return $identifier !== null ? $this->inferReturnType($identifier) : $ast->getReturnType();
 			}
 			
 			// Unary sign operators (+x, -x) do not change the numeric type of the operand.
@@ -98,6 +103,11 @@
 				return $this->inferReturnType($ast->getExpression());
 			}
 			
+			// Comparisons and AND/OR are NodeBinary too, but yield a boolean regardless of their operands
+			if ($ast instanceof AstExpression || $ast instanceof AstBinaryOperator) {
+				return 'boolean';
+			}
+
 			// Traverse down the parse tree for binary operations (terms/factors)
 			if ($ast instanceof NodeBinary) {
 				// Recursively get types of left and right operands
@@ -171,5 +181,15 @@
 			
 			// No Column annotation found
 			return null;
+		}
+
+		/**
+		 * A longer chain is a JSON path and is returned as-is, since the extracted value's type isn't the column's.
+		 * @param AstIdentifier $identifier Identifier as it appears in an expression
+		 * @return AstIdentifier The column node of `range.column`, otherwise the identifier itself
+		 */
+		private function columnNode(AstIdentifier $identifier): AstIdentifier {
+			$next = $identifier->getNext();
+			return $next !== null && !$next->hasNext() ? $next : $identifier;
 		}
 	}

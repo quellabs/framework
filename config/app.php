@@ -5,7 +5,7 @@
 	
 	return [
 		// True to put the framework in debug mode; this mainly affects caching
-		'debug_mode'              => true,
+		'debug_mode'              => false,
 		
 		// Template engine
 		'public_directory'        => 'public',
@@ -29,5 +29,10 @@
 		'signal_listeners_path'   => $srcDir . DIRECTORY_SEPARATOR . 'Listeners',
 		
 		// Whether to match routes with trailing slashes
-		'match_trailing_slashes'  => false
+		'match_trailing_slashes'  => false,
+		
+		// Default SecurityHeaderPolicyInterface implementation used by SecurityHeadersAspect
+		// (unless overridden per route) and DefaultErrorHandler. Set null to disable.
+		// Built-in policies: Basic, Medium, and Strict (Quellabs\Canvas\Security\Policies).
+		'security_header_policy'  => \Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy::class
 	];

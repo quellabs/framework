@@ -5,7 +5,9 @@
 	use Quellabs\Canvas\Annotations\RoutePrefix;
 	use ReflectionException;
 	use Quellabs\Canvas\Annotations\Route;
+	use Quellabs\Canvas\Exceptions\InvalidRouteDefinitionException;
 	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\NormalizesRoutes;
 	use Quellabs\Canvas\Routing\RouteTypes;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	
@@ -44,9 +46,11 @@
 	 *
 	 * @phpstan-import-type RouteDefinition from RouteTypes
 	 * @phpstan-import-type IntermediateRoute from RouteTypes
-     */
+	 */
 	class RouteDiscovery {
-		
+
+		use NormalizesRoutes;
+
 		private Kernel $kernel;
 		private ControllersDiscovery $controllersDiscovery;
 		private RouteSegmentAnalyzer $segmentAnalyzer;
@@ -60,7 +64,7 @@
 		 * @param RoutePatternCompiler $patternCompiler
 		 */
 		public function __construct(
-			Kernel               $kernel,
+			Kernel $kernel,
 			ControllersDiscovery $controllersDiscovery,
 			RouteSegmentAnalyzer $segmentAnalyzer,
 			RoutePatternCompiler $patternCompiler
@@ -78,6 +82,7 @@
 		 * processing.
 		 * @return list<RouteDefinition> Array of compiled route definitions sorted by priority (highest first)
 		 * @throws AnnotationReaderException
+		 * @throws InvalidRouteDefinitionException If a discovered route segment declares the same variable name twice
 		 */
 		public function buildRoutesFromControllers(): array {
 			// Fetch all controller class names from local directory and registered packages
@@ -205,7 +210,7 @@
 				);
 			}
 		}
-
+		
 		/**
 		 * Build a complete route path by combining prefix and method route
 		 * @param string $prefix Controller route prefix
@@ -220,39 +225,10 @@
 			
 			// Strip surrounding slashes from prefix and leading slash from route
 			// to avoid double slashes when combining
-			$prefix    = trim($prefix, '/');
+			$prefix = trim($prefix, '/');
 			$routePath = ltrim($routePath, '/');
 			
 			// Combine prefix and route, or return just the route if no prefix
 			return $prefix ? "/{$prefix}/{$routePath}" : "/{$routePath}";
-		}
-		
-		/**
-		 * Normalizes a route string, resolving config file references if present.
-		 * @param string $route The route string to normalize.
-		 * @param string|null $default The default value to return if the config key is not found.
-		 * @return string The normalized route string.
-		 * @throws \RuntimeException If the config key is not found and no default is provided.
-		 */
-		private function normalizeRoute(string $route, ?string $default = null): string {
-			// Plain route string, nothing to resolve
-			if (!str_contains($route, "::")) {
-				return $route;
-			}
-			
-			// Split into filename and key components
-			$parts = explode("::", $route, 2);
-			$file  = $parts[0];
-			$key   = $parts[1];
-			
-			// Look up the key in the config file, falling back to $default if not found
-			$result = $this->kernel->loadConfigFile("{$file}.php")->get($key, $default);
-			
-			// If still null, no default was provided and the key doesn't exist
-			if ($result === null) {
-				throw new \RuntimeException("Couldn't load route '{$key}' from config file '{$file}'.");
-			}
-			
-			return $result;
 		}
 	}

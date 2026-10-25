@@ -7,7 +7,7 @@
 		'username'             => 'root',                   // Database username for authentication
 		'password'             => '',                       // Database password for authentication
 		'port'                 => 3306,                     // Database server port (3306 is MySQL default)
-		'charset'              => 'utf8mb4',                // Character set for database connection
+		'encoding'             => 'utf8mb4',                // Character set for database connection
 		'collation'            => 'utf8mb4_unicode_ci',     // Collation for text comparison and sorting
 		
 		// Development mode
@@ -24,7 +24,10 @@
 		
 		// Path to the migrations folder
 		'migrations_path'      => dirname(__FILE__) . '/../migrations',
-		
+
+		// Table quel:migrate tracks applied migrations in (default: 'quel_migrations')
+		'migration_table'      => 'quel_migrations',
+
 		// Slow query log
 		'slow_query_log'       => null, // null to disable
 		'slow_query_threshold' => 0.0,  // seconds; 0.0 = log everything

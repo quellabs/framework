@@ -3,30 +3,34 @@
 	namespace Quellabs\ObjectQuel\DatabaseAdapter;
 	
 	use Cake\Database\Schema\CollectionInterface;
+	use Cake\Database\Schema\Collection as SchemaCollection;
 	use Cake\Database\StatementInterface;
 	use Cake\Database\Connection;
-	use Phinx\Db\Adapter\AdapterInterface;
-	use Phinx\Db\Adapter\AdapterFactory;
-	
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\EventBindingInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\MysqlSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\NullSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\PostgresSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineDefinitionInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineDependencyInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\RoutineSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SchemaIntrospectorInterface;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerCompatibilityLevelInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerFulltextIndexInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqlServerSchemaIntrospector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteFulltextIndexInspector;
+	use Quellabs\ObjectQuel\DatabaseAdapter\Inspector\SqliteSchemaIntrospector;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\BindingEvent;
+
 	/**
 	 * Database adapter that ties ObjectQuel and CakePHP Database together
 	 * Wraps CakePHP's database connection to provide ObjectQuel-specific functionality
 	 * including schema introspection, transaction management, and cross-database compatibility.
 	 *
-	 * @phpstan-type ColumnDefinition array{
-	 *     type: string,
-	 *     php_type: string,
-	 *     limit: int|array<int, int>|null,
-	 *     default: mixed,
-	 *     nullable: bool,
-	 *     precision: int|null,
-	 *     scale: int|null,
-	 *     unsigned: bool,
-	 *     generated: mixed,
-	 *     identity: bool,
-	 *     primary_key: bool,
-	 *     values: array<int, string>|null
-	 * }
+	 * getColumns()'s per-column value type is the real ColumnDefinition class
+	 * (see ColumnDefinition.php, same namespace — no import needed here), and
+	 * getForeignKeys()'s per-constraint value type is likewise the real
+	 * ForeignKeyDefinition class (see ForeignKeyDefinition.php) — neither is
+	 * a phpstan-type array-shape like IndexDefinition/IndexUsageStats below.
 	 *
 	 * @phpstan-type IndexDefinition array{
 	 *     type: 'primary'|'unique'|'index'|'fulltext',
@@ -34,45 +38,90 @@
 	 *     length: array<int, int>|null,
 	 *     name?: string
 	 * }
+	 *
+	 * @phpstan-type IndexUsageStats array{reads: int, writes: int}
+	 *
+	 * @phpstan-type RoutineParameter array{name: string, type: ?string}
+	 * @phpstan-type RoutineListEntry array{name: string, isProcedure: bool, returnType: string, parameters: list<RoutineParameter>}
+	 *
+	 * @phpstan-type BindingListEntry array{table: string, event: BindingEvent, routine: string, alias: string}
 	 */
 	class DatabaseAdapter {
 		
 		/** @var array|string[] The index types ObjectQuel supports */
 		const array INDEX_TYPES = ['primary', 'unique', 'index', 'fulltext'];
-		
-		/**
-		 * Keep a list of decimal types for precision/scale inclusion
-		 * Phinx seems to sometimes return precision for integer fields which is incorrect
-		 * @var array|string[] Decimal types in database
-		 */
-		const array DECIMAL_TYPES = ['decimal', 'numeric', 'float', 'double'];
-		
+
 		/** @var Connection CakePHP database connection instance */
 		protected Connection $connection;
 		
-		/** @var int Error code from the last failed database operation (0 = no error) */
-		protected int $last_error;
+		/** @var int|string Error code or SQLSTATE from the last failed operation (0 = no error) */
+		protected int|string $last_error;
 		
 		/** @var string Error message from the last failed database operation */
 		protected string $last_error_message;
 		
 		/** @var int Current nesting level of active transactions (0 = no active transaction) */
 		protected int $transaction_depth;
-		
+
+		/** @var bool Set when a nested rollbackTrans() marks the transaction rollback-only — see beginTrans()/commitTrans() */
+		protected bool $transaction_rollback_only;
+
 		/** @var string|null Cached database type identifier (null = not yet determined) */
 		private ?string $databaseTypeCache;
-		
-		/** @var AdapterInterface|null Cached Phinx adapter instance (null = not yet created) */
-		private ?AdapterInterface $phinxAdapterCache;
-		
+
 		/**
-		 * Cached SQL Server database compatibility level (e.g. 170 for SQL
-		 * Server 2025), fetched via DATABASEPROPERTYEX(). Null means "not yet
-		 * queried, or the query failed". Only meaningful when getDatabaseType()
-		 * is 'sqlsrv' — irrelevant for every other engine.
-		 * @var int|null
+		 * Cached per-engine schema introspector (columns/foreign keys/index
+		 * usage stats — see SchemaIntrospectorInterface), lazily created by
+		 * getSchemaIntrospector() and cached for the lifetime of this adapter,
+		 * since getDatabaseType() cannot change after construction. Defaulted
+		 * inline (unlike the other cache fields below) rather than only in
+		 * the constructor: getSchemaIntrospector() is private, so a partial
+		 * mock built with disableOriginalConstructor() (see
+		 * DatabaseAdapterForeignKeyPostgresTest and friends) can't stub it
+		 * the way it stubs getDatabaseType(), and would otherwise hit this
+		 * property uninitialized.
+		 * @var SchemaIntrospectorInterface|null
 		 */
-		private ?int $sqlServerCompatibilityLevelCache;
+		private ?SchemaIntrospectorInterface $schemaIntrospectorCache = null;
+
+		/**
+		 * Cached SqlServerFulltextIndexInspector instance, lazily created by
+		 * hasSqlServerFulltextIndex()/getSqlServerExtendedProperty(). Defaulted
+		 * inline for the same disableOriginalConstructor()-mock reason as
+		 * $schemaIntrospectorCache above.
+		 * @var SqlServerFulltextIndexInspector|null
+		 */
+		private ?SqlServerFulltextIndexInspector $sqlServerFulltextIndexInspectorCache = null;
+
+		/**
+		 * Cached SqliteFulltextIndexInspector instance, lazily created by
+		 * getSqliteFts5BaseTable(). Defaulted inline for the same
+		 * disableOriginalConstructor()-mock reason as $schemaIntrospectorCache
+		 * above.
+		 * @var SqliteFulltextIndexInspector|null
+		 */
+		private ?SqliteFulltextIndexInspector $sqliteFulltextIndexInspectorCache = null;
+
+		/**
+		 * Cached SqlServerCompatibilityLevelInspector instance, lazily created by getSqlServerCompatibilityLevel().
+		 * @var SqlServerCompatibilityLevelInspector|null
+		 */
+		private ?SqlServerCompatibilityLevelInspector $sqlServerCompatibilityLevelInspectorCache = null;
+
+		/**
+		 * Cached RoutineSchemaIntrospector instance, lazily created by getRoutineSchema().
+		 * @var RoutineSchemaIntrospector|null
+		 */
+		private ?RoutineSchemaIntrospector $routineSchemaIntrospectorCache = null;
+
+		/** @var RoutineDefinitionInspector|null Lazily created inspector; routine metadata itself is not cached */
+		private ?RoutineDefinitionInspector $routineDefinitionInspectorCache = null;
+
+		/** @var EventBindingInspector|null Lazily created inspector */
+		private ?EventBindingInspector $eventBindingInspectorCache = null;
+
+		/** @var RoutineDependencyInspector|null Lazily created inspector */
+		private ?RoutineDependencyInspector $routineDependencyInspectorCache = null;
 		
 		/**
 		 * Constructs a new database adapter instance
@@ -83,9 +132,16 @@
 			$this->last_error = 0;
 			$this->last_error_message = '';
 			$this->transaction_depth = 0;
+			$this->transaction_rollback_only = false;
 			$this->databaseTypeCache = null;
-			$this->phinxAdapterCache = null;
-			$this->sqlServerCompatibilityLevelCache = null;
+
+			// SQLite disables foreign-key enforcement per-connection by default, even when
+			// the schema declares real FK constraints. Without this, a constraint generated
+			// from an @Orm\ForeignKey annotation (or any FK already present in the schema)
+			// would silently do nothing on SQLite.
+			if ($this->getDatabaseType() === 'sqlite') {
+				$this->execute('PRAGMA foreign_keys = ON');
+			}
 		}
 		
 		// ==================== Connection & Driver Info ====================
@@ -147,73 +203,70 @@
 		}
 		
 		/**
-		 * Returns the schema collection for database introspection
+		 * Returns the schema collection for database introspection.
+		 *
+		 * Deliberately builds a plain, uncached SchemaCollection directly
+		 * rather than calling Connection::getSchemaCollection() — that method
+		 * wraps it in a CachedCollection whenever the connection's
+		 * `cacheMetadata` config is truthy, which requires a configured Cache
+		 * pool (the cakephp/cache package). ObjectQuel doesn't depend on
+		 * cakephp/cache, and schema introspection here isn't hot-path enough
+		 * to need cross-request caching, so this sidesteps a hard dependency
+		 * the connection's own config might otherwise silently require.
 		 * @return CollectionInterface Schema collection providing access to table metadata
 		 */
 		public function getSchemaCollection(): CollectionInterface {
-			return $this->connection->getSchemaCollection();
+			return new SchemaCollection($this->connection);
 		}
-		
+
 		/**
-		 * Creates a Phinx adapter instance from the current CakePHP connection
-		 * Maps CakePHP driver configuration to Phinx adapter format for schema migration support.
-		 * The instance is cached for the lifetime of this DatabaseAdapter, since the
-		 * underlying CakePHP connection config is immutable after construction.
-		 * @return AdapterInterface Phinx adapter instance configured for the current database
+		 * Returns the per-engine schema introspector for the connected
+		 * database (columns/foreign keys/index usage stats — see
+		 * SchemaIntrospectorInterface), matching the same closed enumeration
+		 * getDatabaseType() and every other engine-dispatch match() in this
+		 * class already use. 'default' falls back to NullSchemaIntrospector
+		 * for a future unmapped engine value, not a branch reachable today.
+		 * @return SchemaIntrospectorInterface
 		 */
-		public function getPhinxAdapter(): AdapterInterface {
-			if ($this->phinxAdapterCache !== null) {
-				return $this->phinxAdapterCache;
+		private function getSchemaIntrospector(): SchemaIntrospectorInterface {
+			if ($this->schemaIntrospectorCache !== null) {
+				return $this->schemaIntrospectorCache;
 			}
-			
-			// Use the existing connection instead of fetching 'default'
-			$connection = $this->connection;
-			
-			/**
-			 * Get the CakePHP connection config
-			 * @var array<string, string> $config
-			 */
-			$config = $connection->config();
-			
-			// Map CakePHP driver to Phinx adapter name
-			$driverMap = [
-				'Cake\Database\Driver\Mysql'     => 'mysql',
-				'Cake\Database\Driver\Postgres'  => 'pgsql',
-				'Cake\Database\Driver\Sqlite'    => 'sqlite',
-				'Cake\Database\Driver\Sqlserver' => 'sqlsrv'
-			];
-			
-			// Get the appropriate adapter name
-			$adapter = $driverMap[$config['driver']] ?? 'mysql';
-			
-			// Convert CakePHP connection config to Phinx format
-			$phinxConfig = [
-				'adapter' => $adapter,
-				'host'    => $config['host'] ?? 'localhost',
-				'name'    => $config['database'],
-				'user'    => $config['username'],
-				'pass'    => $config['password'],
-				'port'    => $config['port'] ?? 3306,
-				'charset' => $config['encoding'] ?? 'utf8mb4',
-			];
-			
-			// Create and cache the adapter
-			$this->phinxAdapterCache = AdapterFactory::instance()->getAdapter($phinxConfig['adapter'], $phinxConfig);
-			return $this->phinxAdapterCache;
+
+			return $this->schemaIntrospectorCache = match ($this->getDatabaseType()) {
+				'sqlite'           => new SqliteSchemaIntrospector($this),
+				'mysql', 'mariadb' => new MysqlSchemaIntrospector($this),
+				'pgsql'            => new PostgresSchemaIntrospector($this),
+				'sqlsrv'           => new SqlServerSchemaIntrospector($this),
+				default            => new NullSchemaIntrospector(),
+			};
 		}
-		
-		// ==================== Database Capability Detection ====================
-		
+
 		/**
-		 * Checks whether the database supports native ENUM column types
-		 * @return bool True if native ENUM types are supported (MySQL/MariaDB), false otherwise
+		 * Returns the SQL Server fulltext-index inspector, lazily created and
+		 * cached for the lifetime of this adapter. Unlike getSchemaIntrospector(),
+		 * this isn't engine-dispatched — there's exactly one implementation,
+		 * since fulltext-index support has no MySQL/PostgreSQL/SQLite
+		 * equivalent (see SqlServerFulltextIndexInspector).
+		 * @return SqlServerFulltextIndexInspector
 		 */
-		public function supportsNativeEnums(): bool {
-			return in_array($this->getDatabaseType(), ['mysql', 'mariadb'], true);
+		private function getSqlServerFulltextIndexInspector(): SqlServerFulltextIndexInspector {
+			return $this->sqlServerFulltextIndexInspectorCache ??= new SqlServerFulltextIndexInspector($this);
 		}
-		
+
+		/**
+		 * Returns the SQLite fulltext-index inspector, lazily created and
+		 * cached for the lifetime of this adapter. See
+		 * getSqlServerFulltextIndexInspector() for why this isn't
+		 * engine-dispatched the way getSchemaIntrospector() is.
+		 * @return SqliteFulltextIndexInspector
+		 */
+		private function getSqliteFulltextIndexInspector(): SqliteFulltextIndexInspector {
+			return $this->sqliteFulltextIndexInspectorCache ??= new SqliteFulltextIndexInspector($this);
+		}
+
 		// ==================== Schema Introspection ====================
-		
+
 		/**
 		 * Retrieves a list of all tables in the database (excluding views)
 		 * @return string[] List of table names
@@ -222,131 +275,134 @@
 			$schemaCollection = $this->getSchemaCollection();
 			return $schemaCollection->listTablesWithoutViews();
 		}
-		
+
 		/**
-		 * Retrieves detailed column definitions for a database table
+		 * Retrieves detailed column definitions for a database table, via
+		 * native per-engine SQL introspection (see
+		 * objectquel-phinx-removal-plan.md — this replaced Phinx's
+		 * AdapterInterface::getColumns()).
 		 * @param string $tableName Name of the table to analyze
 		 * @return array<string, ColumnDefinition>
 		 */
 		public function getColumns(string $tableName): array {
-			// Fetch the Phinx adapter
-			$phinxAdapter = $this->getPhinxAdapter();
-			
-			// Get primary key columns first so we can mark them in column definitions
-			$primaryKey = $this->getPrimaryKeyColumns($tableName);
-			
-			// Fetch and process each column in the table
-			$result = [];
-			
-			foreach ($phinxAdapter->getColumns($tableName) as $column) {
-				$columnType = $column->getType();
-				$isOfDecimalType = in_array(strtolower($columnType), self::DECIMAL_TYPES);
-				
-				$columnData = [
-					// Basic column type (integer, string, decimal, etc.)
-					'type'        => $columnType,
-					
-					// PHP type of this column
-					'php_type'    => TypeMapper::phinxTypeToPhpType($columnType),
-					
-					// Maximum length for string types or display width for numeric types
-					// Only apply if the column type supports limits
-					'limit'       => $column->getLimit() ?? TypeMapper::getDefaultLimit($columnType),
-					
-					// Default value for the column if not specified during insert
-					'default'     => $column->getDefault(),
-					
-					// Whether NULL values are allowed in this column
-					'nullable'    => $column->getNull(),
-					
-					// For numeric types: total number of digits (precision)
-					'precision'   => $isOfDecimalType ? $column->getPrecision() : null,
-					
-					// For decimal types: number of digits after decimal point
-					'scale'       => $isOfDecimalType ? $column->getScale() : null,
-					
-					// Whether column allows negative values (converted from signed to unsigned)
-					'unsigned'    => !$column->getSigned(),
-					
-					// For generated columns (computed values based on expressions)
-					'generated'   => $column->getGenerated(),
-					
-					// Whether column auto-increments (typically for primary keys)
-					'identity'    => $column->getIdentity(),
-					
-					// Whether this column is part of the primary key
-					'primary_key' => in_array($column->getName(), $primaryKey, true),
-					
-					// Values for enums
-					'values'      => $column->getValues()
-				];
-				
-				// For enums put the max length in the column data.
-				// This is needed to be able to compare entity data with database data
-				if ($columnType === 'enum') {
-					$columnData['limit'] = $this->resolveEnumLimit($column->getValues());
-				}
-				
-				$result[$column->getName()] = $columnData;
-			}
-			
-			return $result;
+			return $this->getSchemaIntrospector()->getColumns($tableName);
 		}
 		
 		/**
-		 * Returns the current database's compatibility level on SQL Server
-		 * (e.g. 170 for SQL Server 2025), or null if it could not be determined
-		 * or the connection is not SQL Server. Result is cached for the lifetime
-		 * of this adapter instance.
-		 *
-		 * Compatibility level is a per-database setting independent of the
-		 * engine version — a SQL Server 2025 instance can host a database still
-		 * pinned to an older compatibility level (e.g. migrated without ever
-		 * raising it), so the engine version returned by getServerVersion()
-		 * alone cannot answer "which T-SQL features does this database support".
-		 *
+		 * Returns the current database's compatibility level on SQL Server (e.g. 170 for SQL Server 2025),
+		 * or null if it could not be determined.
 		 * @return int|null
+		 * @see SqlServerCompatibilityLevelInspector::getCompatibilityLevel()
 		 */
 		public function getSqlServerCompatibilityLevel(): ?int {
-			// Return cache
-			if ($this->sqlServerCompatibilityLevelCache !== null) {
-				return $this->sqlServerCompatibilityLevelCache;
-			}
-			
-			// DB_NAME() resolves to the current connection's database, so this
-			// works without the caller needing to know or pass the database name.
-			$stmt = $this->execute(
-				"SELECT DATABASEPROPERTYEX(DB_NAME(), 'CompatibilityLevel') AS compat_level"
-			);
-			
-			if ($stmt === null) {
-				return null;
-			}
-			
-			$row = $stmt->fetchAssoc();
-			$stmt->closeCursor();
-			
-			if (!$row || !isset($row['compat_level'])) {
-				return null;
-			}
-			
-			return $this->sqlServerCompatibilityLevelCache = (int)$row['compat_level'];
+			$this->sqlServerCompatibilityLevelInspectorCache ??= new SqlServerCompatibilityLevelInspector($this);
+			return $this->sqlServerCompatibilityLevelInspectorCache->getCompatibilityLevel();
 		}
-		
+
 		/**
-		 * Computes the storage limit for an enum column based on its longest case.
-		 * Falls back to a minimum of 32 to leave headroom for entity-side comparisons
-		 * against database data, even when the enum has no defined values.
-		 * @param array<int, string>|null $values Enum case values
-		 * @return int Limit to use for the column definition
+		 * Reads a routine's kind and normalized return type from the database catalog.
+		 * @param string $name Routine name as written
+		 * @return RoutineSignature
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When missing, ambiguous, unsupported, or the lookup fails
 		 */
-		private function resolveEnumLimit(?array $values): int {
-			if (empty($values)) {
-				return 32;
-			}
-			
-			$maxLength = max(array_map('strlen', $values));
-			return max($maxLength, 32);
+		public function getRoutineSignature(string $name): RoutineSignature {
+			$this->routineDefinitionInspectorCache ??= new RoutineDefinitionInspector($this);
+			return $this->routineDefinitionInspectorCache->getRoutineSignature($name);
+		}
+
+		/**
+		 * Reads a routine's full JSON metadata, for binding validation.
+		 * @param string $name Routine name as written
+		 * @return array<string, mixed> Decoded metadata
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When missing, ambiguous, unmanaged, or the lookup fails
+		 * @see RoutineDefinitionInspector::getRoutineMetadata()
+		 */
+		public function getRoutineMetadata(string $name): array {
+			$this->routineDefinitionInspectorCache ??= new RoutineDefinitionInspector($this);
+			return $this->routineDefinitionInspectorCache->getRoutineMetadata($name);
+		}
+
+		/**
+		 * Checks whether a trigger by this name already exists on this table.
+		 * @param string $table Physical table the trigger would be on
+		 * @param string $name Generated trigger name
+		 * @return bool
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see EventBindingInspector::triggerExists()
+		 */
+		public function triggerExists(string $table, string $name): bool {
+			$this->eventBindingInspectorCache ??= new EventBindingInspector($this);
+			return $this->eventBindingInspectorCache->triggerExists($table, $name);
+		}
+
+		/**
+		 * Finds every trigger that depends on this routine, so `destroy function` can refuse
+		 * while one still calls it.
+		 * @param string $routineName Routine a `destroy function` would remove
+		 * @return list<string> Names of dependent triggers; empty when none depend on it
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::findDependentTriggers()
+		 */
+		public function findDependentTriggers(string $routineName): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->findDependentTriggers($routineName);
+		}
+
+		/**
+		 * Finds every binding trigger on a table, so `alter table` can refuse to change a
+		 * mapped column while one still depends on it.
+		 * @param string $table Physical table being altered
+		 * @return list<string> Names of binding triggers found on it; empty when none exist
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::findBindingTriggersOnTable()
+		 */
+		public function findBindingTriggersOnTable(string $table): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->findBindingTriggersOnTable($table);
+		}
+
+		/**
+		 * Lists every live binding in the connected schema.
+		 * @return list<BindingListEntry>
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or triggers are unsupported
+		 * @see RoutineDependencyInspector::listBindings()
+		 */
+		public function listBindings(): array {
+			$this->routineDependencyInspectorCache ??= new RoutineDependencyInspector($this);
+			return $this->routineDependencyInspectorCache->listBindings();
+		}
+
+		/**
+		 * Checks whether a function or procedure has this name, without resolving its call signature.
+		 * @param string $name Routine name as written
+		 * @return bool True when either routine kind exists
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or routines are unsupported
+		 */
+		public function routineExists(string $name): bool {
+			$this->routineDefinitionInspectorCache ??= new RoutineDefinitionInspector($this);
+			return $this->routineDefinitionInspectorCache->routineExists($name);
+		}
+
+		/**
+		 * Lists every EQUEL-callable function and procedure in the connected schema.
+		 * @return list<RoutineListEntry>
+		 * @throws \Quellabs\ObjectQuel\Exception\QuelException When the lookup fails or routines are unsupported
+		 * @see RoutineDefinitionInspector::listRoutines()
+		 */
+		public function listRoutines(): array {
+			$this->routineDefinitionInspectorCache ??= new RoutineDefinitionInspector($this);
+			return $this->routineDefinitionInspectorCache->listRoutines();
+		}
+
+		/**
+		 * Returns the schema that qualifies routine names, or null when unqualified names are used.
+		 * @return string|null
+		 * @throws \RuntimeException When the default schema can't be read
+		 * @see RoutineSchemaIntrospector::getRoutineSchema()
+		 */
+		public function getRoutineSchema(): ?string {
+			$this->routineSchemaIntrospectorCache ??= new RoutineSchemaIntrospector($this);
+			return $this->routineSchemaIntrospectorCache->getRoutineSchema();
 		}
 		
 		/**
@@ -372,7 +428,7 @@
 		 */
 		public function getPrimaryKeyColumns(string $tableName): array {
 			// Get the schema descriptor for the specified table
-			$schema = $this->connection->getSchemaCollection()->describe($tableName);
+			$schema = $this->getSchemaCollection()->describe($tableName);
 			
 			// Iterate through all constraints defined on the table
 			foreach ($schema->constraints() as $constraint) {
@@ -433,10 +489,266 @@
 				];
 			}
 			
+			// CakePHP's schema model treats UNIQUE indexes as table constraints, not as
+			// indexes: $tableSchema->indexes() only ever yields plain KEY / FULLTEXT
+			// entries. Without reading constraints() too, every UNIQUE index would be
+			// invisible here and would be reported as "missing" by IndexComparator on
+			// every single make:migrations run, forever, even immediately after it was
+			// created.
+			foreach ($tableSchema->constraints() as $constraintName) {
+				$constraint = $tableSchema->getConstraint($constraintName);
+				
+				// getConstraint() can theoretically return null on race conditions or
+				// schema inconsistencies, so guard defensively. Only unique constraints
+				// are relevant here; primary keys and foreign keys are handled elsewhere.
+				if ($constraint === null || $constraint['type'] !== 'unique') {
+					continue;
+				}
+				
+				/** @var array{type: string, columns: array<string>} $constraint */
+				$result[$constraintName] = [
+					'type'    => 'unique',
+					'columns' => $constraint['columns'],
+					'length'  => null,
+				];
+			}
+
+			if ($this->getDatabaseType() === 'pgsql' && $result !== []) {
+				$statement = $this->execute("
+					SELECT i.relname AS index_name, a.attname AS column_name
+					FROM pg_class t
+					JOIN pg_namespace n ON n.oid = t.relnamespace
+					JOIN pg_index x ON x.indrelid = t.oid
+					JOIN pg_class i ON i.oid = x.indexrelid
+					JOIN LATERAL unnest(x.indkey) WITH ORDINALITY AS k(attnum, position) ON true
+					JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+					WHERE n.nspname = current_schema() AND t.relname = :tableName
+					ORDER BY i.relname, k.position
+				", ['tableName' => $tableName]);
+				$orderedColumns = [];
+				foreach ($statement?->fetchAll('assoc') ?? [] as $row) {
+					$orderedColumns[$row['index_name']][] = $row['column_name'];
+				}
+				foreach ($orderedColumns as $indexName => $columns) {
+					if (isset($result[$indexName])) {
+						$result[$indexName]['columns'] = $columns;
+					}
+				}
+			}
+			
 			return $result;
 		}
-		
+
+		/**
+		 * Whether a SQL Server table currently has a fulltext index. See
+		 * SqlServerFulltextIndexInspector::hasFulltextIndex() for the
+		 * underlying query and why this can't reuse getIndexes().
+		 * @param string $tableName
+		 * @return bool
+		 */
+		public function hasSqlServerFulltextIndex(string $tableName): bool {
+			return $this->getSqlServerFulltextIndexInspector()->hasFulltextIndex($tableName);
+		}
+
+		/**
+		 * Reads a SQL Server table-level extended property. See
+		 * SqlServerFulltextIndexInspector::getExtendedProperty() for the
+		 * underlying query and how callers use it.
+		 * @param string $tableName
+		 * @param string $propertyName
+		 * @return string|null The property's value, or null if unset
+		 */
+		public function getSqlServerExtendedProperty(string $tableName, string $propertyName): ?string {
+			return $this->getSqlServerFulltextIndexInspector()->getExtendedProperty($tableName, $propertyName);
+		}
+
+		/**
+		 * Returns the base table name a SQLite FTS5 external-content virtual
+		 * table named $indexName was built against, or null if no such
+		 * virtual table exists. See
+		 * SqliteFulltextIndexInspector::getFts5BaseTable() for the underlying
+		 * parsing.
+		 * @param string $indexName
+		 * @return string|null
+		 */
+		public function getSqliteFts5BaseTable(string $indexName): ?string {
+			return $this->getSqliteFulltextIndexInspector()->getFts5BaseTable($indexName);
+		}
+
+		/**
+		 * Returns every SQLite FTS5 external-content virtual table built
+		 * against $tableName, keyed by its own name, with the columns it
+		 * indexes. See SqliteFulltextIndexInspector::getFts5IndexesForTable()
+		 * for why this exists — getIndexes() can never report these itself.
+		 * @param string $tableName
+		 * @return array<string, array{columns: list<string>}>
+		 */
+		public function getSqliteFts5IndexesForTable(string $tableName): array {
+			return $this->getSqliteFulltextIndexInspector()->getFts5IndexesForTable($tableName);
+		}
+
+		/**
+		 * Retrieves foreign key constraint definitions for a database table.
+		 *
+		 * Implemented for every engine getDatabaseType() can identify; the
+		 * 'default' branch is a defensive fallback for a future unmapped engine,
+		 * returning an empty array rather than throwing. Callers that diff
+		 * against the result should check
+		 * PlatformCapabilitiesInterface::supportsForeignKeyIntrospection() first —
+		 * an empty result there means "not introspectable", not "none exist".
+		 * @param string $tableName
+		 * @return array<string, ForeignKeyDefinition> Constraint name => definition
+		 */
+		public function getForeignKeys(string $tableName): array {
+			return $this->getSchemaIntrospector()->getForeignKeys($tableName);
+		}
+
+		// ==================== Index Usage Statistics ====================
+
+		/**
+		 * Retrieves per-index read/write usage counters. Only MySQL/MariaDB
+		 * (performance_schema) and PostgreSQL (pg_stat_user_indexes) expose this;
+		 * other engines return null. Null means "unavailable", not "zero".
+		 * @param string[] $tables Table names to fetch statistics for
+		 * @return array<string, array<string, IndexUsageStats>>|null Table name => index name => stats
+		 */
+		public function getIndexUsageStatistics(array $tables): ?array {
+			return $this->getSchemaIntrospector()->getIndexUsageStatistics($tables);
+		}
+
 		// ==================== Query Execution ====================
+
+		/**
+		 * Executes a SQL query with optional parameter binding
+		 * @param string $query SQL query to execute
+		 * @param array<int|string, mixed> $parameters Parameter values for prepared statement placeholders
+		 * @return StatementInterface|null Statement object on success, false on failure
+		 */
+		public function execute(string $query, array $parameters = []): ?StatementInterface {
+			try {
+				$this->deduplicateParameters($query, $parameters);
+				return $this->connection->execute($query, $parameters, $this->booleanParameterTypes($parameters));
+			} catch (\Exception $exception) {
+				$previous = $exception->getPrevious();
+				$this->last_error = $this->getDatabaseType() === 'pgsql' && $previous instanceof \PDOException
+					? $previous->getCode()
+					: $exception->getCode();
+				$this->last_error_message = $exception->getMessage();
+				return null;
+			}
+		}
+		
+		/**
+		 * Retrieves the auto-generated ID from the last INSERT operation
+		 * @return int|string|false The last insert ID, or false if not available
+		 */
+		public function getInsertId(): int|string|false {
+			return $this->connection->getDriver()->lastInsertId();
+		}
+		
+		/**
+		 * Escapes a database identifier (table or column name)
+		 * @param string $identifier The identifier to escape
+		 * @return string The escaped identifier wrapped in the driver's quote character
+		 */
+		public function escapeIdentifier(string $identifier): string {
+			return $this->connection->getDriver()->quoteIdentifier($identifier);
+		}
+		
+		// ==================== Error Handling ====================
+		
+		/**
+		 * Returns the error code from the last failed query
+		 * @return int|string Error code or SQLSTATE (0 indicates no error)
+		 */
+		public function getLastError(): int|string {
+			return $this->last_error;
+		}
+		
+		/**
+		 * Returns the error message from the last failed query
+		 * @return string Error message text (empty string indicates no error)
+		 */
+		public function getLastErrorMessage(): string {
+			return $this->last_error_message;
+		}
+		
+		// ==================== Transaction Management ====================
+		
+		/**
+		 * Begins a new database transaction.
+		 *
+		 * Nesting is depth-counted, not savepoint-based: a nested
+		 * rollbackTrans() marks the whole transaction rollback-only rather
+		 * than rolling back immediately, so an outer commitTrans() still
+		 * rolls back instead of silently committing.
+		 *
+		 * @return void
+		 */
+		public function beginTrans(): void {
+			if ($this->transaction_depth == 0) {
+				$this->connection->begin();
+			}
+
+			$this->transaction_depth++;
+		}
+
+		/**
+		 * Commits the current transaction.
+		 * See beginTrans() for notes on logical (depth-counted) nesting.
+		 * @return void
+		 * @throws \LogicException If called without a matching beginTrans()
+		 * @throws \LogicException If a nested rollbackTrans() had already marked the transaction rollback-only — rolled back, not committed, before this throws
+		 */
+		public function commitTrans(): void {
+			if ($this->transaction_depth <= 0) {
+				throw new \LogicException('commitTrans() called without an active transaction');
+			}
+
+			$this->transaction_depth--;
+
+			if ($this->transaction_depth == 0) {
+				if ($this->transaction_rollback_only) {
+					$this->transaction_rollback_only = false;
+					$this->connection->rollback();
+					throw new \LogicException('commitTrans() called on a transaction a nested rollbackTrans() had already marked rollback-only — the transaction was rolled back, not committed');
+				}
+
+				$this->connection->commit();
+			}
+		}
+
+		/**
+		 * Rolls back the current transaction.
+		 * See beginTrans() for notes on logical (depth-counted) nesting.
+		 * @return void
+		 * @throws \LogicException If called without a matching beginTrans()
+		 */
+		public function rollbackTrans(): void {
+			if ($this->transaction_depth <= 0) {
+				throw new \LogicException('rollbackTrans() called without an active transaction');
+			}
+
+			$this->transaction_depth--;
+
+			if ($this->transaction_depth == 0) {
+				$this->transaction_rollback_only = false;
+				$this->connection->rollback();
+			} else {
+				$this->transaction_rollback_only = true;
+			}
+		}
+		
+		// ==================== Helpers ====================
+		
+		/**
+		 * Cake binds untyped values as strings, turning false into '', which strict-mode MySQL rejects for a boolean column.
+		 * @param array<int|string, mixed> $parameters
+		 * @return array<int|string, string> Cake type 'boolean' for each bool parameter
+		 */
+		private function booleanParameterTypes(array $parameters): array {
+			return array_map(fn() => 'boolean', array_filter($parameters, 'is_bool'));
+		}
 		
 		/**
 		 * Rewrites duplicate named parameters so PDO can bind them.
@@ -444,7 +756,7 @@
 		 * @param array<int|string, mixed> $parameters The parameter bindings, expanded in place
 		 * @return void
 		 */
-		protected function deduplicateParameters(string &$sql, array &$parameters): void {
+		private function deduplicateParameters(string &$sql, array &$parameters): void {
 			// Track how many times each named parameter has been seen so far
 			$seen = [];
 			
@@ -477,112 +789,5 @@
 				},
 				$sql
 			) ?? $sql;
-		}
-		
-		/**
-		 * Executes a SQL query with optional parameter binding
-		 * @param string $query SQL query to execute
-		 * @param array<int|string, mixed> $parameters Parameter values for prepared statement placeholders
-		 * @return StatementInterface|null Statement object on success, false on failure
-		 */
-		public function execute(string $query, array $parameters = []): ?StatementInterface {
-			try {
-				$this->deduplicateParameters($query, $parameters);
-				return $this->connection->execute($query, $parameters);
-			} catch (\Exception $exception) {
-				$this->last_error = $exception->getCode();
-				$this->last_error_message = $exception->getMessage();
-				return null;
-			}
-		}
-		
-		/**
-		 * Retrieves the auto-generated ID from the last INSERT operation
-		 * @return int|string|false The last insert ID, or false if not available
-		 */
-		public function getInsertId(): int|string|false {
-			return $this->connection->getDriver()->lastInsertId();
-		}
-		
-		/**
-		 * Escapes a database identifier (table or column name)
-		 * @param string $identifier The identifier to escape
-		 * @return string The escaped identifier wrapped in the driver's quote character
-		 */
-		public function escapeIdentifier(string $identifier): string {
-			return $this->connection->getDriver()->quoteIdentifier($identifier);
-		}
-		
-		// ==================== Error Handling ====================
-		
-		/**
-		 * Returns the error code from the last failed query
-		 * @return int Error code (0 indicates no error)
-		 */
-		public function getLastError(): int {
-			return $this->last_error;
-		}
-		
-		/**
-		 * Returns the error message from the last failed query
-		 * @return string Error message text (empty string indicates no error)
-		 */
-		public function getLastErrorMessage(): string {
-			return $this->last_error_message;
-		}
-		
-		// ==================== Transaction Management ====================
-		
-		/**
-		 * Begins a new database transaction.
-		 *
-		 * Nesting is depth-counted, not savepoint-based: an inner
-		 * rollbackTrans() does not roll back immediately, it only rolls
-		 * back once the outermost call unwinds.
-		 *
-		 * @return void
-		 */
-		public function beginTrans(): void {
-			if ($this->transaction_depth == 0) {
-				$this->connection->begin();
-			}
-			
-			$this->transaction_depth++;
-		}
-		
-		/**
-		 * Commits the current transaction.
-		 * See beginTrans() for notes on logical (depth-counted) nesting.
-		 * @return void
-		 * @throws \LogicException If called without a matching beginTrans()
-		 */
-		public function commitTrans(): void {
-			if ($this->transaction_depth <= 0) {
-				throw new \LogicException('commitTrans() called without an active transaction');
-			}
-			
-			$this->transaction_depth--;
-			
-			if ($this->transaction_depth == 0) {
-				$this->connection->commit();
-			}
-		}
-		
-		/**
-		 * Rolls back the current transaction.
-		 * See beginTrans() for notes on logical (depth-counted) nesting.
-		 * @return void
-		 * @throws \LogicException If called without a matching beginTrans()
-		 */
-		public function rollbackTrans(): void {
-			if ($this->transaction_depth <= 0) {
-				throw new \LogicException('rollbackTrans() called without an active transaction');
-			}
-			
-			$this->transaction_depth--;
-			
-			if ($this->transaction_depth == 0) {
-				$this->connection->rollback();
-			}
 		}
 	}

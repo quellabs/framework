@@ -20,10 +20,7 @@
 		
 		/** @var int Default number of records per page when window size is not specified */
 		private const int DEFAULT_WINDOW_SIZE = 1;
-		
-		/** @var string Default sort order when ASC/DESC is not explicitly specified */
-		private const string DEFAULT_SORT_ORDER = '';
-		
+
 		/** @var bool Whether this retrieve is for a temporary table (affects column aliasing) */
 		private bool $isTemporaryTable;
 		
@@ -32,10 +29,10 @@
 		
 		/** @var ArithmeticExpression Parser rule for handling arithmetic expressions in field lists and sort clauses */
 		private ArithmeticExpression $expressionRule;
-		
-		/** @var FilterExpression Parser rule for handling filter expressions in WHERE clauses */
-		private FilterExpression $filterExpressionRule;
-		
+
+		/** @var WhereClause Parser rule for the optional WHERE clause */
+		private WhereClause $whereClauseRule;
+
 		/**
 		 * Initialize the Retrieve parser with required dependencies.
 		 * @param Lexer $lexer The lexer instance for token processing
@@ -44,9 +41,9 @@
 			$this->lexer = $lexer;
 			$this->isTemporaryTable = $isTemporaryTable;
 			$this->expressionRule = new ArithmeticExpression($this->lexer);
-			$this->filterExpressionRule = new FilterExpression($this->lexer);
+			$this->whereClauseRule = new WhereClause($this->lexer);
 		}
-		
+
 		/**
 		 * Parse a complete 'retrieve' statement from the ObjectQuel language.
 		 * @param array<mixed> $directives Query modification directives affecting behavior
@@ -55,8 +52,8 @@
 		 * @throws LexerException|ParserException on parsing or lexical errors
 		 */
 		public function parse(array $directives, array $ranges): AstRetrieve {
-			$this->lexer->match(Token::Retrieve);
-			
+			$this->lexer->matchKeyword('retrieve');
+
 			$retrieve = new AstRetrieve(
 				$directives,
 				$ranges,
@@ -201,9 +198,7 @@
 		 * @throws LexerException|ParserException on parsing errors in filter expression
 		 */
 		private function parseWhereClause(AstRetrieve $retrieve): void {
-			if ($this->lexer->optionalMatch(Token::Where)) {
-				$retrieve->setConditions($this->filterExpressionRule->parse());
-			}
+			$retrieve->setConditions($this->whereClauseRule->parseOptional());
 		}
 		
 		/**
@@ -215,48 +210,10 @@
 			if (!$this->lexer->optionalMatch(Token::Sort)) {
 				return;
 			}
-			
+
 			$this->lexer->match(Token::By);
-			$sortArray = $this->parseSortExpressions();
+			$sortArray = (new SortExpressionParser($this->lexer, $this->expressionRule))->parse();
 			$retrieve->setSort($sortArray);
-		}
-		
-		/**
-		 * Parse individual sort expressions and their order specifications.
-		 * @return array<int, array{ast: AstInterface, order: string}> Array of sort specifications with 'ast' and 'order' keys
-		 * @throws LexerException|ParserException on expression parsing errors
-		 */
-		private function parseSortExpressions(): array {
-			$sortArray = [];
-			
-			do {
-				$expression = $this->expressionRule->parse();
-				$order = $this->parseSortOrder();
-				
-				$sortArray[] = [
-					'ast'   => $expression,
-					'order' => $order
-				];
-			} while ($this->lexer->optionalMatch(Token::Comma));
-			
-			return $sortArray;
-		}
-		
-		/**
-		 * Parse the sort order specification (ASC/DESC) for a sort expression.
-		 * @return string Sort order: 'asc', 'desc', or default empty string
-		 * @throws LexerException
-		 */
-		private function parseSortOrder(): string {
-			if ($this->lexer->optionalMatch(Token::Asc)) {
-				return 'asc';
-			}
-			
-			if ($this->lexer->optionalMatch(Token::Desc)) {
-				return 'desc';
-			}
-			
-			return self::DEFAULT_SORT_ORDER;
 		}
 		
 		/**
@@ -272,14 +229,14 @@
 			
 			// Parse the required window number (which window/page to retrieve)
 			// This represents the page number or window index in the result set
-			$windowNumber = $this->lexer->match(Token::Number);
+			$page = SignedNumber::parse($this->lexer);
 			
 			// Parse the window size specification (how many records per window)
 			$windowSize = $this->parseWindowSize();
 			
 			// Apply the parsed pagination settings to the retrieve AST node
 			// Set which window/page number to retrieve (0-based)
-			$retrieve->setWindow((int)$windowNumber->getNumericValue());
+			$retrieve->setWindow($page);
 			
 			// Set how many records should be included in each window/page
 			$retrieve->setWindowSize($windowSize);
@@ -287,26 +244,24 @@
 		
 		/**
 		 * Parse the window size specification from a WINDOW clause.
-		 * @return int The parsed window size or default if not specified
+		 * @return int|float The parsed window size or default if not specified
 		 * @throws LexerException on parsing errors
 		 */
-		private function parseWindowSize(): int {
+		private function parseWindowSize(): int|float {
 			// Short notation: WINDOW 1, 10
 			if ($this->lexer->optionalMatch(Token::Comma)) {
-				$sizeToken = $this->lexer->match(Token::Number);
-				return (int)$sizeToken->getNumericValue();
+				return SignedNumber::parse($this->lexer);
 			}
 			
 			// Explicit notation: WINDOW 1 USING WINDOW_SIZE 10
 			if ($this->lexer->optionalMatch(Token::Using)) {
 				$this->lexer->match(Token::WindowSize);
-				$sizeToken = $this->lexer->match(Token::Number);
-				return (int)$sizeToken->getNumericValue();
+				return SignedNumber::parse($this->lexer);
 			}
 			
 			return self::DEFAULT_WINDOW_SIZE;
 		}
-		
+
 		/**
 		 * Consume an optional trailing semicolon from the retrieve statement.
 		 * @throws LexerException if semicolon token cannot be properly consumed

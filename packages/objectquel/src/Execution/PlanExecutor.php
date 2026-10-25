@@ -3,11 +3,13 @@
 	namespace Quellabs\ObjectQuel\Execution;
 	
 	use Quellabs\ObjectQuel\EntityStore;
+	use Quellabs\ObjectQuel\Execution\ExecutionContext;
 	use Quellabs\ObjectQuel\Planner\ExecutionStageInterface;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
-	use Quellabs\ObjectQuel\Execution\Executors\ConstantQueryExecutor;
-	use Quellabs\ObjectQuel\Execution\Executors\DatabaseQueryExecutor;
-	use Quellabs\ObjectQuel\Execution\Executors\JsonQueryExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\ConstantRetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\RetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Executors\JsonRetrieveExecutor;
+	use Quellabs\ObjectQuel\Execution\Helpers\ConditionEvaluator;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeJsonSource;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
@@ -48,9 +50,9 @@
 		
 		/**
 		 * Executor responsible for regular database queries
-		 * @var DatabaseQueryExecutor
+		 * @var RetrieveExecutor
 		 */
-		private DatabaseQueryExecutor $databaseExecutor;
+		private RetrieveExecutor $databaseExecutor;
 		
 		/**
 		 * Executor responsible for materializing external-source subqueries as temp tables.
@@ -60,15 +62,15 @@
 		
 		/**
 		 * Executor responsible for executing and materializing JSON data
-		 * @var JsonQueryExecutor
+		 * @var JsonRetrieveExecutor
 		 */
-		private JsonQueryExecutor $jsonExecutor;
+		private JsonRetrieveExecutor $jsonExecutor;
 		
 		/**
 		 * Executor responsible for evaluating constant-only (rangeless) queries
-		 * @var ConstantQueryExecutor
+		 * @var ConstantRetrieveExecutor
 		 */
-		private ConstantQueryExecutor $constantExecutor;
+		private ConstantRetrieveExecutor $constantExecutor;
 		
 		/**
 		 * Create a new plan executor
@@ -78,8 +80,12 @@
 			$this->queryExecutor = $queryExecutor;
 			$this->databaseExecutor = $queryExecutor->getDatabaseExecutor();
 			$this->jsonExecutor = $queryExecutor->getJsonExecutor();
-			$this->constantExecutor = new ConstantQueryExecutor();
-			$this->tempTableExecutor = new TempTableExecutor($queryExecutor->getConnection());
+			$this->constantExecutor = new ConstantRetrieveExecutor();
+			$this->tempTableExecutor = new TempTableExecutor(
+				$queryExecutor->getConnection(),
+				$queryExecutor->getEntityManager()->getEntityStore(),
+				$queryExecutor->getEntityManager()->getUnitOfWork()->getPlatformCapabilities()
+			);
 		}
 		
 		/**
@@ -110,14 +116,14 @@
 					if ($stage instanceof TempTableStage) {
 						// Materialize the inner query into a temp table before the outer
 						// database stage runs. This mutates the stage's AstRangeDatabase
-						// so QuelToSQL emits a plain table reference in subsequent stages.
+						// so QuelToSQLRetrieve emits a plain table reference in subsequent stages.
 						// TempTableStages contribute no rows to intermediate results.
 						$this->tempTableExecutor->execute(
 							$stage,
-							fn(ExecutionPlan $innerPlan) => $this->execute($innerPlan)
+							new ExecutionContext($stage->getStaticParams(), fn(ExecutionPlan $innerPlan) => $this->execute($innerPlan))
 						);
 					} elseif ($stage instanceof ConstantStage) {
-						$intermediateResults[$stage->getName()] = $this->constantExecutor->execute($stage);
+						$intermediateResults[$stage->getName()] = $this->constantExecutor->execute($stage, new ExecutionContext($stage->getStaticParams()));
 					} else {
 						$intermediateResults[$stage->getName()] = $this->executeStage($stage);
 					}
@@ -129,7 +135,15 @@
 				}
 				
 				// Combine all intermediate results into a single final result
-				return $this->combineResults($plan, $intermediateResults);
+				$combinedResult = $this->combineResults($plan, $intermediateResults);
+
+				// Per-stage conditions (ConditionFilter) are only a safe
+				// over-approximation once ranges are split across stages — e.g. a
+				// database range OR-ed with a JSON-source range — so re-apply the
+				// complete, unsplit WHERE condition now that every range's columns
+				// are present on the joined row, narrowing the possibly-over-fetched
+				// result back down to exactly the correct rows.
+				return $this->applyOriginalConditions($plan, $combinedResult, $stagesInOrder[0]->getStaticParams());
 			} finally {
 				// Always clean up temp tables, whether execution succeeded or failed.
 				$this->tempTableExecutor->cleanup();
@@ -145,10 +159,12 @@
 		 */
 		private function executeStage(ExecutionStageInterface $stage): array {
 			try {
+				$context = new ExecutionContext($stage->getStaticParams());
+
 				if ($stage->getRange() instanceof AstRangeJsonSource) {
-					return $this->jsonExecutor->execute($stage, $stage->getStaticParams());
+					return $this->jsonExecutor->execute($stage, $context);
 				} else {
-					return $this->databaseExecutor->execute($stage, $stage->getStaticParams());
+					return $this->databaseExecutor->execute($stage, $context);
 				}
 			} catch (QuelException $e) {
 				throw new QuelException("Stage '{$stage->getName()}' failed: {$e->getMessage()}", 'stage_error', 0, $e);
@@ -252,12 +268,43 @@
 			try {
 				// Create the join strategy on-demand for the specific join type
 				$strategy = $this->createJoinStrategy($joinType);
-				
+
 				// Execute the join using the selected strategy
 				return $strategy->join($leftResult, $rightResult, $joinConditions);
 			} catch (QuelException $e) {
 				// Wrap any join errors with additional context
 				throw new QuelException("Join failed ({$joinType}): {$e->getMessage()}", 'join_error', 0, $e);
+			}
+		}
+
+		/**
+		 * Re-applies the plan's complete, unsplit WHERE condition to the joined
+		 * result of every stage. Each stage's own condition (built by
+		 * ConditionFilter) is only a safe over-approximation once ranges are
+		 * split across stages — see ExecutionPlan::$originalConditions — so this
+		 * is what narrows the combined result back down to exactly the rows the
+		 * original query asked for, independent of how aggressively any single
+		 * stage could push its share of the condition down.
+		 * @param ExecutionPlan $plan
+		 * @param list<array<string, mixed>> $combinedResult
+		 * @param array<string, mixed> $staticParams
+		 * @return list<array<string, mixed>>
+		 * @throws QuelException
+		 */
+		private function applyOriginalConditions(ExecutionPlan $plan, array $combinedResult, array $staticParams): array {
+			$conditions = $plan->getOriginalConditions();
+
+			if ($conditions === null) {
+				return $combinedResult;
+			}
+
+			try {
+				return array_values(array_filter(
+					$combinedResult,
+					fn(array $row): bool => (bool)ConditionEvaluator::evaluate($conditions, $combinedResult, $row, $staticParams)
+				));
+			} catch (\Exception $e) {
+				throw new QuelException("Failed to re-apply the combined WHERE condition: {$e->getMessage()}", 'condition_evaluation_error', 0, $e);
 			}
 		}
 	}

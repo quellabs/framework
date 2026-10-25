@@ -45,7 +45,6 @@ The package requires:
 - Entity generation commands integrated with Canvas Sculpt
 - Database migration management
 - Entity-from-table generation
-- Phinx configuration automation
 
 ### ⚙️ **Framework Integration**
 - Seamless Canvas framework integration
@@ -134,7 +133,7 @@ php bin/sculpt make:migrations
 
 This command:
 - Analyzes differences between entities and database schema
-- Generates Phinx migration files
+- Generates ObjectQuel migration files
 - Includes index and constraint changes
 
 ### Run Migrations
@@ -158,12 +157,12 @@ php bin/sculpt quel:migrate --rollback --steps=3
 php bin/sculpt help quel:migrate
 ```
 
-### Generate Phinx Configuration
+### Write a Blank Migration
 
-Create a Phinx configuration file for advanced migration management:
+For data backfills or schema changes `make:migrations` can't infer from an entity diff:
 
 ```bash
-php bin/sculpt quel:create-phinx-config
+php bin/sculpt make:blank-migration <Name>
 ```
 
 ## Quick Start
@@ -251,7 +250,7 @@ The service providers include these default configuration values:
 | `host`                | `localhost`                            | Database host                 |
 | `port`                | `3306`                                 | Database port                 |
 | `encoding`            | `utf8mb4`                              | Character encoding            |
-| `collation`           | `utf8mb4_unicode_ci`                   | Database collation            |
+| `collation`           | database default                       | Collation of string variables in MySQL/MariaDB routines |
 | `entity_namespace`    | `App\\Entity`                          | Namespace for entity classes  |
 | `entity_path`         | `src/Entity`                           | Directory for entity classes  |
 | `proxy_namespace`     | `Quellabs\\ObjectQuel\\Proxy\\Runtime` | Namespace for proxy classes   |

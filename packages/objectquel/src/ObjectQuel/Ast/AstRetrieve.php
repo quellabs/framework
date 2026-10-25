@@ -22,7 +22,7 @@
 	 * - Uniqueness constraints (DISTINCT)
 	 * - Compiler directives
 	 */
-	class AstRetrieve extends Ast implements NodeWithConditions {
+	class AstRetrieve extends Ast implements AstStatement, NodeWithConditions, NodeWithRanges {
 		
 		/** @var array<string, mixed> Compiler directives that control query compilation behavior */
 		protected array $directives;
@@ -35,7 +35,10 @@
 		
 		/** @var AstInterface|null Filtering conditions (WHERE clause) */
 		protected ?AstInterface $conditions;
-		
+
+		/** @var AstInterface|null Aggregate filtering conditions (HAVING clause), populated by WhereHavingFilterRewriter */
+		protected ?AstInterface $having = null;
+
 		/**
 		 * Sorting specifications with AST nodes and direction
 		 * @var array<int, array{ast: AstInterface, direction?: string}>
@@ -48,15 +51,24 @@
 		/** @var bool Whether to return only unique results (DISTINCT) */
 		protected bool $unique;
 		
-		/** @var int|null Starting offset for pagination (OFFSET) */
-		protected ?int $window;
+		/** @var int|float|null Starting offset until semantic validation (OFFSET) */
+		protected int|float|null $window;
 		
-		/** @var int|null Maximum number of results to return (LIMIT) */
-		protected ?int $window_size;
+		/** @var int|float|null Maximum number until semantic validation (LIMIT) */
+		protected int|float|null $window_size;
 		
 		/** @var AstInterface[] Grouping specifications (GROUP BY clause) */
 		protected array $group_by;
-		
+
+		/**
+		 * @var array<string, true> Names of ranges added by WindowChainRewriter to
+		 * host an extracted nested sequence-function computation. Each is a
+		 * derived table joined 1:1 on primary key back to the query's real range,
+		 * so it never changes row cardinality — AggregateOptimizer's single-range
+		 * window eligibility check excludes these when counting "real" ranges.
+		 */
+		protected array $window_chain_helper_ranges = [];
+
 		/**
 		 * AstRetrieve constructor.
 		 * @param array<string, mixed> $directives Compiler directives for query optimization
@@ -112,7 +124,10 @@
 			
 			// Process conditions if they exist (WHERE clause)
 			$this->conditions?->accept($visitor);
-			
+
+			// Process aggregate filtering conditions if they exist (HAVING clause)
+			$this->having?->accept($visitor);
+
 			// Process sorting specifications (ORDER BY clause)
 			foreach ($this->sort as $s) {
 				$s['ast']->accept($visitor);
@@ -194,7 +209,24 @@
 			$conditions?->setParent($this);
 			$this->conditions = $conditions;
 		}
-		
+
+		/**
+		 * Returns the aggregate filtering conditions for this retrieve operation.
+		 * @return AstInterface|null The HAVING clause conditions or null if none
+		 */
+		public function getHaving(): ?AstInterface {
+			return $this->having;
+		}
+
+		/**
+		 * Sets the aggregate filtering conditions for this retrieve operation.
+		 * @param AstInterface|null $having The HAVING clause conditions, or null to remove them
+		 */
+		public function setHaving(?AstInterface $having): void {
+			$having?->setParent($this);
+			$this->having = $having;
+		}
+
 		/**
 		 * Returns all non-database ranges
 		 * @return AstRange[] Array of ranges that are not database tables
@@ -223,11 +255,30 @@
 		public function setRanges(array $ranges): void {
 			// Set new ranges array
 			$this->ranges = $ranges;
-			
+
 			// Establish parent relationships for all new ranges
 			foreach ($this->ranges as $range) {
 				$range->setParent($this);
 			}
+		}
+
+		/**
+		 * Marks a range as a WindowChainRewriter-added helper (see the property
+		 * docblock above).
+		 * @param string $rangeName
+		 * @return void
+		 */
+		public function addWindowChainHelperRange(string $rangeName): void {
+			$this->window_chain_helper_ranges[$rangeName] = true;
+		}
+
+		/**
+		 * Returns true if $rangeName was added by WindowChainRewriter.
+		 * @param string $rangeName
+		 * @return bool
+		 */
+		public function isWindowChainHelperRange(string $rangeName): bool {
+			return isset($this->window_chain_helper_ranges[$rangeName]);
 		}
 		
 		/**
@@ -298,16 +349,34 @@
 		/**
 		 * /**
 		 * Sets the sorting specifications for the ORDER BY clause.
-		 * @param array<int, array{ast: AstInterface, direction?: string}> $sortArray
+		 * @param array<int, array{ast: AstInterface, order?: string}> $sortArray
 		 * @return void
 		 */
 		public function setSort(array $sortArray): void {
 			$this->sort = $sortArray;
 		}
-		
+
+		/**
+		 * Replaces the expression of a sort term, keeping its order.
+		 * @param AstInterface $oldExpression Sort-term expression to replace
+		 * @param AstInterface $newExpression Replacement expression
+		 * @return bool True when $oldExpression was a sort-term expression
+		 */
+		public function replaceSortExpression(AstInterface $oldExpression, AstInterface $newExpression): bool {
+			foreach ($this->sort as $index => $sortItem) {
+				if ($sortItem['ast'] === $oldExpression) {
+					$this->sort[$index]['ast'] = $newExpression;
+					$newExpression->setParent($this);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		/**
 		 * Returns the current sorting specifications.
-		 * @return array<int, array{ast: AstInterface, direction?: string}>
+		 * @return array<int, array{ast: AstInterface, order?: string}>
 		 */
 		public function getSort(): array {
 			return $this->sort;
@@ -315,35 +384,35 @@
 		
 		/**
 		 * Sets the pagination window
-		 * @param int $window
+		 * @param int|float $window Parsed page number, normalized by semantic validation
 		 * @return void
 		 */
-		public function setWindow(int $window): void {
+		public function setWindow(int|float $window): void {
 			$this->window = $window;
 		}
 		
 		/**
 		 * Returns the pagination window.
-		 * @return int|null
+		 * @return int|float|null
 		 */
-		public function getWindow(): ?int {
+		public function getWindow(): int|float|null {
 			return $this->window;
 		}
 		
 		/**
 		 * Sets the maximum number of results to return.
-		 * @param int|null $windowSize
+		 * @param int|float|null $windowSize Parsed page size, normalized by semantic validation
 		 * @return void
 		 */
-		public function setWindowSize(?int $windowSize): void {
+		public function setWindowSize(int|float|null $windowSize): void {
 			$this->window_size = $windowSize;
 		}
 		
 		/**
 		 * Returns the maximum number of results to return.
-		 * @return int|null The limit value or null if not set
+		 * @return int|float|null The limit value or null if not set
 		 */
-		public function getWindowSize(): ?int {
+		public function getWindowSize(): int|float|null {
 			return $this->window_size;
 		}
 		
@@ -374,12 +443,12 @@
 		}
 		
 		/**
-		 * Returns a specific compiler directive value.
+		 * Returns a specific compiler directive value (name is case-insensitive).
 		 * @param string $name The directive name
 		 * @return mixed The directive value or null if not found
 		 */
 		public function getDirective(string $name): mixed {
-			return $this->directives[$name] ?? null;
+			return $this->directives[strtolower($name)] ?? null;
 		}
 		
 		/**
@@ -466,7 +535,14 @@
 					return "conditions";
 				}
 			}
-			
+
+			// Check if it's in the HAVING clause
+			if ($this->having !== null) {
+				if ($ast->isAncestorOf($this->having)) {
+					return "having";
+				}
+			}
+
 			// Check if it's in the ORDER BY clause
 			foreach ($this->sort as $value) {
 				if ($ast->isAncestorOf($value['ast'])) {
@@ -502,45 +578,56 @@
 			// Clone all child arrays with their AST nodes
 			$clonedRanges = $this->cloneArray($this->ranges);
 			$clonedValues = $this->cloneArray($this->values);
-			
-			
+			$clonedGroupBy = $this->cloneArray($this->group_by);
+
 			$clonedSort = $this->cloneSortArray($this->sort);
-			
+
 			// Clone the conditions node if it exists
 			$clonedConditions = $this->conditions?->deepClone();
-			
+
+			// Clone the having node if it exists
+			$clonedHaving = $this->having?->deepClone();
+
 			// Create new instance with cloned ranges
 			// @phpstan-ignore-next-line new.static
 			$clone = new static($this->directives, $clonedRanges, $this->unique);
-			
+
 			// Set all the cloned properties
 			$clone->values = $clonedValues;
 			$clone->conditions = $clonedConditions;
+			$clone->having = $clonedHaving;
 			$clone->sort = $clonedSort;
-			
+			$clone->group_by = $clonedGroupBy;
+
 			// Copy primitive properties
 			$clone->sort_in_application_logic = $this->sort_in_application_logic;
 			$clone->window = $this->window;
 			$clone->window_size = $this->window_size;
-			
+			$clone->window_chain_helper_ranges = $this->window_chain_helper_ranges;
+
 			// Establish parent relationships for all cloned children
 			foreach ($clonedRanges as $range) {
 				$range->setParent($clone);
 			}
-			
+
 			foreach ($clonedValues as $value) {
 				$value->setParent($clone);
 			}
-			
+
 			// Macro expressions are already owned by their cloned AstAlias nodes in
 			// $clonedValues — no separate setParent call needed here.
-			
+
 			$clonedConditions?->setParent($clone);
-			
+			$clonedHaving?->setParent($clone);
+
 			foreach ($clonedSort as $sortItem) {
 				$sortItem['ast']->setParent($clone);
 			}
-			
+
+			foreach ($clonedGroupBy as $groupByItem) {
+				$groupByItem->setParent($clone);
+			}
+
 			return $clone;
 		}
 		

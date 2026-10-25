@@ -38,6 +38,11 @@
 	use Quellabs\Canvas\Inspector\Inspector;
 	use Quellabs\Canvas\Legacy\LegacyBridge;
 	use Quellabs\Canvas\Legacy\LegacyHandler;
+	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
+	use Quellabs\Canvas\Security\RateLimit\RateLimitStoreFactory;
+	use Quellabs\Canvas\Security\RateLimit\RateLimitStoreInterface;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyInterface;
+	use Quellabs\Canvas\Security\SecurityHeaderPolicyResolver;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;
 	use Quellabs\DependencyInjection\Container;
@@ -53,33 +58,56 @@
 	
 	class Kernel {
 		
-		/** @var ConfigLoader Loads configuration files from disk */
+		/**
+		 * @var ConfigLoader Loads configuration files from disk
+		 */
 		private ConfigLoader $configLoader;
 		
-		/** @var SignalHub Event system */
+		/**
+		 * @var SignalHub Event system
+		 */
 		private SignalHub $signalHub;
 		
-		/** @var Signal Signal for performance measuring */
+		/**
+		 * @var Signal Signal for performance measuring
+		 */
 		private Signal $canvasQuerySignal;
 		
-		/** @var AnnotationReader Annotation reading */
+		/**
+		 * @var AnnotationReader Annotation reading
+		 */
 		private AnnotationReader $annotationsReader;
 		
-		/** @var ConfigurationInterface Application configuration */
+		/**
+		 * @var ConfigurationInterface Application configuration
+		 */
 		private ConfigurationInterface $configuration;
 		
-		/** @var ConfigurationInterface Inspector/debug bar configuration */
+		/**
+		 * @var ConfigurationInterface Inspector/debug bar configuration
+		 */
 		private ConfigurationInterface $inspector_configuration;
 		
-		/** @var LegacyHandler|null Legacy fallback request handler, null when legacy is disabled */
+		/**
+		 * @var LegacyHandler|null Legacy fallback request handler, null when legacy is disabled
+		 */
 		private ?LegacyHandler $legacyFallbackHandler = null;
 		
-		/** @var Container Dependency injection container */
+		/**
+		 * @var Container Dependency injection container
+		 */
 		private Container $dependencyInjector;
 		
-		/** @var array<int, class-string<ErrorHandlerInterface>> */
+		/**
+		 * @var array<int, class-string<ErrorHandlerInterface>>
+		 */
 		private array $errorHandlers;
-		
+
+		/**
+		 * @var SecurityHeaderPolicyInterface Application-wide default, resolved from config/app.php's security_header_policy
+		 */
+		private SecurityHeaderPolicyInterface $defaultSecurityHeaderPolicy;
+
 		/**
 		 * Kernel constructor
 		 * @param array<string, mixed> $configuration
@@ -95,7 +123,9 @@
 				$this->canvasQuerySignal = new Signal('debug.canvas.query');
 				$this->signalHub->registerSignal($this->canvasQuerySignal);
 			} else {
-				/** @var Signal $signal */
+				/**
+				 * @var Signal $signal
+				 */
 				$signal = $this->signalHub->getSignal('debug.canvas.query');
 				$this->canvasQuerySignal = $signal;
 			}
@@ -105,12 +135,9 @@
 			$this->configuration = $this->configLoader->loadConfigFile("app.php")->merge($defaultConfiguration);
 			$this->inspector_configuration = $this->configLoader->loadConfigFile("inspector.php");
 			
-			// Register Annotations Reader
-			// Make the reader available process-wide so other packages (e.g. ObjectQuel)
-			// can share this instance and its in-memory cache instead of constructing
-			// their own readers with cold caches.
+			// Register Annotations Reader under the "canvas" key
 			$this->annotationsReader = $this->createAnnotationReader();
-			AnnotationReaderLocator::setInstance($this->annotationsReader);
+			AnnotationReaderLocator::setInstance($this->annotationsReader, 'canvas');
 			
 			// Determine the error handler directory
 			$errorHandlerDirectory = $this->configuration->get("error_handler_directory", ComposerUtils::getProjectRoot() . "/src/Errors");
@@ -123,7 +150,9 @@
 				}
 			);
 			
-			/** @var array<int, class-string<ErrorHandlerInterface>> $handlers */
+			/**
+			 * @var array<int, class-string<ErrorHandlerInterface>> $handlers
+			 */
 			$this->errorHandlers = array_values($handlers);
 			
 			// Instantiate Dependency Injector and register default providers
@@ -144,9 +173,34 @@
 			$this->dependencyInjector->register(new LoggerInterfaceProvider(
 				$this->configuration->get("monolog_file", ComposerUtils::getProjectRoot() . '/storage/logs/canvas.log')
 			));
-			
+
+			// Build the rate limit store from config/rate_limit.php (defaults to a
+			// file-backed store when the file is absent) and bind it as a singleton,
+			// so every RateLimitAspect instance shares the same atomic admission storage
+			$rateLimitStore = RateLimitStoreFactory::create($this->configLoader->loadConfigFile("rate_limit.php"));
+			$this->dependencyInjector->register(new SimpleBinding(RateLimitStoreInterface::class, $rateLimitStore));
+
 			// Initialize legacy support
 			$this->initializeLegacySupport();
+
+			// Application-wide default policy: the single source of truth both
+			// SecurityHeadersAspect (when no $policyClass override is given) and
+			// DefaultErrorHandler apply, so a route's headers and an error page's
+			// headers never silently diverge. config/app.php can point this at a
+			// custom class or an ordered list of classes (composed via
+			// CompositeSecurityHeaderPolicy), including NullSecurityHeaderPolicy to
+			// opt out of security headers entirely; the key itself must resolve to a
+			// real policy, so an explicit null is rejected rather than treated as "disabled".
+			$securityHeaderPolicyClass = $this->configuration->has('security_header_policy')
+				? $this->configuration->get('security_header_policy')
+				: BasicSecurityHeaderPolicy::class;
+
+			$this->defaultSecurityHeaderPolicy = SecurityHeaderPolicyResolver::resolve(
+				$this->dependencyInjector,
+				$securityHeaderPolicyClass,
+				"config/app.php's security_header_policy",
+				\RuntimeException::class
+			);
 		}
 		
 		/**
@@ -179,6 +233,14 @@
 		 */
 		public function getDependencyInjector(): Container {
 			return $this->dependencyInjector;
+		}
+
+		/**
+		 * Returns the application-wide default security header policy
+		 * @return SecurityHeaderPolicyInterface
+		 */
+		public function getDefaultSecurityHeaderPolicy(): SecurityHeaderPolicyInterface {
+			return $this->defaultSecurityHeaderPolicy;
 		}
 		
 		/**
@@ -250,7 +312,7 @@
 				$this->dependencyInjector->unregister($sessionBinding);
 				$this->dependencyInjector->unregister($requestBinding);
 			}
-			
+
 			// Publish request telemetry
 			$route = $urlData !== null && $urlData['route'] instanceof Route ? $urlData['route'] : null;
 			
@@ -269,9 +331,52 @@
 			if ($debugCollector !== null) {
 				$this->injectDebugBar($debugCollector, $request, $response);
 			}
-			
+
+			$this->applyDefaultSecurityHeaderPolicyUnlessAlreadyApplied($request, $response);
+
+			// HEAD must never carry a body (RFC 9110 9.3.2), regardless of which route
+			// or error path produced the response, so this is enforced at the single
+			// point every response passes through rather than in each controller/handler.
+			if ($request->isMethod('HEAD')) {
+				$this->suppressBodyForHeadRequest($response);
+			}
+
 			// Return response
 			return $response;
+		}
+
+		/**
+		 * Security headers are opt-out, not opt-in: every response gets the application-wide
+		 * default policy here, unless its route already ran SecurityHeadersAspect
+		 * (SecureController, an explicit policyClass, or even an explicit
+		 * NullSecurityHeaderPolicy opt-out) - that choice, not this baseline, decides
+		 * the route's headers.
+		 * @param Request $request The request, needed to decide HSTS eligibility (HTTPS only)
+		 * @param Response $response The response to modify
+		 * @return void
+		 */
+		private function applyDefaultSecurityHeaderPolicyUnlessAlreadyApplied(Request $request, Response $response): void {
+			if (!$request->attributes->get('security_headers_applied', false)) {
+				$this->defaultSecurityHeaderPolicy->apply($request, $response);
+			}
+		}
+
+		/**
+		 * Strip a response's body for a HEAD request while preserving its status and headers.
+		 * @param Response $response The response to strip in place
+		 * @return void
+		 */
+		private function suppressBodyForHeadRequest(Response $response): void {
+			$content = $response->getContent();
+			$length = is_string($content) ? (string)strlen($content) : '0';
+
+			if (!$response->headers->has('Content-Length') && $length !== '0') {
+				$response->headers->set('Content-Length', $length);
+			}
+
+			// StreamedResponse only accepts null: it marks the stream as already sent
+			// so its callback never runs, rather than storing an actual empty string.
+			$response->setContent(null);
 		}
 		
 		/**
@@ -314,7 +419,7 @@
 			
 			// No custom handler found. Show a generic message
 			$isDevelopment = $this->configuration->get('debug_mode', false);
-			$defaultHandler = new DefaultErrorHandler();
+			$defaultHandler = new DefaultErrorHandler($this->defaultSecurityHeaderPolicy);
 			return $defaultHandler->handle($exception, $request, $isDevelopment);
 		}
 		
@@ -374,6 +479,11 @@
 			$config->setUseAnnotationCache(true);
 			$config->setAnnotationCachePath($rootPath . "/storage/annotations");
 			$config->setDebugMode($debugMode);
+			$annotationSource = $this->configuration->get('annotation_source', \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS);
+			if (!is_string($annotationSource)) {
+				throw new \InvalidArgumentException('annotation_source must be a string');
+			}
+			$config->setSource($annotationSource);
 			
 			// Create and return the configured AnnotationReader instance
 			return new AnnotationReader($config);

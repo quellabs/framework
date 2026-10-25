@@ -13,12 +13,13 @@
 				CreateControllerCommand::class,
 				ListRoutesCommand::class,
 				MatchRoutesCommand::class,
-				AnnotationsCacheClearCommand::class,
 				RoutesCacheClearCommand::class,
 				ScheduleRunCommand::class,
 				SchedulerListCommand::class,
 				CacheInitCommand::class,
 				JwtInitCommand::class,
+				RateLimitInitCommand::class,
+				CorsInitCommand::class,
 			]);
 		}
 	}

@@ -2,7 +2,8 @@
 	
 	namespace Quellabs\ObjectQuel\Sculpt;
 	
-	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
+	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
 	
 	/**
 	 * Shared PHPStan type aliases for the Sculpt subsystem.
@@ -20,6 +21,19 @@
 	 *
 	 * @phpstan-type PhinxColumnType 'tinyinteger'|'smallinteger'|'integer'|'biginteger'|'string'|'char'|'text'|'float'|'decimal'|'boolean'|'date'|'datetime'|'time'|'timestamp'
 	 *
+	 * A real database-level FK constraint attached to a scalar or FK-column
+	 * property, mirroring @Orm\ForeignKey / @Orm\ForeignKeyAction. onDelete/
+	 * onUpdate always carry a concrete value here (defaults included) — the
+	 * generator decides whether ForeignKeyAction is worth emitting by
+	 * comparing them against RESTRICT/NO ACTION, same convention as
+	 * MakeEntityFromTableCommand.
+	 *
+	 * @phpstan-type ForeignKeyConstraint array{
+	 *     target: string,
+	 *     onDelete: string,
+	 *     onUpdate: string
+	 * }
+	 *
 	 * @phpstan-type BaseProperty array{
 	 *     name: string,
 	 *     type: PhinxColumnType,
@@ -28,7 +42,8 @@
 	 *     unsigned?: bool,
 	 *     limit?: int|string,
 	 *     precision?: int,
-	 *     scale?: int
+	 *     scale?: int,
+	 *     foreignKey?: ForeignKeyConstraint
 	 * }
 	 *
 	 * @phpstan-type EnumProperty array{
@@ -67,7 +82,8 @@
 	 *     relation?: string|null,
 	 *     referencedColumn?: string|null,
 	 *     localColumn?: string|null,
-	 *     collection?: bool
+	 *     collection?: bool,
+	 *     inverseProperty?: string|null
 	 * }
 	 *
 	 * @phpstan-type PropertyDefinition BaseProperty|EnumProperty|RelationProperty
@@ -92,13 +108,40 @@
 	 * }
 	 *
 	 * -------------------------------------------------------------------------
-	 * Composite types (depend on ColumnDefinition and IndexChangeSet)
+	 * Foreign key types
+	 * -------------------------------------------------------------------------
+	 *
+	 * @phpstan-type ForeignKeyChangeSet array{
+	 *     added: array<string, ForeignKeyDefinition>,
+	 *     modified: array<string, array{
+	 *         database: ForeignKeyDefinition,
+	 *         entity: ForeignKeyDefinition
+	 *     }>,
+	 *     deleted: array<string, ForeignKeyDefinition>
+	 * }
+	 *
+	 * -------------------------------------------------------------------------
+	 * Primary key types
+	 * -------------------------------------------------------------------------
+	 *
+	 * A table has at most one primary key, so — unlike IndexChangeSet/
+	 * ForeignKeyChangeSet — this is a single optional change, not a keyed
+	 * map of many. Modeled as a discriminated union on 'action' rather than
+	 * one shape with optional keys, so a 'set' entry is guaranteed to carry
+	 * 'columns' (the desired key, in entity-declared order) and both 'set'
+	 * and 'drop' are guaranteed to carry 'from' (the table's current key,
+	 * so down() can restore it).
+	 *
+	 * @phpstan-type PrimaryKeyChangeSet array{action: null}
+	 *                                  |array{action: 'set', columns: array<int, string>, from: array<int, string>}
+	 *                                  |array{action: 'drop', from: array<int, string>}
+	 *
+	 * -------------------------------------------------------------------------
+	 * Composite types (depend on ColumnDefinition, IndexChangeSet and ForeignKeyChangeSet)
 	 * -------------------------------------------------------------------------
 	 *
 	 * A single entry from the 'modified' map: the before/after column definitions
 	 * and a per-field breakdown of what changed.
-	 *
-	 * @phpstan-import-type ColumnDefinition from DatabaseAdapter
 	 *
 	 * @phpstan-type ColumnModification array{
 	 *     from: ColumnDefinition,
@@ -111,7 +154,9 @@
 	 *     added: array<string, ColumnDefinition>,
 	 *     modified: array<string, ColumnModification>,
 	 *     deleted: array<string, ColumnDefinition>,
-	 *     indexes: IndexChangeSet
+	 *     indexes: IndexChangeSet,
+	 *     foreignKeys: ForeignKeyChangeSet,
+	 *     primaryKey?: PrimaryKeyChangeSet
 	 * }
 	 */
 	final class SculptTypes {}

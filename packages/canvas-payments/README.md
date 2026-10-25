@@ -67,12 +67,15 @@ class CheckoutService {
 
 | Method                              | Description                                                        |
 |-------------------------------------|--------------------------------------------------------------------|
-| `initiate(PaymentRequest)`          | Start a payment session, returns redirect URL and transaction ID   |
-| `refund(RefundRequest)`             | Issue a refund for a completed payment                             |
-| `exchange(string $transactionId)`   | Fetch current payment state (call from webhook handler)            |
-| `getRefunds(string $transactionId)` | Returns all refunds for a given transaction                        |
-| `getPaymentOptions(string $module)` | Fetch available issuers or options for a payment module            |
-| `getRegisteredModules()`            | Returns all discovered module identifiers                          |
+| `initiate(PaymentRequest)`                          | Start a payment session, returns redirect URL and transaction ID   |
+| `refund(RefundRequest)`                             | Issue a refund for a completed payment                             |
+| `chargeRecurring(RecurringChargeRequest)`           | Charge an existing mandate off-session                             |
+| `getPaymentOptions(string $module)`                 | Fetch available issuers or options for a payment module            |
+| `exchange(string $driver, string $transactionId)`   | Fetch current payment state from the named provider (call from webhook handler) |
+| `getRefunds(string $driver, string $transactionId)` | Returns all refunds for a given transaction from the named provider |
+| `getMandates(string $driver, string $customerReference)` | Returns all mandates registered for a customer with the named provider |
+| `revokeMandate(string $driver, string $customerReference, string $mandateId)` | Revoke a mandate, preventing further recurring charges |
+| `getRegisteredModules()`                            | Returns all discovered module identifiers                          |
 
 ## Requirements
 

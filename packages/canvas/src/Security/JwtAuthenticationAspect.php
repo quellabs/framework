@@ -3,6 +3,7 @@
 	namespace Quellabs\Canvas\Security;
 	
 	use Quellabs\Canvas\AOP\Contracts\BeforeAspectInterface;
+	use Quellabs\Canvas\AOP\Contracts\NonStackableAspectInterface;
 	use Quellabs\Canvas\Exceptions\JwtAuthenticationException;
 	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
@@ -39,7 +40,7 @@
 	 * @InterceptWith(Quellabs\Canvas\Security\JwtAuthenticationAspect::class, throwOnFailure=true)
 	 * @InterceptWith(Quellabs\Canvas\Security\JwtAuthenticationAspect::class, secret="service-secret", issuer="service-a")
 	 */
-	class JwtAuthenticationAspect implements BeforeAspectInterface {
+	class JwtAuthenticationAspect implements BeforeAspectInterface, NonStackableAspectInterface {
 		
 		/**
 		 * HMAC secret used to verify the token signature
@@ -151,11 +152,12 @@
 		/**
 		 * Validate the Bearer token before the controller method runs.
 		 *
-		 * On success: sets 'jwt_payload' (full claims array) and 'jwt_user_id' ('sub' claim)
-		 * on $request->attributes, returns null.
+		 * On success: sets 'jwt_payload' (full claims array), 'jwt_user_id' ('sub' claim),
+		 * 'auth_time' (from 'iat', when present), and 'auth_methods' (from 'amr', defaulting
+		 * to an empty array) on $request->attributes, returns null.
 		 *
 		 * On failure in attribute mode: sets 'jwt_error' (reason string) on $request->attributes,
-		 * clears 'jwt_payload' and 'jwt_user_id', returns null.
+		 * clears 'jwt_payload', 'jwt_user_id', 'auth_time' and 'auth_methods', returns null.
 		 *
 		 * On failure in exception mode: throws JwtAuthenticationException.
 		 *
@@ -185,14 +187,25 @@
 				$request->attributes->set('jwt_error', $e->getMessage());
 				$request->attributes->remove('jwt_payload');
 				$request->attributes->remove('jwt_user_id');
+				$request->attributes->remove('auth_time');
+				$request->attributes->remove('auth_methods');
 				return null;
 			}
-			
+
 			// Token is valid — publish the claims and the subject identifier so controllers
 			// and downstream aspects can read them without re-parsing the token
 			$request->attributes->set('jwt_payload', $payload);
 			$request->attributes->set('jwt_user_id', $payload['sub'] ?? null);
-			
+
+			// 'auth_time' and 'auth_methods' are the auth-mechanism-agnostic contract
+			// consumed by StepUpAuthenticationAspect; iat and amr are both optional per
+			// their respective RFCs, so either may be absent
+			if (isset($payload['iat']) && (is_int($payload['iat']) || is_float($payload['iat']))) {
+				$request->attributes->set('auth_time', $payload['iat']);
+			}
+
+			$request->attributes->set('auth_methods', $payload['amr'] ?? []);
+
 			// Clear any jwt_error left over from a previous attempt on the same request object
 			$request->attributes->remove('jwt_error');
 			return null;
@@ -220,7 +233,9 @@
 				throw new JwtAuthenticationException('Malformed JWT structure');
 			}
 			
-			[$headerB64, $payloadB64, $signatureB64] = $parts;
+			$headerB64 = $parts[0];
+			$payloadB64 = $parts[1];
+			$signatureB64 = $parts[2];
 			
 			// Decode and validate the header before touching the signature or payload;
 			// a malformed or mismatched header should fail immediately
@@ -257,37 +272,41 @@
 		 */
 		private function decodeSegment(string $segment): array {
 			$decoded = $this->base64UrlDecode($segment);
-			
+
 			// base64UrlDecode returns false on malformed input (illegal characters, bad padding)
 			if ($decoded === false) {
 				throw new JwtAuthenticationException('Invalid JWT segment encoding');
 			}
-			
+
 			try {
-				// JSON_THROW_ON_ERROR ensures malformed JSON throws rather than returning null,
-				// avoiding a separate null check and making the failure reason explicit
-				$data = json_decode($decoded, true, 512, JSON_THROW_ON_ERROR);
+				// Decode without assoc mode first: with assoc=true, both "{}" and "[]" decode
+				// to an empty PHP array and array_is_list() can no longer tell them apart.
+				// Keeping objects as stdClass preserves that distinction until the check below.
+				$decodedValue = json_decode($decoded, false, 512, JSON_THROW_ON_ERROR);
 			} catch (\JsonException) {
 				throw new JwtAuthenticationException('Invalid JWT segment JSON');
 			}
-			
-			// With assoc=true, both JSON objects and JSON arrays decode to PHP arrays.
-			// JWT headers and payloads must be JSON objects per RFC 7519 §3, so list
-			// arrays (i.e. JSON arrays) are explicitly rejected here.
-			if (!is_array($data) || array_is_list($data)) {
+
+			// JWT headers and payloads must be JSON objects per RFC 7519 §3; a JSON array,
+			// string, number, bool, or null is rejected here, while any JSON object —
+			// including the empty object "{}" — is accepted.
+			if (!$decodedValue instanceof \stdClass) {
 				throw new JwtAuthenticationException('Invalid JWT segment JSON');
 			}
-			
+
+			/** @var array<string, mixed> $data */
+			$data = (array)$decodedValue;
+
 			// Reject any segment where a key is not a string — JWT claim names are always
 			// strings per RFC 7519, so a non-string key indicates a malformed token rather
-			// than something we should silently drop
+			// than something we should silently drop. (array) cast coerces a numeric-string
+			// property name like "0" to an int array key, so this still catches that case.
 			foreach (array_keys($data) as $key) {
 				if (!is_string($key)) {
 					throw new JwtAuthenticationException('Invalid JWT segment');
 				}
 			}
-			
-			/** @var array<string, mixed> $data */
+
 			return $data;
 		}
 		
@@ -380,10 +399,17 @@
 			}
 			
 			if (isset($payload['iat'])) {
-				// Accept both int and float for the same interoperability reason as exp;
-				// iat carries no enforcement logic here but must be a valid numeric type
+				// Accept both int and float for the same interoperability reason as exp
 				if (!is_int($payload['iat']) && !is_float($payload['iat'])) {
 					throw new JwtAuthenticationException('Invalid iat claim');
+				}
+
+				// iat is copied verbatim into the 'auth_time' request attribute, which
+				// StepUpAuthenticationAspect treats as proof of a recent authentication.
+				// An unbounded future iat would satisfy that freshness check indefinitely,
+				// so it is bound by the same clock skew used for exp/nbf.
+				if ((int)$payload['iat'] > ($now + $this->clockSkew)) {
+					throw new JwtAuthenticationException('JWT iat claim is in the future');
 				}
 			}
 			
@@ -424,6 +450,21 @@
 			// identifier; a non-string sub would produce an unexpected jwt_user_id type
 			if (isset($payload['sub']) && !is_string($payload['sub'])) {
 				throw new JwtAuthenticationException('Invalid sub claim');
+			}
+
+			// Validate amr (Authentication Methods References, RFC 8176) if present —
+			// consumed as 'auth_methods' by StepUpAuthenticationAspect to distinguish
+			// a fresh credential check from a token silently renewed via refresh
+			if (isset($payload['amr'])) {
+				if (!is_array($payload['amr'])) {
+					throw new JwtAuthenticationException('Invalid amr claim');
+				}
+
+				foreach ($payload['amr'] as $method) {
+					if (!is_string($method)) {
+						throw new JwtAuthenticationException('Invalid amr claim');
+					}
+				}
 			}
 		}
 	}

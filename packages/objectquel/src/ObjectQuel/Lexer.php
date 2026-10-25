@@ -14,7 +14,7 @@
 
 	    /** @var array<string, int> */
         protected array $keywords;
-	    
+
 	    /** @var array<string, int> */
         protected array $single_tokens;
 	    
@@ -59,7 +59,6 @@
 			];
 	        
 	        $this->keywords = [
-		        'retrieve'    => Token::Retrieve,
 		        'where'       => Token::Where,
 		        'and'         => Token::And,
 		        'or'          => Token::Or,
@@ -79,6 +78,12 @@
 		        'window_size' => Token::WindowSize,
 		        'json_source' => Token::JsonSource,
 		        'filter'      => Token::Filter,
+		        // create, temporary, identity, primary, key, destroy, if,
+		        // exists, to, replace, delete, index, on, fulltext, retrieve,
+		        // append, and unsigned are deliberately absent — each is a
+		        // keyword only at its own grammar position (see
+		        // peekKeyword()), unlike `where` above, so each stays usable
+		        // as a column/entity name elsewhere.
 	        ];
 			
 			$this->single_tokens = [
@@ -89,6 +94,8 @@
 				'<'  => Token::SmallerThan,
 				'('  => Token::ParenthesesOpen,
 				')'  => Token::ParenthesesClose,
+				'{'  => Token::CurlyBraceOpen,
+				'}'  => Token::CurlyBraceClose,
 				'+'  => Token::Plus,
 				'-'  => Token::Minus,
 				'*'  => Token::Star,
@@ -186,10 +193,22 @@
 			// copy pos to previousPos for accurate positioning
 			$this->previousPreviousPos = $this->previousPos;
 			$this->previousPos = $this->pos;
-			
+
 			// advance pos to next token
             $this->advance();
-			
+
+			$offset = $this->pos;
+			$token = $this->scanToken();
+			$token->setOffset($offset);
+			return $token;
+        }
+
+        /**
+         * Scans the token starting at the current position, which advance() has placed past any whitespace
+         * @return Token
+         * @throws LexerException
+         */
+        protected function scanToken(): Token {
             // end of file
 	        if ($this->pos === $this->length) {
                 return new Token(Token::Eof);
@@ -200,22 +219,12 @@
                 return new Token(Token::Number, $this->fetchNumber(), $this->lineNumber);
             }
     
-            // negative number
-	        if ($this->pos + 1 < $this->length && ($this->string[$this->pos] == '-' && ctype_digit($this->string[$this->pos + 1]))) {
-		        ++$this->pos;
-		        return new Token(Token::Number, $this->fetchNumber() * -1, $this->lineNumber);
-            }
-    
             // double quote or single quote = string
             if (($this->string[$this->pos] == '"') || ($this->string[$this->pos] == '\'')) {
 				$firstChar = $this->string[$this->pos];
                 $string = "";
     
-                while ($this->string[++$this->pos] !== $firstChar) {
-					// Controleer op een niet afgesloten string op basis van end-of-stream
-	                if ($this->pos === $this->length) {
-						throw new LexerException("Unexpected end of data");
-					}
+				while (++$this->pos < $this->length && $this->string[$this->pos] !== $firstChar) {
 					
 					// Behandel een niet afgesloten string op basis van een enter
 					if ($this->string[$this->pos] === "\n") {
@@ -249,6 +258,10 @@
 					// Voeg het karakter toe
 					$string .= $this->string[$this->pos];
                 }
+
+				if ($this->pos >= $this->length) {
+					throw new LexerException("Unexpected end of data");
+				}
     
                 ++$this->pos;
                 return new Token(Token::String, $string, $this->lineNumber, ['char' => $firstChar]);
@@ -338,10 +351,10 @@
                 $this->lookahead = $this->nextToken();
                 return $currentToken;
             }
-            
+
             throw new LexerException("Unexpected token");
         }
-	    
+
 	    /**
 	     * Match the next token
 	     * @param int $token
@@ -352,10 +365,59 @@
 		    if ($this->next_token->getType() === $token) {
 			    return $this->match($token);
 		    }
-		    
+
 		    return null;
 	    }
-		
+
+		/**
+		 * Whether the upcoming token is an identifier whose text matches
+		 * $keyword, case-insensitively.
+		 *
+		 * This is how the parser recognizes a *contextual* keyword — create,
+		 * temporary, identity, primary, key, destroy, if, exists, to, replace,
+		 * delete, index, on, fulltext, unsigned, alter, add, drop, rename,
+		 * retype — none of which get a distinct token type the way
+		 * `where`/`retrieve`/`append` do. Each
+		 * only means something special at its own grammar position;
+		 * everywhere else (a property, column, table, or alias literally
+		 * named `key` or `on`) it must still parse as a plain identifier, so
+		 * the lexer always emits Token::Identifier for these words and the
+		 * parser checks the text only where the literal word actually matters.
+		 * @param string $keyword
+		 * @return bool
+		 */
+		public function peekKeyword(string $keyword): bool {
+			return $this->next_token->getType() === Token::Identifier
+				&& strcasecmp($this->next_token->getStringValue(), $keyword) === 0;
+		}
+
+		/**
+		 * Consumes the upcoming token if it's an identifier matching $keyword
+		 * (see peekKeyword()) and returns it, or throws otherwise.
+		 * @param string $keyword
+		 * @return Token
+		 * @throws LexerException
+		 */
+		public function matchKeyword(string $keyword): Token {
+			if (!$this->peekKeyword($keyword)) {
+				throw new LexerException("Expected '{$keyword}'");
+			}
+
+			return $this->match(Token::Identifier);
+		}
+
+		/**
+		 * Consumes and returns the upcoming token if it's an identifier
+		 * matching $keyword (see peekKeyword()); returns null without
+		 * consuming anything otherwise.
+		 * @param string $keyword
+		 * @return Token|null
+		 * @throws LexerException
+		 */
+		public function optionalMatchKeyword(string $keyword): ?Token {
+			return $this->peekKeyword($keyword) ? $this->matchKeyword($keyword) : null;
+		}
+
 		/**
 		 * Returns the position of the next token in the source text
 		 * @return int
@@ -395,7 +457,26 @@
 		public function peekNext(): int {
 			return $this->lookahead->getType();
 		}
-		
+
+		/**
+		 * Whether the next two tokens are $first and $second with nothing between them, e.g. `+=`.
+		 * @param int $first Type of the next token; must be a single-character token
+		 * @param int $second Type of the token after it
+		 * @return bool
+		 */
+		public function peekAdjacent(int $first, int $second): bool {
+			return $this->next_token->getType() === $first
+				&& $this->lookahead->getType() === $second
+				&& $this->lookahead->getOffset() === $this->next_token->getOffset() + 1;
+		}
+
+		/**
+		 * Whether the next two tokens form `++` or `--`.
+		 * @return bool
+		 */
+		public function peekIncrementOperator(): bool {
+			return $this->peekAdjacent(Token::Plus, Token::Plus) || $this->peekAdjacent(Token::Minus, Token::Minus);
+		}
 		/**
 		 * Returns the source code
 		 * @return string

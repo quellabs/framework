@@ -9,6 +9,8 @@
 	use Quellabs\ObjectQuel\Planner\Helpers\AstNodeReplacer;
 	use Quellabs\ObjectQuel\Planner\Helpers\AstUtilities;
 	use Quellabs\ObjectQuel\Planner\Helpers\JoinPredicateProcessor;
+	use Quellabs\ObjectQuel\Planner\Helpers\QuantifierScope;
+	use Quellabs\ObjectQuel\Planner\Helpers\QuantifierScopeAnalyzer;
 	use Quellabs\ObjectQuel\Planner\Helpers\QueryAnalysisResult;
 	use Quellabs\ObjectQuel\Planner\Helpers\RangePartitioner;
 	use Quellabs\ObjectQuel\Planner\Helpers\RangeUsageAnalyzer;
@@ -18,6 +20,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\Exception\QuelException;
+	use Quellabs\ObjectQuel\Exception\SemanticException;
 	use Quellabs\ObjectQuel\Planner\Helpers\AnchorResolver;
 	
 	/**
@@ -32,6 +35,14 @@
 	 * guarantees a single "anchor" range (a range with joinProperty == null).
 	 * Depending on the location of ANY(...) we emit an EXISTS-style or CASE WHEN-style
 	 * AstSubquery.
+	 *
+	 * Where-clause ANY(...) (optimizeWhereQuantifiers)
+	 * ------------------------------------------------
+	 * Each where-clause ANY(...) is a range scope (QuantifierScopeAnalyzer). Its EXISTS
+	 * subquery selects from the ranges that scope binds, with the one range not joined
+	 * to another of them as anchor; enclosing scopes are referenced as correlations.
+	 * Nested scopes are rewritten first, and bound ranges leave the root retrieve.
+	 * The pipeline below applies to the remaining (SELECT) ANY(...) nodes.
 	 *
 	 * Terminology
 	 * -----------
@@ -84,6 +95,9 @@
 		/** @var RangeUsageAnalyzer Reused analyzer: liveness / nullability maps, etc. */
 		private RangeUsageAnalyzer $analyzer;
 		
+		/** @var QuantifierScopeAnalyzer Assigns ranges to the where clause's nested any(...) scopes */
+		private QuantifierScopeAnalyzer $scopeAnalyzer;
+		
 		/**
 		 * AnyOptimizer constructor
 		 * @param EntityManager $entityManager Provides entity metadata access.
@@ -91,16 +105,38 @@
 		public function __construct(EntityManager $entityManager) {
 			$this->entityStore = $entityManager->getEntityStore();
 			$this->analyzer = new RangeUsageAnalyzer($this->entityStore);
+			$this->scopeAnalyzer = new QuantifierScopeAnalyzer();
 		}
 		
 		/**
-		 * Entry point: find all ANY nodes in the retrieve AST and optimize them.
+		 * Rewrites every where-clause any(...) into an EXISTS subquery over the ranges its scope binds.
+		 * Nested quantifiers are rewritten inside out; their ranges leave the root retrieve.
+		 * Runs before join-type inference, so relocated ranges keep their declared INNER/LEFT join type.
+		 * @param AstRetrieve $ast Root query AST.
+		 * @return void
+		 * @throws SemanticException On a range ownership conflict or an unsupported nested any(...)
+		 */
+		public function optimizeWhereQuantifiers(AstRetrieve $ast): void {
+			$root = $this->scopeAnalyzer->analyze($ast);
+			
+			foreach ($root->getChildren() as $scope) {
+				$this->rewriteQuantifierScope($ast, $scope);
+			}
+			
+			foreach ($root->getChildren() as $scope) {
+				$this->removeScopeRangesFromRoot($ast, $scope);
+			}
+			
+			$this->removeRangesJoinedToMissingRanges($ast, $root);
+		}
+		
+		/**
+		 * Rewrites the remaining (non-where) ANY nodes in the retrieve AST.
 		 *
-		 * This method walks the entire AST tree to locate ANY(...) nodes and applies
-		 * context-specific optimizations based on where the ANY appears:
+		 * The context of each ANY decides its rewrite:
 		 * - SELECT clause: generates CASE WHEN subquery for value context
-		 * - WHERE clause: generates EXISTS subquery for boolean context
 		 * - ORDER BY clause: currently no optimization (could be future enhancement)
+		 * Where-clause ANY nodes are handled by optimizeWhereQuantifiers().
 		 *
 		 * @param AstRetrieve $ast Root query AST.
 		 * @return void
@@ -119,19 +155,190 @@
 						$this->optimizeAnyNode($ast, $node, AstSubquery::TYPE_CASE_WHEN);
 						break;
 					
-					case 'conditions':
-						// ANY(...) in WHERE becomes an EXISTS subquery (boolean context).
-						// Example: WHERE ANY(p.id WHERE p.status = 'active')
-						// Becomes: WHERE EXISTS(SELECT 1 FROM products p WHERE p.status = 'active')
-						$this->optimizeAnyNode($ast, $node, AstSubquery::TYPE_EXISTS);
-						break;
-					
 					case 'order_by':
 						// We currently do not perform ANY-specific rewrites in ORDER BY.
 						// This could be enhanced in the future to support ordering by ANY expressions.
 						break;
 				}
 			}
+		}
+		
+		/**
+		 * Rewrites a quantifier scope's nested scopes, then the scope's own any(...) into EXISTS.
+		 * @param AstRetrieve $ast Root query AST.
+		 * @param QuantifierScope $scope Scope to rewrite.
+		 * @return void
+		 * @throws SemanticException
+		 */
+		private function rewriteQuantifierScope(AstRetrieve $ast, QuantifierScope $scope): void {
+			foreach ($scope->getChildren() as $child) {
+				$this->rewriteQuantifierScope($ast, $child);
+			}
+			
+			// Only quantifier scopes are passed here
+			$node = $scope->getQuantifier() ?? throw new \LogicException('Root scope has no quantifier.');
+			
+			// Clone in declaration order so a via range follows the range it joins to
+			$ownedRanges = [];
+			$correlationRanges = [];
+			
+			foreach ($ast->getRanges() as $range) {
+				if (isset($scope->getBoundRanges()[$range->getName()])) {
+					$ownedRanges[$range->getName()] = $range->deepClone();
+				} else {
+					$correlationRanges[$range->getName()] = $range;
+				}
+			}
+			
+			// The range not joined to another owned range becomes the FROM range; its join condition moves to WHERE
+			$joinProcessor = new JoinPredicateProcessor($ownedRanges, $correlationRanges);
+			$correlationPredicates = $joinProcessor->gatherPromotedPredicates(array_values($ownedRanges));
+			$ranges = $joinProcessor->buildUpdatedRanges(array_values($ownedRanges));
+			$this->assertSingleAnchor($scope, $ranges);
+			
+			$conditions = AstUtilities::combinePredicatesWithAnd(array_values(array_filter([
+				$node->getConditions(),
+				...$correlationPredicates,
+			])));
+			
+			$this->collapseSourceRangesToInner($node, $ranges);
+			
+			$subquery = AstExpressionFactory::createExists(AstFactory::createNumber(1), $ranges, $conditions, "ANY");
+			$conditions?->setParent($subquery);
+			AstNodeReplacer::replaceChild($node->getParent(), $node, $subquery);
+		}
+		
+		/**
+		 * Turns a LEFT-joined range the any(...) expression quantifies over into INNER when safe.
+		 * Uses the same collapse safety analysis as anchor selection.
+		 * @param AstAny $node The quantifier.
+		 * @param AstRange[] $ranges The quantifier's cloned ranges.
+		 * @return void
+		 */
+		private function collapseSourceRangesToInner(AstAny $node, array $ranges): void {
+			$analysis = $this->analyzer->analyze($node, $ranges);
+			
+			foreach ($ranges as $range) {
+				$usage = $analysis->getTableUsage($range->getName());
+				
+				if (
+					$range->getJoinProperty() !== null &&
+					!$range->isRequired() &&
+					$usage->isUsedInSelectExpressions() &&
+					$usage->canSafelyCollapseToInner()
+				) {
+					$range->setRequired();
+				}
+			}
+		}
+		
+		/**
+		 * Ensures exactly one of the quantifier's ranges is left without a join condition to select FROM.
+		 * @param QuantifierScope $scope The quantifier's scope.
+		 * @param AstRange[] $ranges The quantifier's ranges, after join conditions were split.
+		 * @return void
+		 * @throws SemanticException When the ranges do not form a single via chain
+		 */
+		private function assertSingleAnchor(QuantifierScope $scope, array $ranges): void {
+			$anchorNames = [];
+			
+			foreach ($ranges as $range) {
+				if ($range->getJoinProperty() === null) {
+					$anchorNames[] = $range->getName();
+				}
+			}
+			
+			// SemanticAnalyzer rejects circular via chains, so there is always at least one
+			if (empty($anchorNames)) {
+				throw new \LogicException("No range of {$scope->describe()} can be its FROM range.");
+			}
+			
+			if (count($anchorNames) > 1) {
+				$names = implode("', '", $anchorNames);
+				
+				throw new SemanticException(
+					"Cannot build {$scope->describe()}: its ranges must be connected to each other by via, " .
+					"but '{$names}' are not. Connect them with via, or move each into its own any(...)."
+				);
+			}
+		}
+		
+		/**
+		 * Adds the ranges on the live ranges' via chains, up to the first range the outer query keeps.
+		 * @param AstRange[] $ranges Cloned query ranges
+		 * @param array<string, AstRange> $liveRanges Live ranges keyed by name
+		 * @param array<string, AstRange> $outerRanges Ranges the outer query keeps, keyed by name
+		 * @return array<string, AstRange> Live ranges including the via-chain ranges
+		 */
+		private function addViaChainRanges(array $ranges, array $liveRanges, array $outerRanges): array {
+			$rangesByName = [];
+			
+			foreach ($ranges as $range) {
+				$rangesByName[$range->getName()] = $range;
+			}
+			
+			$pending = array_values($liveRanges);
+			
+			while (!empty($pending)) {
+				$range = array_pop($pending);
+				
+				foreach (AstUtilities::collectIdentifiersFromAst($range->getJoinProperty()) as $identifier) {
+					$name = $identifier->getRange()?->getName();
+					
+					if ($name === null || isset($liveRanges[$name]) || isset($outerRanges[$name]) || !isset($rangesByName[$name])) {
+						continue;
+					}
+					
+					$liveRanges[$name] = $rangesByName[$name];
+					$pending[] = $rangesByName[$name];
+				}
+			}
+			
+			return $liveRanges;
+		}
+		
+		/**
+		 * Removes the ranges bound by a quantifier scope and its nested scopes from the root retrieve.
+		 * @param AstRetrieve $ast Root query AST.
+		 * @param QuantifierScope $scope
+		 * @return void
+		 */
+		private function removeScopeRangesFromRoot(AstRetrieve $ast, QuantifierScope $scope): void {
+			foreach ($scope->getBoundRanges() as $range) {
+				$ast->removeRange($range);
+			}
+			
+			foreach ($scope->getChildren() as $child) {
+				$this->removeScopeRangesFromRoot($ast, $child);
+			}
+		}
+		
+		/**
+		 * Removes root ranges that join to a range no longer in the root retrieve.
+		 * Only unbound ranges qualify: a range the retrieve binds keeps its whole via chain.
+		 * @param AstRetrieve $ast Root query AST.
+		 * @param QuantifierScope $root The retrieve's root scope.
+		 * @return void
+		 */
+		private function removeRangesJoinedToMissingRanges(AstRetrieve $ast, QuantifierScope $root): void {
+			do {
+				$rootRangeNames = array_map(fn(AstRange $range) => $range->getName(), $ast->getRanges());
+				$removed = false;
+				
+				foreach ($ast->getRanges() as $range) {
+					if (isset($root->getBoundRanges()[$range->getName()])) {
+						continue;
+					}
+					
+					foreach (AstUtilities::collectIdentifiersFromAst($range->getJoinProperty()) as $identifier) {
+						if (!in_array($identifier->getRange()?->getName(), $rootRangeNames, true)) {
+							$ast->removeRange($range);
+							$removed = true;
+							break;
+						}
+					}
+				}
+			} while ($removed);
 		}
 		
 		/**
@@ -155,7 +362,8 @@
 			// Steps 2: Build optimized subquery using clean pipeline
 			// This encapsulates all the complex logic for range partitioning,
 			// JOIN predicate processing, and anchor configuration
-			$optimizedSubquery = $this->buildOptimizedSubquery($ranges, $node, $analysis);
+			$outerRanges = $this->scopeAnalyzer->collectOuterRanges($ast);
+			$optimizedSubquery = $this->buildOptimizedSubquery($ranges, $node, $analysis, $outerRanges);
 			
 			// Step 3: Apply the optimization to the original AST
 			$this->applyOptimization($ast, $node, $subQueryType, $optimizedSubquery);
@@ -174,10 +382,11 @@
 		 * @param array<int, AstRange> $ranges Cloned query ranges to work with
 		 * @param AstAny $node The ANY node being optimized
 		 * @param QueryAnalysisResult $analysis Structured usage analysis
+		 * @param array<string, AstRange> $outerRanges Ranges the outer query keeps, keyed by name
 		 * @return array{0: array<int, AstRange>, 1: AstInterface|null}
 		 * @throws QuelException
 		 */
-		private function buildOptimizedSubquery(array $ranges, AstAny $node, QueryAnalysisResult $analysis): array {
+		private function buildOptimizedSubquery(array $ranges, AstAny $node, QueryAnalysisResult $analysis, array $outerRanges): array {
 			// Step 2: Compute JOIN cross-references
 			// This creates a map of which JOIN conditions reference which ranges,
 			// which is essential for understanding correlation dependencies
@@ -196,12 +405,18 @@
 				$liveRanges = RangePartitioner::selectFallbackLiveRanges($ranges, $node);
 			}
 			
+			// Step 4b: Include the via chains up to the first range the outer query keeps,
+			// which the subquery then references as a correlation
+			$liveRanges = $this->addViaChainRanges($ranges, $liveRanges, $outerRanges);
+			$correlationOnlyRanges = array_diff_key($correlationOnlyRanges, $liveRanges);
+			
 			// Step 5: Process JOIN predicates - now using object-oriented approach
 			// This is where we split JOIN conditions: parts referencing only live ranges
 			// stay in JOINs, parts referencing correlation-only ranges move to WHERE
+			// Gather before buildUpdatedRanges(), which strips the promoted parts from the ranges
 			$joinProcessor = new JoinPredicateProcessor($liveRanges, $correlationOnlyRanges);
-			$updatedRanges = $joinProcessor->buildUpdatedRanges($ranges);
 			$promotedPredicates = $joinProcessor->gatherPromotedPredicates($ranges);
+			$updatedRanges = $joinProcessor->buildUpdatedRanges($ranges);
 			
 			// Step 6: Build final WHERE clause
 			// Combine the original ANY conditions with any predicates promoted from JOINs
@@ -213,6 +428,7 @@
 			// Step 7: Keep only live ranges
 			// Remove correlation-only ranges since their conditions are now in WHERE
 			$keptRanges = RangePartitioner::filterToLiveRangesOnly($updatedRanges, $liveRanges);
+			$this->collapseSourceRangesToInner($node, $keptRanges);
 			
 			// Step 8: Configure anchor
 			// Ensure exactly one range has joinProperty == null (the subquery root)

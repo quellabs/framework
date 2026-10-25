@@ -13,7 +13,7 @@
 	 * on any particular database library.
 	 *
 	 * Implement this interface once per integration point (e.g. a CakePHP adapter)
-	 * and inject it into QuelToSQL. When no implementation is provided, ObjectQuel
+	 * and inject it into QuelToSQLRetrieve. When no implementation is provided, ObjectQuel
 	 * falls back to NullPlatformCapabilities, which assumes the most conservative
 	 * (widest-compatible) behavior.
 	 */
@@ -26,6 +26,20 @@
 		public function supportsNativeEnums(): bool;
 		
 		/**
+		 * Checks whether the database engine has a real UNSIGNED integer modifier.
+		 *
+		 * Only MySQL and MariaDB support this. SQLite, PostgreSQL, and SQL Server
+		 * have no such concept — integers are always signed. This matters beyond
+		 * SQL generation: schema introspection on these engines cannot report
+		 * "unsigned" back from an existing column (there is nothing to report),
+		 * so 'unsigned' must be excluded from schema comparisons entirely on
+		 * engines where this returns false, or diffing will never converge.
+		 *
+		 * @return bool
+		 */
+		public function supportsUnsignedIntegers(): bool;
+		
+		/**
 		 * Returns true if the database engine supports REGEXP_LIKE(col, pattern, flags).
 		 * @return bool
 		 */
@@ -36,6 +50,12 @@
 		 * @return bool
 		 */
 		public function supportsWindowFunctions(): bool;
+
+		/**
+		 * Returns whether the database supports native offset-based pagination.
+		 * @return bool
+		 */
+		public function supportsOffsetPagination(): bool;
 		
 		/**
 		 * Returns true if the database engine supports invisible (hidden) indexes.
@@ -63,116 +83,99 @@
 		public function getFulltextIndexStyle(): FulltextIndexStyle;
 		
 		/**
-		 * Returns the native JSON column type name for the current database engine.
-		 *
-		 * ObjectQuel uses 'json' as the canonical ORM type. This method maps it to
-		 * the correct DDL type for the connected engine:
-		 *   - MySQL / MariaDB / SQLite → 'json'
-		 *   - PostgreSQL               → 'jsonb'  (binary JSON; preferred over 'json'
-		 *                                           because it supports GIN indexing)
-		 *
-		 * @return string The DDL type string to use in migrations ('json' or 'jsonb').
-		 */
-		public function getNativeJsonType(): string;
-		
-		/**
 		 * Returns the JSON path extraction style used by the connected engine.
 		 * @return JsonExtractionStyle
 		 */
 		public function getJsonExtractionStyle(): JsonExtractionStyle;
-		/**
-		 * Returns the set of QUEL cast type names supported by the connected engine,
-		 * mapped to the SQL type token that should appear inside the CAST expression.
-		 *
-		 * The keys are the identifiers users write in QUEL (e.g. 'int', 'float',
-		 * 'string', 'decimal'). The values are the exact SQL type tokens emitted
-		 * into the generated SQL (e.g. 'SIGNED', 'DOUBLE', 'CHAR', 'DECIMAL').
-		 *
-		 * ObjectQuel validates cast types against this map at semantic-analysis time
-		 * and rejects any cast whose key is absent, so only engine-supported casts
-		 * can reach the SQL generator.
-		 *
-		 * @return array<string, string>  e.g. ['int' => 'SIGNED', 'float' => 'DOUBLE', ...]
-		 */
-		public function getSupportedCastTypes(): array;
 
 		/**
-		 * Returns a SQL expression that converts a datetime column or value to a
-		 * Unix timestamp (integer seconds since 1970-01-01 00:00:00 UTC).
+		 * Returns true if the database engine has real, independently addressable
+		 * named foreign key constraints, not just inert text embedded at creation
+		 * time. True for MySQL, MariaDB, PostgreSQL, and SQL Server; false for
+		 * SQLite, which parses a `CONSTRAINT name` clause but never reports or
+		 * lets you drop by that name.
 		 *
-		 * The placeholder %s must appear exactly once and will be replaced with the
-		 * already-generated SQL for the inner expression.
+		 * Callers must omit the constraint name from both addForeignKey() and
+		 * dropForeignKey() when this returns false.
 		 *
-		 * Examples by engine:
-		 *   MySQL/MariaDB  → 'UNIX_TIMESTAMP(%s)'
-		 *   PostgreSQL     → 'EXTRACT(EPOCH FROM %s)::BIGINT'
-		 *   SQLite         → "strftime('%%s', %s)"
-		 *
-		 * @return string  A sprintf-compatible template with one %s placeholder.
+		 * @return bool
 		 */
-		public function getUnixTimestampFunction(): string;
+		public function supportsNamedForeignKeys(): bool;
 
 		/**
-		 * Returns the SQL expression that yields the current time as a Unix
-		 * timestamp (integer seconds since the epoch).
+		 * Returns true if DatabaseAdapter::getForeignKeys() can actually
+		 * introspect real foreign key constraints for this engine. True for
+		 * every engine getDatabaseType() can identify today.
 		 *
-		 * Examples by engine:
-		 *   MySQL/MariaDB  → 'UNIX_TIMESTAMP()'
-		 *   PostgreSQL     → 'EXTRACT(EPOCH FROM NOW())::BIGINT'
-		 *   SQLite         → "strftime('%s','now')"
+		 * Exists so callers that diff against a live schema
+		 * (ForeignKeyComparator, IndexComparator) can tell "no foreign keys
+		 * exist" apart from "this engine isn't introspectable" — both return an
+		 * empty array, but treating the latter as the former would make every
+		 * entity-declared foreign key look newly added on every run.
 		 *
-		 * @return string  A complete SQL expression, no placeholders.
+		 * @return bool
 		 */
-		public function getCurrentUnixTimestamp(): string;
-		
+		public function supportsForeignKeyIntrospection(): bool;
+
 		/**
-		 * Returns the SQL expression that yields the current date and time as a
-		 * native datetime/timestamp value (not a Unix timestamp).
+		 * Returns true if the database engine treats DDL as transactional —
+		 * a CREATE/ALTER/DROP statement issued inside a BEGIN/COMMIT can be
+		 * rolled back like any other write. MySQL/MariaDB DDL auto-commits
+		 * per statement regardless of an open transaction, so this is false
+		 * there; PostgreSQL, SQLite, and SQL Server all honor DDL rollback,
+		 * so it's true for them.
 		 *
-		 * Used when writing a value into a datetime/timestamp-typed column — e.g.
-		 * an @Orm\Version column on insert/update — where the column's native type
-		 * is required rather than an integer epoch value.
+		 * Exists so callers issuing more than one DDL statement for a single
+		 * ObjectQuel statement (CreateTableExecutor, AlterTableExecutor) can
+		 * wrap the whole sequence in a transaction where that's meaningful,
+		 * rather than leaving a partial result behind on a mid-sequence
+		 * failure (see objectquel-index-clause-design.md, decision 4).
 		 *
-		 * Examples by engine:
-		 *   MySQL/MariaDB  → 'NOW()'
-		 *   PostgreSQL     → 'NOW()'
-		 *   SQLite         → "datetime('now')"
-		 *   SQL Server     → 'SYSDATETIME()'
-		 *
-		 * @return string  A complete SQL expression, no placeholders.
+		 * @return bool
 		 */
-		public function getCurrentDatetimeFunction(): string;
-		
+		public function supportsTransactionalDDL(): bool;
+
 		/**
-		 * Returns the SQL infix operator(s) used for a regular expression match
-		 * on engines where REGEXP_LIKE() is not available (see supportsRegexpLike()).
-		 * Callers only reach this when supportsRegexpLike() is false, so flags
-		 * are never representable here and are dropped by design — case
-		 * sensitivity then depends on column collation rather than an explicit flag.
+		 * Returns true if the database engine allows a qualified column
+		 * (`alias.col`) on the LEFT side of an UPDATE's SET assignment.
 		 *
-		 * Returned as ['match' => ..., 'notMatch' => ...] because some engines use
-		 * an unrelated token pair rather than a NOT-prefixed form of the same
-		 * operator (e.g. PostgreSQL's '~' vs '!~', not 'NOT ~').
+		 * PostgreSQL and SQLite both reject `SET alias.col = ...` as a syntax
+		 * error — the SET target must always be a bare column name on those
+		 * engines. MySQL/MariaDB and SQL Server accept either form.
 		 *
-		 * Examples by engine:
-		 *   MySQL/MariaDB  → ['match' => 'REGEXP',  'notMatch' => 'NOT REGEXP']
-		 *   PostgreSQL     → ['match' => '~',       'notMatch' => '!~']
-		 *   SQLite         → ['match' => 'REGEXP',  'notMatch' => 'NOT REGEXP']
-		 *                     (same keyword as MySQL; SQLite parses REGEXP natively
-		 *                     but it errors with "no such function: regexp" unless
-		 *                     the connection has registered a regexp() user
-		 *                     function — that registration is an application/driver
-		 *                     concern this interface cannot detect or guarantee)
+		 * Shared by QuelToSQLReplace and VersionValueHandler so `replace` SQL
+		 * and @Orm\Version bump SQL agree on when a SET target may be
+		 * qualified, rather than each hardcoding its own engine list.
 		 *
-		 * SQL Server has no equivalent at all below compatibility level 170
-		 * (SQL Server 2025) — there is no plain regex operator at any compatibility
-		 * level. Implementations for SQL Server should make supportsRegexpLike()
-		 * return true once compatibility level 170+ is confirmed (covering both the
-		 * flagged and flag-less cases via REGEXP_LIKE(col, pattern[, flags])), and
-		 * may throw from this method for older compatibility levels, since reaching
-		 * it there means no regex support exists on the connection at all.
-		 *
-		 * @return array{match: string, notMatch: string}
+		 * @return bool
 		 */
-		public function getRegexpFallbackOperators(): array;
+		public function supportsQualifiedSetTarget(): bool;
+
+		/**
+		 * Returns true if UPDATE accepts an alias after the target table (`UPDATE t AS a`).
+		 * SQL Server declares the UPDATE alias in FROM instead; DELETE syntax is rendered separately.
+		 * @return bool
+		 */
+		public function supportsAliasAfterDmlTarget(): bool;
+
+		/**
+		 * Returns true if SQL has TRUE/FALSE literals. SQL Server has none and
+		 * uses 1/0 for BIT values.
+		 * @return bool
+		 */
+		public function supportsBooleanLiterals(): bool;
+
+		/**
+		 * Returns the connected database engine's type identifier.
+		 *
+		 * This is the most basic fact PlatformCapabilities reports — every other
+		 * method here is, internally, a decision made from this same value. It's
+		 * exposed directly so collaborators that build engine-specific SQL text
+		 * from scratch (e.g. DDLTypeMapper's temporary-table DDL) can branch on
+		 * the engine without PlatformCapabilities having to grow a bespoke
+		 * reporting method for every syntax difference between engines.
+		 *
+		 * @return string One of 'mysql', 'mariadb', 'pgsql', 'sqlite', 'sqlsrv'
+		 */
+		public function getDatabaseType(): string;
 	}

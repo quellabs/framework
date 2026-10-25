@@ -7,10 +7,12 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\ObjectQuel\Metadata\EntityMetadataRecord;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIdentifier;
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstIfNull;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRangeDatabaseSubquery;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstRetrieve;
 	use Quellabs\ObjectQuel\ObjectQuel\AstInterface;
 	use Quellabs\ObjectQuel\ObjectQuel\AstVisitorInterface;
+	use Quellabs\ObjectQuel\Planner\Helpers\AstUtilities;
 	
 	/**
 	 * Visitor that checks if a range references any non-nullable fields in the AST.
@@ -75,6 +77,21 @@
 				return;
 			}
 
+			// A reference nested inside ifnull()/COALESCE() (either argument) never
+			// proves the row must exist, since either argument can be irrelevant
+			// depending on the other's nullability.
+			if ($this->isNestedInsideIfNull($node)) {
+				return;
+			}
+
+			// A reference reachable only through an OR doesn't prove the row must
+			// exist either: the WHERE clause can still be satisfied by the other
+			// OR branch while this range has no match at all, so promoting on this
+			// reference alone would drop rows an unmatched LEFT JOIN should keep.
+			if (AstUtilities::isNestedInsideOr($node)) {
+				return;
+			}
+
 			// Check the correct part of the query
 			if ($this->subquery !== null) {
 				$this->checkSubqueryField($next->getName());
@@ -89,7 +106,22 @@
 		public function isNonNullable(): bool {
 			return $this->nonNullableFound;
 		}
-		
+
+		/**
+		 * Returns true if any ancestor of $node is an AstIfNull node.
+		 * @param AstInterface $node
+		 * @return bool
+		 */
+		private function isNestedInsideIfNull(AstInterface $node): bool {
+			for ($current = $node->getParent(); $current !== null; $current = $current->getParent()) {
+				if ($current instanceof AstIfNull) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		/**
 		 * Resolves nullability for a direct entity range field.
 		 * @param string|null $entityName
