@@ -307,11 +307,27 @@ class NativeAttributeReaderTest extends TestCase {
             self::assertCount(1, $files);
             self::assertSame($parameters, $this->reader($source, true)->getClassAnnotations(MixedMetadataFixture::class)->first()->getParameters());
 
+            // Debug mode rebuilds the cache only when the source file is newer than
+            // it; back-date the cache and force the source newer than that, instead
+            // of relying on the source file's ambient mtime from the last checkout.
             touch($files[0], time() - 3600);
             clearstatcache();
-            $this->reader($source, true, true)->getClassAnnotations(MixedMetadataFixture::class);
-            clearstatcache();
-            self::assertGreaterThan(time() - 3600, filemtime($files[0]));
+
+            $sourceFile = (new \ReflectionClass(MixedMetadataFixture::class))->getFileName();
+            self::assertNotFalse($sourceFile);
+            $originalSourceMtime = filemtime($sourceFile);
+            self::assertNotFalse($originalSourceMtime);
+
+            try {
+                touch($sourceFile, time());
+                clearstatcache();
+                $this->reader($source, true, true)->getClassAnnotations(MixedMetadataFixture::class);
+                clearstatcache();
+                self::assertGreaterThan(time() - 3600, filemtime($files[0]));
+            } finally {
+                touch($sourceFile, $originalSourceMtime);
+            }
+
             $cached->clearAllCaches();
             self::assertSame([], glob($this->cacheDirectory . DIRECTORY_SEPARATOR . '*.cache') ?: []);
         }
