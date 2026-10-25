@@ -40,7 +40,9 @@
 		 * @return EntityManager The suite's shared entity manager
 		 */
 		private function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(EntityManager::class, $entityManager);
+			return $entityManager;
 		}
 
 		/**
@@ -171,6 +173,7 @@
 			');
 
 			$sql = end($statements);
+			self::assertIsString($sql);
 			self::assertStringContainsString('WHERE UNIX_TIMESTAMP(`p`.`created_at`) > UNIX_TIMESTAMP(_v_since)', $sql);
 			self::assertStringContainsString('IF UNIX_TIMESTAMP(_row_c$at) < ' . self::year2099() . ' THEN', $sql);
 			self::assertStringContainsString('WHERE UNIX_TIMESTAMP(`q`.`created_at`) < UNIX_TIMESTAMP(_row_c$at)', $sql);

@@ -30,6 +30,17 @@
 		}
 
 		/**
+		 * Converts a numeric database value to an integer.
+		 * @param mixed $value
+		 * @return int
+		 */
+		private static function integerValue(mixed $value): int {
+			self::assertTrue(is_int($value) || is_float($value) || is_string($value));
+			self::assertIsNumeric($value);
+			return (int)$value;
+		}
+
+		/**
 		 * @return void
 		 */
 		protected function setUp(): void {
@@ -62,7 +73,10 @@
 		private function countPosts(string $condition): int {
 			$result = self::em()->executeQuery("range of p is PostEntity retrieve (n = count(p.id)) where p.title = :title and {$condition}", ['title' => $this->tag]);
 			self::assertNotNull($result);
-			return (int)$result[0]['n'];
+			$row = $result[0];
+			self::assertIsArray($row);
+			self::assertArrayHasKey('n', $row);
+			return self::integerValue($row['n']);
 		}
 
 		/**
@@ -156,7 +170,10 @@
 		private function call(string $since): int {
 			$result = self::em()->executeQuery("{$this->tag}({$this->postId}, \"{$since}\")");
 			self::assertNotNull($result);
-			return (int)iterator_to_array($result)[0][$this->tag];
+			$row = $result[0];
+			self::assertIsArray($row);
+			self::assertArrayHasKey($this->tag, $row);
+			return self::integerValue($row[$this->tag]);
 		}
 
 		/**
