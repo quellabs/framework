@@ -156,7 +156,12 @@ declare(strict_types=1);
 
 		public function testWithContextThrowsWhenParameterIsNotString(): void {
 			$this->expectException(\TypeError::class);
-			new WithContext(parameter: 42);
+			new WithContext(parameter: 42, context: 'blade');
+		}
+
+		public function testWithContextThrowsWhenContextMissing(): void {
+			$this->expectException(\ArgumentCountError::class);
+			new WithContext(parameter: 'templateEngine');
 		}
 
 		public function testWithContextGetParameterReturnsName(): void {
@@ -168,12 +173,6 @@ declare(strict_types=1);
 			$wc      = new WithContext(parameter: 'db', context: 'readonly');
 			$context = $wc->getContext();
 			$this->assertArrayNotHasKey('parameter', $context);
-		}
-
-		public function testWithContextGetContextPreservesOtherKeys(): void {
-			$wc      = new WithContext(parameter: 'db', context: 'readonly', extra: 'value');
-			$context = $wc->getContext();
-			$this->assertSame('value', $context['extra']);
 		}
 
 		public function testWithContextGetParametersReturnsFullArray(): void {
