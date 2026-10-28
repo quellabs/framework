@@ -4,7 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
-	use Quellabs\Contracts\DependencyInjection\NotFound;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
 
@@ -171,10 +171,11 @@
 			}
 
 			// Strategy 2: Dependency injection — sentinel means unresolved, null means
-			// resolved-to-null, NotFound means a provider explicitly found no record
-			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
-
-			if ($resolved instanceof NotFound) {
+			// resolved-to-null, ResolutionNotFoundException means a provider
+			// explicitly found no record for this lookup
+			try {
+				$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
+			} catch (ResolutionNotFoundException) {
 				return $this->rejectNullForRequiredParameter(
 					$this->handleNotFound($param, $className, $methodName),
 					$param,
@@ -202,14 +203,15 @@
 		}
 
 		/**
-		 * Called when a provider resolved this parameter's type to NotFound
-		 * rather than an instance or an ordinary null. The base implementation
-		 * treats it as the generic, framework-agnostic outcome — inject null —
-		 * since base Autowirer has no concept of an HTTP response. The caller
-		 * still rejects that null if the parameter turns out to be required
-		 * (see rejectNullForRequiredParameter()). A subclass (Canvas, for a
-		 * required parameter) can override this to react differently instead,
-		 * e.g. by throwing to produce a 404.
+		 * Called when a provider threw ResolutionNotFoundException while
+		 * resolving this parameter's type, rather than returning an instance or
+		 * an ordinary null. The base implementation treats it as the generic,
+		 * framework-agnostic outcome — inject null — since base Autowirer has
+		 * no concept of an HTTP response. The caller still rejects that null if
+		 * the parameter turns out to be required (see
+		 * rejectNullForRequiredParameter()). A subclass (Canvas, for a required
+		 * parameter) can override this to react differently instead, e.g. by
+		 * throwing to produce a 404.
 		 * @param ParameterMeta $param Parameter metadata (name, types, nullable, etc.)
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
@@ -265,14 +267,17 @@
 		 * Tries to resolve a parameter against each of its type hints in order.
 		 * Returns the unresolved sentinel only when no candidate type could even be
 		 * attempted, or every candidate's own construction failed. A provider that
-		 * supports a candidate type always gives a final answer for it — an instance,
-		 * an explicit null, or NotFound::instance() when it means "no record exists"
-		 * specifically — so that answer is returned as-is instead of falling through
-		 * to further strategies or further union candidates.
+		 * supports a candidate type always gives a final answer for it — an instance
+		 * or an explicit null — so that answer is returned as-is instead of falling
+		 * through to further strategies or further union candidates. A provider may
+		 * instead throw ResolutionNotFoundException to mean "no record exists"
+		 * specifically; that propagates to resolveParameter() uncaught here, since
+		 * it is not a "try the next candidate" situation.
 		 * @param string $paramName Parameter name for error messages
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
-		 * @return mixed The resolved value (possibly null or NotFound), or the unresolved sentinel
+		 * @return mixed The resolved value (possibly null), or the unresolved sentinel
+		 * @throws ResolutionNotFoundException If a provider explicitly found no record
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
@@ -451,16 +456,13 @@
 		
 		/**
 		 * Resolves a type from the container. Extracted so subclasses can swap the
-		 * container without duplicating the resolution loop. Uses getOrNotFound()
-		 * rather than get() so a provider's NotFound::instance() reaches
-		 * resolveParameter() distinguishably, instead of being collapsed to null
-		 * before autowiring ever sees it.
+		 * container without duplicating the resolution loop.
 		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContextInterface|null $methodContext
-		 * @return object|NotFound|null The resolved instance, NotFound, or null
+		 * @return object|null The resolved instance, or null
 		 */
 		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
-			return $this->container->getOrNotFound($type, [], $methodContext);
+			return $this->container->get($type, [], $methodContext);
 		}
 	}

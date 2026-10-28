@@ -9,20 +9,20 @@
 	use Quellabs\Canvas\DependencyInjection\CanvasContainer;
 	use Quellabs\Canvas\Exceptions\RequiredParameterNotFoundException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
-	use Quellabs\Contracts\DependencyInjection\NotFound;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
 	/**
-	 * Target type a provider resolves to NotFound::instance() for, e.g. an
+	 * Target type a provider throws ResolutionNotFoundException for, e.g. an
 	 * entity with no matching database row.
 	 */
 	class CanvasAutowirerRequiredParameterTarget {
 	}
 
 	/**
-	 * Provider that always reports NotFound::instance() for
+	 * Provider that always throws ResolutionNotFoundException for
 	 * CanvasAutowirerRequiredParameterTarget.
 	 */
 	class CanvasAutowirerRequiredParameterEntityProvider extends AbstractProvider implements ServiceProviderInterface {
@@ -41,18 +41,20 @@
 		 * @param array<int|string, mixed> $dependencies
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
-		 * @return NotFound Always the shared NotFound sentinel
+		 * @return object|null Never returns; always throws
+		 * @throws ResolutionNotFoundException Always
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
-			return NotFound::instance();
+			throw new ResolutionNotFoundException('no record for ' . $className);
 		}
 	}
 
 	/**
 	 * Target type an ordinary (non-entity) provider resolves to plain null for —
 	 * a cache or logger backend being unavailable, say. Returning null rather
-	 * than NotFound::instance() is exactly what keeps this a DI failure instead
-	 * of a 404; nothing about the provider's own interface or class matters.
+	 * than throwing ResolutionNotFoundException is exactly what keeps this a DI
+	 * failure instead of a 404; nothing about the provider's own interface or
+	 * class matters.
 	 */
 	class CanvasAutowirerRequiredParameterOrdinaryTarget {
 	}
@@ -121,16 +123,17 @@
 
 	/**
 	 * Unit tests for CanvasAutowirer's handleNotFound() override: a required
-	 * (non-nullable) parameter a provider resolved to NotFound::instance()
+	 * (non-nullable) parameter whose provider threw ResolutionNotFoundException
 	 * becomes a deliberate RequiredParameterNotFoundException (HTTP 404), a
 	 * nullable one still receives null, and — critically — plain null from an
-	 * ordinary provider (not NotFound::instance()) still never becomes a 404;
-	 * it is instead rejected as a generic UnresolvableParameterException (the
-	 * base Autowirer's own guard against a required parameter silently
-	 * resolving to null). The 404-vs-DI-failure distinction lives entirely in
-	 * which value a provider returns, not in which provider or interface
-	 * produced it. The 404 decision itself lives here (Canvas), not in the
-	 * base Autowirer or in canvas-objectquel's provider.
+	 * ordinary provider (one that never throws ResolutionNotFoundException)
+	 * still never becomes a 404; it is instead rejected as a generic
+	 * UnresolvableParameterException (the base Autowirer's own guard against a
+	 * required parameter silently resolving to null). The 404-vs-DI-failure
+	 * distinction lives entirely in whether a provider throws that specific
+	 * exception, not in which provider or interface it is. The 404 decision
+	 * itself lives here (Canvas), not in the base Autowirer or in
+	 * canvas-objectquel's provider.
 	 */
 	class CanvasAutowirerRequiredParameterTest extends TestCase {
 

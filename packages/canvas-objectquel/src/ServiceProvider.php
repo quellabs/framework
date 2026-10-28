@@ -11,7 +11,7 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-	use Quellabs\Contracts\DependencyInjection\NotFound;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
 	/**
@@ -30,11 +30,12 @@
 	 * needed). The annotation is only required when the route parameter name differs
 	 * from the controller parameter's name.
 	 *
-	 * Returns NotFound::instance() (not plain null) when the lookup finds no row,
-	 * so CanvasAutowirer can tell "no matching record" apart from a null that an
-	 * ordinary service provider (cache, logger, etc.) might return for its own,
-	 * unrelated reason — only the former is eligible to become a required-
-	 * parameter 404.
+	 * Throws ResolutionNotFoundException (rather than returning plain null) when
+	 * the lookup finds no row, so Autowirer can tell "no matching record" apart
+	 * from a null that an ordinary service provider (cache, logger, etc.) might
+	 * return for its own, unrelated reason — only the former is routed through
+	 * handleNotFound(), which Canvas overrides to produce a required-parameter
+	 * 404.
 	 */
 	class ServiceProvider implements ServiceProviderInterface {
 		
@@ -106,24 +107,25 @@
 		 * 3. Look up that map by the parameter name found in step 1
 		 * 4. If no annotation targets this parameter, use the parameter's own name as the
 		 *    route parameter (Laravel/Symfony-style implicit binding)
-		 * 5. Fetch the entity via EntityManager::find(), returning NotFound::instance()
-		 *    in place of its null when no row exists
+		 * 5. Fetch the entity via EntityManager::find(), throwing
+		 *    ResolutionNotFoundException in place of its null when no row exists
 		 *
 		 * A missing route key or an unsupported value shape (e.g. a composite-key array —
 		 * not supported by this provider) is a binding/configuration mistake and throws
 		 * EntityBindingException; it is never silently treated as "no row found". Only a
-		 * valid lookup that genuinely finds nothing returns NotFound::instance() — plain
-		 * null is reserved for "nothing to bind to" (no method context, or no parameter
-		 * being resolved), which is a different situation entirely.
+		 * valid lookup that genuinely finds nothing throws ResolutionNotFoundException —
+		 * plain null is reserved for "nothing to bind to" (no method context, or no
+		 * parameter being resolved), which is a different situation entirely.
 		 *
 		 * @param string $className Fully qualified entity class name to resolve
 		 * @param array<string, mixed> $dependencies Already-resolved dependencies (unused for entities)
 		 * @param array<string, mixed> $metadata Provider metadata
 		 * @param MethodContextInterface|null $methodContext Context of the controller method being invoked
-		 * @return object|NotFound|null The resolved entity, NotFound if no matching record exists, or null if nothing to bind to
+		 * @return object|null The resolved entity, or null if nothing to bind to
 		 * @throws AnnotationReaderException If annotation parsing fails
 		 * @throws EntityBindingException If the route has no value for the binding, or an unsupported shape
 		 * @throws EntityResolutionException If the entity cannot be resolved
+		 * @throws ResolutionNotFoundException If no row matches the resolved primary key
 		 * @throws QuelException If the ObjectQuel query fails
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
@@ -197,7 +199,13 @@
 			/** @var class-string<object> $className */
 			$entity = $this->getEntityManager()->find($className, $value);
 
-			return $entity ?? NotFound::instance();
+			if ($entity === null) {
+				throw new ResolutionNotFoundException(
+					"No {$className} found for '{$routeParam}' = '{$value}'"
+				);
+			}
+
+			return $entity;
 		}
 		
 		/**

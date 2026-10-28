@@ -11,7 +11,7 @@
 	use Quellabs\DependencyInjection\Autowiring\Autowirer;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
-	use Quellabs\Contracts\DependencyInjection\NotFound;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
@@ -63,15 +63,15 @@
 	}
 
 	/**
-	 * Target type whose provider explicitly reports "no record exists" via
-	 * NotFound::instance(), distinct from AutowirerResolutionNullableTarget's
-	 * plain null.
+	 * Target type whose provider explicitly reports "no record exists" by
+	 * throwing ResolutionNotFoundException, distinct from
+	 * AutowirerResolutionNullableTarget's plain null.
 	 */
 	class AutowirerResolutionNotFoundTarget {
 	}
 
 	/**
-	 * Provider that always reports NotFound::instance() for
+	 * Provider that always throws ResolutionNotFoundException for
 	 * AutowirerResolutionNotFoundTarget.
 	 */
 	class AutowirerResolutionNotFoundProvider extends AbstractProvider implements ServiceProviderInterface {
@@ -90,10 +90,11 @@
 		 * @param array<int|string, mixed> $dependencies
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
-		 * @return NotFound Always the shared NotFound sentinel
+		 * @return object|null Never returns; always throws
+		 * @throws ResolutionNotFoundException Always
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
-			return NotFound::instance();
+			throw new ResolutionNotFoundException('no record for ' . $className);
 		}
 	}
 
@@ -298,9 +299,9 @@
 	 * a provider's null is a resolved answer (not "unresolved") for a nullable
 	 * parameter, but is rejected with a clear UnresolvableParameterException
 	 * for a required one — whether that null came directly from a provider or
-	 * via the base (framework-agnostic) handleNotFound() default for
-	 * NotFound::instance() — rather than being silently injected and left to
-	 * surface later as an opaque PHP TypeError. A provider's own exception
+	 * via the base (framework-agnostic) handleNotFound() default for a thrown
+	 * ResolutionNotFoundException — rather than being silently injected and
+	 * left to surface later as an opaque PHP TypeError. A provider's own exception
 	 * survives the call chain unchanged, a known recoverable miss on one union
 	 * candidate still falls through to the next, circular dependencies are
 	 * still reported, and the current parameter name is reset even when

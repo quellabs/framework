@@ -108,18 +108,6 @@
 		}
 
 		/**
-		 * Not needed for this test — Autowirer::resolveType() calls this instead
-		 * of get(), but nothing here ever resolves to NotFound.
-		 * @param string $className
-		 * @param array<string, mixed> $parameters
-		 * @param MethodContextInterface|null $methodContext
-		 * @return object|null
-		 */
-		public function getOrNotFound(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object {
-			return $this->get($className, $parameters, $methodContext);
-		}
-
-		/**
 		 * Not needed for this test
 		 * @param string $className
 		 * @param array<string, mixed> $parameters

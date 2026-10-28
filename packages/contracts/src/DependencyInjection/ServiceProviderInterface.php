@@ -20,16 +20,16 @@
 		
 		/**
 		 * Create an instance of the class with pre-resolved dependencies.
-		 * Return NotFound::instance() when no record exists for this lookup (e.g.
-		 * no database row for the requested entity) — autowiring treats that
-		 * explicitly as "not found", not as an ordinary resolved value. Plain null
-		 * remains available for a provider that has its own, unrelated reason to
-		 * resolve to no value. Throw for actual errors.
+		 * Returns null when the resource legitimately does not exist (e.g. no database
+		 * row for the requested entity). Throw for actual errors — including
+		 * ResolutionNotFoundException, a provider's deliberate way of saying "no
+		 * record exists for this lookup" rather than "something went wrong", which
+		 * autowiring catches and treats differently from a thrown error.
 		 * @param class-string $className The class to instantiate
 		 * @param array<int|string, mixed> $dependencies Pre-resolved constructor dependencies
 		 * @param array<string, mixed> $metadata Metadata as received by supports()
 		 * @param MethodContextInterface|null $methodContext Method context of the caller
-		 * @return object|NotFound|null
+		 * @return object|null
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object;
 	}
