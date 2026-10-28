@@ -61,7 +61,9 @@ The package automatically registers ObjectQuel services with Canvas's dependency
 
 ### ConfigurationServiceProvider
 
-`Quellabs\CanvasObjectQuel\ConfigurationServiceProvider` registers the ObjectQuel `EntityManager` as a singleton service, configured from `config/database.php`.
+`Quellabs\CanvasObjectQuel\ConfigurationServiceProvider` registers ObjectQuel's `Configuration` object (entity path/namespace, proxy settings, metadata cache, etc.), read from `config/database.php`.
+
+`EntityManager` itself has no dedicated provider. It's a plain class the container autowires automatically from its two constructor dependencies — the `Configuration` this provider registers, and the database `Connection` registered by `quellabs/canvas-database` from the same config file — and caches as a singleton once built. Both pieces are reading from `config/database.php`, so from the application's point of view the `EntityManager` is still "automatically available"; it's just assembled rather than directly provided.
 
 ```php
 // The EntityManager is automatically available in your Canvas application

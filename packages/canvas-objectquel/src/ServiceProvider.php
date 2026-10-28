@@ -11,8 +11,8 @@
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
-	
+	use Quellabs\Contracts\DependencyInjection\EntityProviderInterface;
+
 	/**
 	 * ServiceProvider bridges Canvas's DI system and ObjectQuel's EntityManager,
 	 * enabling automatic entity resolution for controller method parameters.
@@ -28,8 +28,14 @@
 	 * "/posts/{slug}" binds to "function show(PostEntity $slug)" with no annotation
 	 * needed). The annotation is only required when the route parameter name differs
 	 * from the controller parameter's name.
+	 *
+	 * Implements EntityProviderInterface (rather than the plain
+	 * ServiceProviderInterface) so CanvasAutowirer can tell that this provider's
+	 * null specifically means "no matching record", and is therefore eligible to
+	 * become a required-parameter 404 — unlike null from an ordinary service
+	 * provider (cache, logger, etc.), which must remain a DI failure.
 	 */
-	class ServiceProvider implements ServiceProviderInterface {
+	class ServiceProvider implements EntityProviderInterface {
 		
 		private ContainerInterface $container;
 		private ?Kernel $kernel;

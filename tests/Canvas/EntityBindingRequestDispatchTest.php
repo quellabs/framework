@@ -14,36 +14,41 @@
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * Real HTTP end-to-end coverage for the entity-binding contract: a request
-	 * dispatched through the real Container/Autowirer/CanvasAutowirer resolution
-	 * chain and canvas-objectquel's real ServiceProvider, for a required
-	 * parameter whose lookup finds no row, must come back as a genuine HTTP 404
-	 * Response produced by the real Kernel error-handling path (not a hand-built
-	 * one); the nullable counterpart must come back as a normal 200 with null
+	 * Integration coverage for the entity-binding contract across the real
+	 * Container/Autowirer/CanvasAutowirer resolution chain and
+	 * canvas-objectquel's real ServiceProvider: a required parameter whose
+	 * lookup finds no row must come back as a genuine HTTP 404 Response
+	 * produced by Kernel's actual error-handling path (not a hand-built one);
+	 * the nullable counterpart must come back as a normal 200 with null
 	 * injected.
 	 *
-	 * Route *discovery* is the one piece bypassed here: Kernel's
-	 * controller_directory scan goes through ComposerUtils::findClassesInDirectory(),
-	 * which — independently of this change — cannot resolve a PSR-4 namespace for
-	 * any path under tests/ (confirmed against the pre-existing
-	 * tests/Canvas/Fixtures/Controllers too), because it string-matches against
-	 * the autoloader's raw, un-normalized "vendor/composer/../../tests/Canvas"
-	 * path instead of a resolved one. Fixing that is a separate, unrelated bug in
-	 * quellabs/support. Route matching itself already has its own dedicated
-	 * coverage (RouteMatcherTest, AnnotationResolverMethodHandlingTest, etc.), so
-	 * this test supplies an already-matched route directly to
-	 * RequestHandler::executeCanvasRoute() — the same method Kernel's real
-	 * routing calls once a route has matched — and reproduces Kernel::handle()'s
-	 * own try/catch-to-Response conversion around it, so every layer this plan
-	 * actually changed (DI, autowiring, entity binding, error mapping) is real.
+	 * This is NOT a route-discovery or Kernel::handle() test. An already-
+	 * matched route is supplied directly to
+	 * RequestHandler::executeCanvasRoute() (the same private method Kernel's
+	 * real routing calls once a route has matched, invoked here via
+	 * reflection), and Kernel::handle()'s own try/catch-to-Response conversion
+	 * is reproduced by hand around it — route matching and Kernel::handle()
+	 * itself are not exercised. That's deliberate: Kernel's
+	 * controller_directory scan goes through
+	 * ComposerUtils::findClassesInDirectory(), which — independently of this
+	 * change — cannot resolve a PSR-4 namespace for any path under tests/
+	 * (confirmed against the pre-existing tests/Canvas/Fixtures/Controllers
+	 * too), because it string-matches against the autoloader's raw,
+	 * un-normalized "vendor/composer/../../tests/Canvas" path instead of a
+	 * resolved one; fixing that is a separate, unrelated bug in
+	 * quellabs/support. Route matching has its own dedicated coverage
+	 * elsewhere (RouteMatcherTest, AnnotationResolverMethodHandlingTest,
+	 * etc.), so this test's job is narrower: everything from
+	 * executeCanvasRoute() down — DI, autowiring, entity binding, and error
+	 * mapping — is real.
 	 *
-	 * EntityManager::find() itself is mocked rather than backed by a second real
-	 * EntityManager: ObjectQuel's UnitOfWork registers process-wide SignalHub
-	 * signals with no duplicate-registration guard, and tests/bootstrap.php
-	 * already creates the one EntityManager this PHPUnit process is allowed to
-	 * have (see its comments).
+	 * EntityManager::find() itself is mocked rather than backed by a second
+	 * real EntityManager: ObjectQuel's UnitOfWork registers process-wide
+	 * SignalHub signals with no duplicate-registration guard, and
+	 * tests/bootstrap.php already creates the one EntityManager this PHPUnit
+	 * process is allowed to have (see its comments).
 	 */
-	class EntityBindingHttpEndToEndTest extends TestCase {
+	class EntityBindingRequestDispatchTest extends TestCase {
 
 		/**
 		 * Builds a Kernel with a mocked EntityManager and a canvas-objectquel
@@ -68,7 +73,9 @@
 		/**
 		 * Dispatches an already-matched route through the real
 		 * RequestHandler::executeCanvasRoute(), with Kernel::handle()'s own
-		 * exception-to-Response conversion reproduced around it.
+		 * exception-to-Response conversion reproduced around it. Route matching
+		 * itself is not exercised — $urlData is supplied as if a route had
+		 * already matched.
 		 * @param array<string, mixed> $variables Matched route variables
 		 */
 		private function dispatch(Kernel $kernel, string $method, array $variables): Response {
