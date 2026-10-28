@@ -11,6 +11,7 @@
 	use Quellabs\CanvasObjectQuel\ServiceProvider;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\Contracts\DependencyInjection\NotFound;
 	use Quellabs\ObjectQuel\EntityManager;
 
 	/**
@@ -20,7 +21,7 @@
 	 * {parameterName} binding convention, @ResolveEntity annotation overrides matched
 	 * by parameter name, and that a missing route key or unsupported value shape is a
 	 * binding error (EntityBindingException) distinct from a valid lookup with no row
-	 * (which returns null).
+	 * (which returns NotFound::instance(), not plain null).
 	 */
 	class ResolveEntityServiceProviderTest extends TestCase {
 
@@ -139,7 +140,7 @@
 		// Valid lookup, no row — the only case that legitimately returns null
 		// =========================================================================
 
-		public function testReturnsNullWhenLookupFindsNoRow(): void {
+		public function testReturnsNotFoundWhenLookupFindsNoRow(): void {
 			$entityManager = $this->createMock(EntityManager::class);
 			$entityManager->expects($this->once())
 				->method('find')
@@ -149,7 +150,10 @@
 			$provider = $this->makeProvider($entityManager);
 			$context = $this->makeContext('post', ['post' => 'missing-slug']);
 
-			$this->assertNull($provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
+			$this->assertSame(
+				NotFound::instance(),
+				$provider->createInstance('App\\Entities\\PostEntity', [], [], $context)
+			);
 		}
 
 		// =========================================================================

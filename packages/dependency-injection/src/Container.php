@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\Contracts\DependencyInjection\NotFound;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
@@ -180,7 +181,9 @@
 		/**
 		 * Get a service with centralized dependency resolution.
 		 * Returns null when the provider signals the resource does not exist
-		 * (e.g. no database row for a requested entity).
+		 * (e.g. no database row for a requested entity) — including when the
+		 * provider used NotFound::instance() to say so explicitly; this method
+		 * never returns that sentinel itself, only ever T or null.
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for creation
@@ -189,25 +192,56 @@
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
 		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object {
-			// Resolve the class; null means the provider found no result
+			// Resolve the class; null or NotFound both mean the provider found no result
 			$instance = $this->resolveWithDependencies($className, $parameters, true, $methodContext);
-			
-			if ($instance === null) {
+
+			if ($instance === null || $instance instanceof NotFound) {
 				return null;
 			}
-			
+
 			// If the instance is not of the requested type, the provider has a bug
 			if (!$instance instanceof $className) {
 				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
 			}
-			
+
 			/**
 			 * PHPStan needs to be told instance is of type T
 			 * @var T $instance
 			 */
 			return $instance;
 		}
-		
+
+		/**
+		 * Resolves the same way get() does, but surfaces NotFound::instance()
+		 * instead of collapsing it to null, so a caller can distinguish "the
+		 * provider says no record exists" from an ordinary resolved null or
+		 * value. Intended for Autowirer's internal use; ordinary application
+		 * code should call get() instead, which never returns the sentinel.
+		 * @template T of object
+		 * @param class-string<T> $className Class name to resolve
+		 * @param array<string, mixed> $parameters Additional parameters for creation
+		 * @param MethodContextInterface|null $methodContext
+		 * @return T|NotFound|null
+		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
+		 */
+		public function getOrNotFound(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object {
+			$instance = $this->resolveWithDependencies($className, $parameters, true, $methodContext);
+
+			if ($instance === null || $instance instanceof NotFound) {
+				return $instance;
+			}
+
+			if (!$instance instanceof $className) {
+				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
+			}
+
+			/**
+			 * PHPStan needs to be told instance is of type T
+			 * @var T $instance
+			 */
+			return $instance;
+		}
+
 		/**
 		 * Create an instance with autowired constructor parameters.
 		 * Bypasses service providers - only handles dependency injection.

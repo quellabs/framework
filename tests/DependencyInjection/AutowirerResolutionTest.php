@@ -11,6 +11,7 @@
 	use Quellabs\DependencyInjection\Autowiring\Autowirer;
 	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
+	use Quellabs\Contracts\DependencyInjection\NotFound;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
@@ -39,6 +40,24 @@
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			$this->calls++;
 			return null;
+		}
+	}
+
+	/**
+	 * Target type whose provider explicitly reports "no record exists" via
+	 * NotFound::instance(), distinct from AutowirerResolutionNullableTarget's
+	 * plain null.
+	 */
+	class AutowirerResolutionNotFoundTarget {
+	}
+
+	class AutowirerResolutionNotFoundProvider extends AbstractProvider implements ServiceProviderInterface {
+		public function supports(string $className, array $metadata): bool {
+			return $className === AutowirerResolutionNotFoundTarget::class;
+		}
+
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
+			return NotFound::instance();
 		}
 	}
 
@@ -124,6 +143,10 @@
 			return $target;
 		}
 
+		public function requiredNotFoundTarget(AutowirerResolutionNotFoundTarget $target): ?AutowirerResolutionNotFoundTarget {
+			return $target;
+		}
+
 		public function pickCandidate(AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate): AutowirerResolutionCandidateA|AutowirerResolutionCandidateB {
 			return $candidate;
 		}
@@ -135,10 +158,12 @@
 	/**
 	 * Unit tests for the base Autowirer/Container resolution-signal fix:
 	 * a provider's null is a final, resolved answer (not "unresolved"), a
-	 * provider's own exception survives the call chain unchanged, a known
-	 * recoverable miss on one union candidate still falls through to the next,
-	 * circular dependencies are still reported, and the current parameter name
-	 * is reset even when resolution throws.
+	 * provider's NotFound::instance() is unwrapped to plain null by the base
+	 * (framework-agnostic) handleNotFound() default, a provider's own
+	 * exception survives the call chain unchanged, a known recoverable miss on
+	 * one union candidate still falls through to the next, circular
+	 * dependencies are still reported, and the current parameter name is reset
+	 * even when resolution throws.
 	 */
 	class AutowirerResolutionTest extends TestCase {
 
@@ -179,6 +204,20 @@
 
 			$this->assertSame([null], $args);
 			$this->assertSame(1, $provider->calls);
+		}
+
+		public function testProviderNotFoundIsUnwrappedToNullByTheBaseDefault(): void {
+			$container = $this->makeContainer();
+			$container->register(new AutowirerResolutionNotFoundProvider());
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+			$args = $autowirer->getMethodArguments($controller, 'requiredNotFoundTarget');
+
+			// Base Autowirer has no concept of an HTTP response, so its default
+			// handleNotFound() just injects null — the same outcome as an
+			// ordinary provider's plain null, by design.
+			$this->assertSame([null], $args);
 		}
 
 		public function testProviderExceptionPropagatesUnchangedThroughContainerAndAutowirer(): void {

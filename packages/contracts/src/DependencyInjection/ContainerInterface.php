@@ -41,7 +41,9 @@
 		/**
 		 * Get a service with centralized dependency resolution.
 		 * Returns null when the provider signals the resource does not exist
-		 * (e.g. no database row for a requested entity).
+		 * (e.g. no database row for a requested entity) — including when the
+		 * provider used NotFound::instance() to say so explicitly; this method
+		 * never returns that sentinel itself, only ever T or null.
 		 * @template T of object
 		 * @param class-string<T> $className Class or interface name to resolve
 		 * @param array $parameters Additional parameters for creation
@@ -50,6 +52,21 @@
 		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
 		 */
 		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object;
+
+		/**
+		 * Resolves the same way get() does, but surfaces NotFound::instance()
+		 * instead of collapsing it to null, so a caller can distinguish "the
+		 * provider says no record exists" from an ordinary resolved null or
+		 * value. Intended for Autowirer's internal use; ordinary application
+		 * code should call get() instead.
+		 * @template T of object
+		 * @param class-string<T> $className Class or interface name to resolve
+		 * @param array $parameters Additional parameters for creation
+		 * @param MethodContextInterface|null $methodContext
+		 * @return T|NotFound|null
+		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
+		 */
+		public function getOrNotFound(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object;
 		
 		/**
 		 * Create an instance with autowired constructor parameters.

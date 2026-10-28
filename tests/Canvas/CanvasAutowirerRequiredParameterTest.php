@@ -9,31 +9,32 @@
 	use Quellabs\Canvas\DependencyInjection\CanvasContainer;
 	use Quellabs\Canvas\Exceptions\RequiredParameterNotFoundException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
-	use Quellabs\Contracts\DependencyInjection\EntityProviderInterface;
+	use Quellabs\Contracts\DependencyInjection\NotFound;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
 	/**
-	 * Target type an EntityProviderInterface provider can legitimately resolve
-	 * to no value for, e.g. an entity with no matching database row.
+	 * Target type a provider resolves to NotFound::instance() for, e.g. an
+	 * entity with no matching database row.
 	 */
 	class CanvasAutowirerRequiredParameterTarget {
 	}
 
-	class CanvasAutowirerRequiredParameterEntityProvider extends AbstractProvider implements EntityProviderInterface {
+	class CanvasAutowirerRequiredParameterEntityProvider extends AbstractProvider implements ServiceProviderInterface {
 		public function supports(string $className, array $metadata): bool {
 			return $className === CanvasAutowirerRequiredParameterTarget::class;
 		}
 
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
-			return null;
+			return NotFound::instance();
 		}
 	}
 
 	/**
-	 * Target type an ordinary (non-entity) provider resolves to no value for —
-	 * a cache or logger backend being unavailable, say. Its null must stay a DI
-	 * failure, never a 404.
+	 * Target type an ordinary (non-entity) provider resolves to plain null for —
+	 * a cache or logger backend being unavailable, say. Returning null rather
+	 * than NotFound::instance() is exactly what keeps this a DI failure instead
+	 * of a 404; nothing about the provider's own interface or class matters.
 	 */
 	class CanvasAutowirerRequiredParameterOrdinaryTarget {
 	}
@@ -63,15 +64,15 @@
 	}
 
 	/**
-	 * Unit tests for CanvasAutowirer's required-vs-nullable handling of a
-	 * provider's null: a required (non-nullable) parameter resolved to null by
-	 * an EntityProviderInterface provider becomes a deliberate
-	 * RequiredParameterNotFoundException (HTTP 404), a nullable one still
-	 * receives null, and — critically — null from an ordinary
-	 * ServiceProviderInterface provider (not EntityProviderInterface) is left
-	 * as an ordinary DI outcome, never turned into a 404. This decision lives
-	 * here (Canvas), not in the base Autowirer or in canvas-objectquel's
-	 * provider.
+	 * Unit tests for CanvasAutowirer's handleNotFound() override: a required
+	 * (non-nullable) parameter a provider resolved to NotFound::instance()
+	 * becomes a deliberate RequiredParameterNotFoundException (HTTP 404), a
+	 * nullable one still receives null, and — critically — plain null from an
+	 * ordinary provider (not NotFound::instance()) is left as an ordinary DI
+	 * outcome, never turned into a 404. The distinction lives entirely in which
+	 * value a provider returns, not in which provider or interface produced it.
+	 * This decision lives here (Canvas), not in the base Autowirer or in
+	 * canvas-objectquel's provider.
 	 */
 	class CanvasAutowirerRequiredParameterTest extends TestCase {
 
@@ -82,7 +83,7 @@
 			return new CanvasAutowirer($container, new AnnotationReader(new Configuration()));
 		}
 
-		public function testRequiredEntityBoundParameterResolvedToNullThrows404(): void {
+		public function testRequiredParameterResolvedToNotFoundThrows404(): void {
 			$autowirer = $this->makeAutowirer();
 			$controller = new CanvasAutowirerRequiredParameterController();
 
@@ -91,7 +92,7 @@
 			$autowirer->getMethodArguments($controller, 'required');
 		}
 
-		public function testNullableEntityBoundParameterResolvedToNullStaysNull(): void {
+		public function testNullableParameterResolvedToNotFoundStaysNull(): void {
 			$autowirer = $this->makeAutowirer();
 			$controller = new CanvasAutowirerRequiredParameterController();
 
@@ -104,9 +105,9 @@
 			$autowirer = $this->makeAutowirer();
 			$controller = new CanvasAutowirerRequiredParameterController();
 
-			// Null from a non-entity provider must not become a 404; it stays
-			// the ordinary resolved value (a real controller invocation would
-			// then hit PHP's own TypeError, same as any other DI failure).
+			// Plain null from an ordinary provider must not become a 404; it
+			// stays the ordinary resolved value (a real controller invocation
+			// would then hit PHP's own TypeError, same as any other DI failure).
 			$args = $autowirer->getMethodArguments($controller, 'requiredOrdinaryService');
 
 			$this->assertSame([null], $args);

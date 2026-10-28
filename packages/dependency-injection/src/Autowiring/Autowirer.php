@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\Contracts\DependencyInjection\NotFound;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
 
@@ -169,8 +170,13 @@
 				return $parameters[$paramName];
 			}
 
-			// Strategy 2: Dependency injection — sentinel means unresolved, null means resolved-to-null
+			// Strategy 2: Dependency injection — sentinel means unresolved, null means
+			// resolved-to-null, NotFound means a provider explicitly found no record
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
+
+			if ($resolved instanceof NotFound) {
+				return $this->handleNotFound($param, $className, $methodName);
+			}
 
 			if ($resolved !== self::unresolved()) {
 				return $resolved;
@@ -188,6 +194,22 @@
 			}
 
 			throw new UnresolvableParameterException("Cannot autowire parameter '$paramName' for $className::$methodName");
+		}
+
+		/**
+		 * Called when a provider resolved this parameter's type to NotFound
+		 * rather than an instance or an ordinary null. The base implementation
+		 * treats it as the generic, framework-agnostic outcome — inject null —
+		 * since base Autowirer has no concept of an HTTP response. A subclass
+		 * (Canvas, for a required parameter) can override this to react
+		 * differently, e.g. by throwing to produce a 404.
+		 * @param ParameterMeta $param Parameter metadata (name, types, nullable, etc.)
+		 * @param string $className Class name for error reporting
+		 * @param string $methodName Method name for error reporting
+		 * @return mixed
+		 */
+		protected function handleNotFound(array $param, string $className, string $methodName): mixed {
+			return null;
 		}
 		
 		/**
@@ -213,13 +235,13 @@
 		 * Returns the unresolved sentinel only when no candidate type could even be
 		 * attempted, or every candidate's own construction failed. A provider that
 		 * supports a candidate type always gives a final answer for it — an instance,
-		 * or an explicit null (e.g. no database row for the requested entity) — so
-		 * that answer is returned as-is instead of falling through to further
-		 * strategies or further union candidates.
+		 * an explicit null, or NotFound::instance() when it means "no record exists"
+		 * specifically — so that answer is returned as-is instead of falling through
+		 * to further strategies or further union candidates.
 		 * @param string $paramName Parameter name for error messages
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
-		 * @return mixed The resolved value (possibly null), or the unresolved sentinel
+		 * @return mixed The resolved value (possibly null or NotFound), or the unresolved sentinel
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
@@ -398,13 +420,16 @@
 		
 		/**
 		 * Resolves a type from the container. Extracted so subclasses can swap the
-		 * container without duplicating the resolution loop.
+		 * container without duplicating the resolution loop. Uses getOrNotFound()
+		 * rather than get() so a provider's NotFound::instance() reaches
+		 * resolveParameter() distinguishably, instead of being collapsed to null
+		 * before autowiring ever sees it.
 		 * @param class-string $type The fully qualified class or interface name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for resolution
 		 * @param MethodContextInterface|null $methodContext
-		 * @return object|null The resolved instance, or null
+		 * @return object|NotFound|null The resolved instance, NotFound, or null
 		 */
 		protected function resolveType(string $type, array $parameters, ?MethodContextInterface $methodContext): ?object {
-			return $this->container->get($type, [], $methodContext);
+			return $this->container->getOrNotFound($type, [], $methodContext);
 		}
 	}
