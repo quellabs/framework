@@ -128,17 +128,17 @@
 		
 		/**
 		 * Get the first annotation in the collection.
-		 * @return object|null The first annotation or null if collection is empty
+		 * @return AnnotationInterface|null The first annotation or null if collection is empty
 		 */
-		public function first(): mixed {
+		public function first(): ?AnnotationInterface {
 			return $this->annotations[0] ?? null;
 		}
-		
+
 		/**
 		 * Get the last annotation in the collection.
-		 * @return object|null The last annotation or null if collection is empty
+		 * @return AnnotationInterface|null The last annotation or null if collection is empty
 		 */
-		public function last(): mixed {
+		public function last(): ?AnnotationInterface {
 			return end($this->annotations) ?: null;
 		}
 		

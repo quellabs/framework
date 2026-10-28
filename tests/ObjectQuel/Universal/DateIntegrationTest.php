@@ -4,9 +4,9 @@
 	
 	namespace Quellabs\ObjectQuel\Tests\Universal;
 	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
+	use Quellabs\ObjectQuel\ObjectQuel\QuelResult;
 	
 	use Quellabs\ObjectQuel\Exception\QuelException;
-	use Quellabs\ObjectQuel\Exception\SemanticException;
 	
 	/**
 	 * Integration tests for the date() function in ObjectQuel queries.
@@ -54,8 +54,11 @@
 			if ($this->em->getConnection()->getDatabaseType() === 'pgsql') {
 				$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 			} else {
-				$databaseNow = $this->em->getConnection()->getConnection()->execute('SELECT CURRENT_TIMESTAMP AS fixture_clock')->fetch('assoc')['fixture_clock'];
-				$now = new \DateTimeImmutable($databaseNow);
+				$clockRow = $this->em->getConnection()->getConnection()->execute('SELECT CURRENT_TIMESTAMP AS fixture_clock')->fetch('assoc');
+				self::assertIsArray($clockRow);
+				self::assertArrayHasKey('fixture_clock', $clockRow);
+				self::assertIsString($clockRow['fixture_clock']);
+				$now = new \DateTimeImmutable($clockRow['fixture_clock']);
 			}
 			$this->exec("INSERT INTO posts (id, title, content, published, created_at, test_enum, test_json, user_id)
 				VALUES (1, 'Recent', 'content', TRUE, :createdAt, 'pending', '{\"id\": 1}', 1)", ['createdAt' => $now->modify('-10 days')->format('Y-m-d H:i:s')]);
@@ -71,27 +74,55 @@
 		// Helpers
 		// =========================================================================
 		
-		private function assertParserError(callable $fn): void {
-			try {
-				$fn();
-				$this->fail('Expected QuelException to be thrown');
-			} catch (QuelException $e) {
-				// Any QuelException is fine — parser errors are wrapped as QuelException.
-				$this->addToAssertionCount(1);
-			}
+		/**
+		 * Executes a retrieve query and requires a result object.
+		 * @param string $query
+		 * @param array<string, mixed> $parameters
+		 * @return QuelResult
+		 */
+		private function queryResult(string $query, array $parameters = []): QuelResult {
+			$result = $this->em->executeQuery($query, $parameters);
+			self::assertInstanceOf(QuelResult::class, $result);
+			return $result;
 		}
-		
-		private function assertSemanticError(callable $fn): void {
-			try {
-				$fn();
-				$this->fail('Expected QuelException to be thrown');
-			} catch (QuelException $e) {
-				$this->assertInstanceOf(
-					SemanticException::class,
-					$e->getPrevious(),
-					'Expected QuelException to wrap a SemanticException'
-				);
-			}
+
+		/**
+		 * Reads an existing row from a retrieve result.
+		 * @param QuelResult $result
+		 * @param int $index
+		 * @return array<string, mixed>
+		 */
+		private function resultRow(QuelResult $result, int $index): array {
+			$row = $result[$index];
+			self::assertIsArray($row);
+			return $row;
+		}
+
+		/**
+		 * Reads a named column from a result row.
+		 * @param QuelResult $result
+		 * @param int $index
+		 * @param string $column
+		 * @return mixed
+		 */
+		private function resultValue(QuelResult $result, int $index, string $column): mixed {
+			$row = $this->resultRow($result, $index);
+			self::assertArrayHasKey($column, $row);
+			return $row[$column];
+		}
+
+		/**
+		 * Reads a numeric query value as an integer.
+		 * @param QuelResult $result
+		 * @param int $index
+		 * @param string $column
+		 * @return int
+		 */
+		private function integerResultValue(QuelResult $result, int $index, string $column): int {
+			$value = $this->resultValue($result, $index, $column);
+			self::assertTrue(is_int($value) || is_float($value) || is_string($value));
+			self::assertIsNumeric($value);
+			return (int)$value;
 		}
 		
 		// =========================================================================
@@ -101,9 +132,10 @@
 		/**
 		 * date("30 days") must execute without error. The generated SQL
 		 * should contain the integer literal 2592000, not a function call.
+		 * @return void
 		 */
 		public function testIntervalFoldsToIntegerAndExecutes(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) > date(\"now\") - date(\"30 days\")
@@ -111,12 +143,13 @@
 			
 			// Only post 1 (10 days ago) is within the last 30 days.
 			$this->assertCount(1, $result);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
 		}
 		
 		/**
 		 * Two date() intervals added together must produce the correct combined
 		 * second count: date("6 days") + date("2 days") == 691200 (8 days).
+		 * @return void
 		 */
 		public function testIntervalAdditionFoldsCorrectly(): void {
 			// We cannot directly inspect the SQL, but we can verify the arithmetic
@@ -124,7 +157,7 @@
 			// 6 days + 2 days = 8 days total. post 1 is 10 days old, so it must
 			// NOT be found here; posts 2 and 3 are also outside 8 days, but post 1
 			// is within 10 days. Use the sum as a threshold.
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) > date(\"now\") - (date(\"6 days\") + date(\"2 days\"))
@@ -138,9 +171,10 @@
 		 * Interval subtraction: date("40 days") - date("20 days") must fold to
 		 * 20 days worth of seconds (1728000). Verified by retrieving the computed
 		 * value directly rather than relying on compound WHERE precedence.
+		 * @return void
 		 */
 		public function testIntervalSubtractionFoldsCorrectly(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (diff = date(\"40 days\") - date(\"20 days\"))
 				where p.id = 1
@@ -148,7 +182,7 @@
 			
 			$this->assertCount(1, $result);
 			// 40 days - 20 days = 20 days = 1728000 seconds
-			$this->assertSame(1728000, (int) $result[0]['diff']);
+			$this->assertSame(1728000, $this->integerResultValue($result, 0, 'diff'));
 		}
 		
 		/**
@@ -156,16 +190,17 @@
 		 * throw. (datetime)date('2 days') produces a datetime; subtracting date('1 day')
 		 * (an interval) gives datetime - interval → datetime. Verifies the validator
 		 * correctly resolves the cast node's return type without needing parentheses.
+		 * @return void
 		 */
 		public function testDatetimeCastBeforeArithmeticDoesNotThrow(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (ts = (datetime)date(\"2 days\") - date(\"1 day\"))
 				where p.id = 1
 			");
 
 			$this->assertCount(1, $result);
-			$this->assertInstanceOf(\DateTime::class, $result[0]['ts']);
+			$this->assertInstanceOf(\DateTime::class, $this->resultValue($result, 0, 'ts'));
 		}
 
 		// =========================================================================
@@ -175,12 +210,13 @@
 		/**
 		 * date("now") must return a value greater than any reasonable past timestamp,
 		 * confirming the platform now-function is emitted and executes correctly.
+		 * @return void
 		 */
 		public function testDateNowIsGreaterThanPastTimestamp(): void {
 			// All posts were created in the past, so all timestamps must be
 			// less than NOW(). A WHERE that filters date(p.createdAt) < date("now")
 			// must return all rows.
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) < date(\"now\")
@@ -196,24 +232,26 @@
 		/**
 		 * Posts created within the last 30 days.
 		 * Only post 1 (10 days ago) must be returned.
+		 * @return void
 		 */
 		public function testFilterPostsCreatedWithinLast30Days(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.title)
 				where date(p.createdAt) > date(\"now\") - date(\"30 days\")
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertSame('Recent', $result[0]['p.title']);
+			$this->assertSame('Recent', $this->resultValue($result, 0, 'p.title'));
 		}
 		
 		/**
 		 * Posts created within the last 60 days.
 		 * Posts 1 (10 days) and 2 (40 days) must be returned.
+		 * @return void
 		 */
 		public function testFilterPostsCreatedWithinLast60Days(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) > date(\"now\") - date(\"60 days\")
@@ -221,34 +259,36 @@
 			");
 			
 			$this->assertCount(2, $result);
-			$this->assertSame(1, $result[0]['p.id']);
-			$this->assertSame(2, $result[1]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
+			$this->assertSame(2, $this->resultValue($result, 1, 'p.id'));
 		}
 		
 		/**
 		 * Posts older than 1 year.
 		 * Only post 3 (366 days old) must be returned.
+		 * @return void
 		 */
 		public function testFilterPostsOlderThanOneYear(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.title)
 				where date(p.createdAt) < date(\"now\") - date(\"1 year\")
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertSame('VeryOld', $result[0]['p.title']);
+			$this->assertSame('VeryOld', $this->resultValue($result, 0, 'p.title'));
 		}
 		
 		/**
 		 * With a parameter-bound cutoff date.
 		 * :cutoff is a Unix timestamp; compare directly against date(p.createdAt).
+		 * @return void
 		 */
 		public function testFilterWithParameterCutoff(): void {
 			// cutoff = 20 days ago
 			$cutoff = time() - 20 * 86400;
 			
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where date(p.createdAt) > :cutoff
@@ -256,7 +296,7 @@
 			
 			// Only post 1 (10 days old) is after the 20-day cutoff.
 			$this->assertCount(1, $result);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
 		}
 		
 		// =========================================================================
@@ -273,11 +313,12 @@
 		 * A DateTimeImmutable bound against a bare (non-date()-wrapped) \DateTime
 		 * column comparison must be coerced to a Unix timestamp automatically,
 		 * instead of throwing "Cannot convert value ... to string" during binding.
+		 * @return void
 		 */
 		public function testImplicitColumnComparisonAcceptsDateTimeImmutable(): void {
 			$since = new \DateTimeImmutable('-20 days');
 
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where p.createdAt >= :since
@@ -285,42 +326,44 @@
 
 			// Only post 1 (10 days old) is at or after 20 days ago.
 			$this->assertCount(1, $result);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
 		}
 
 		/**
 		 * A formatted "Y-m-d H:i:s" string bound against a bare \DateTime column
 		 * comparison must be coerced the same way as a DateTimeImmutable, not
 		 * silently compared as a string against the column's integer timestamp.
+		 * @return void
 		 */
 		public function testImplicitColumnComparisonAcceptsFormattedString(): void {
 			$since = (new \DateTime('-20 days'))->format('Y-m-d H:i:s');
 
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where p.createdAt >= :since
 			", ['since' => $since]);
 
 			$this->assertCount(1, $result);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
 		}
 
 		/**
 		 * A raw Unix timestamp int bound against a bare \DateTime column
 		 * comparison must keep working exactly as it did before this fix.
+		 * @return void
 		 */
 		public function testImplicitColumnComparisonAcceptsRawTimestamp(): void {
 			$since = (new \DateTime('-20 days'))->getTimestamp();
 
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				where p.createdAt >= :since
 			", ['since' => $since]);
 
 			$this->assertCount(1, $result);
-			$this->assertSame(1, $result[0]['p.id']);
+			$this->assertSame(1, $this->resultValue($result, 0, 'p.id'));
 		}
 
 		/**
@@ -347,9 +390,10 @@
 		 * "1 year 10 days" is a composite interval. Posts older than 1 year + 10
 		 * days must be returned; post 3 is 366 days old which is just past
 		 * 1 year (365 days) but not past 1 year + 10 days (375 days).
+		 * @return void
 		 */
 		public function testCompositeIntervalOneYearTenDays(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.title)
 				where date(p.createdAt) < date(\"now\") - date(\"1 year 10 days\")
@@ -363,16 +407,17 @@
 		 * "1 year" alone must still match post 3 (366 days > 365 days).
 		 * This also confirms the single-unit path still works after the
 		 * multi-unit parser was introduced.
+		 * @return void
 		 */
 		public function testSingleYearIntervalMatchesPostOlderThanOneYear(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.title)
 				where date(p.createdAt) < date(\"now\") - date(\"1 year\")
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertSame('VeryOld', $result[0]['p.title']);
+			$this->assertSame('VeryOld', $this->resultValue($result, 0, 'p.title'));
 		}
 		
 		// =========================================================================
@@ -381,16 +426,17 @@
 		
 		/**
 		 * date(p.createdAt) in the retrieve list must hydrate as \DateTime.
+		 * @return void
 		 */
 		public function testDateColumnInSelectListReturnsDateTime(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (ts = date(p.createdAt))
 				where p.id = 1
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertInstanceOf(\DateTime::class, $result[0]['ts']);
+			$this->assertInstanceOf(\DateTime::class, $this->resultValue($result, 0, 'ts'));
 		}
 		
 		/**
@@ -403,54 +449,58 @@
 		 * The companion test testDateColumnInSelectListReturnsDateTime() covers
 		 * the hydration contract for the column-argument form, which is reliable
 		 * across all environments.
+		 * @return void
 		 */
 		public function testDateNowInSelectListExecutesWithoutError(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (now = date(\"now\"))
 				where p.id = 1
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertArrayHasKey('now', $result[0]);
+			$this->assertArrayHasKey('now', $this->resultRow($result, 0));
 		}
 		
 		/**
 		 * The \DateTime returned for date(p.createdAt) must be approximately
-		 * 10 days in the past (within a 1-minute tolerance for test execution time).
+		 * 10 calendar days in the past, allowing for a daylight-saving transition.
+		 * @return void
 		 */
 		public function testDateColumnHydratesCorrectTimestamp(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (ts = date(p.createdAt))
 				where p.id = 1
 			");
 			
 			$this->assertCount(1, $result);
-			$dt = $result[0]['ts'];
+			$dt = $this->resultValue($result, 0, 'ts');
 			$this->assertInstanceOf(\DateTime::class, $dt);
 			
 			$ageInSeconds = time() - $dt->getTimestamp();
 			
 			// Post 1 was inserted with a timestamp 10 days before fixture setup.
-			// Allow ±60 seconds of tolerance for test execution time.
-			$this->assertGreaterThan(10 * 86400 - 60, $ageInSeconds);
-			$this->assertLessThan(10 * 86400 + 60, $ageInSeconds);
+			// Ten calendar days can differ from 864000 seconds by one DST hour.
+			$tolerance = 3600 + 60;
+			$this->assertGreaterThan(10 * 86400 - $tolerance, $ageInSeconds);
+			$this->assertLessThan(10 * 86400 + $tolerance, $ageInSeconds);
 		}
 		
 		/**
 		 * Wrapping date() in an explicit (int) cast must return a PHP int,
 		 * not a \DateTime. The AstCast branch in processValue() takes precedence.
+		 * @return void
 		 */
 		public function testDateColumnWithIntCastReturnsInt(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (ts = (int)date(p.createdAt))
 				where p.id = 1
 			");
 			
 			$this->assertCount(1, $result);
-			$this->assertIsInt($result[0]['ts']);
+			$this->assertIsInt($this->resultValue($result, 0, 'ts'));
 		}
 		
 		// =========================================================================
@@ -460,9 +510,10 @@
 		/**
 		 * date() in a sort expression must not crash and must produce the
 		 * expected order (most recent first = ascending timestamp).
+		 * @return void
 		 */
 		public function testSortByDateColumnAscending(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				sort by date(p.createdAt) asc
@@ -472,8 +523,12 @@
 			$this->assertSame([3, 2, 1], $ids);
 		}
 		
+		/**
+		 * Orders posts from newest to oldest by their dates.
+		 * @return void
+		 */
 		public function testSortByDateColumnDescending(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (p.id)
 				sort by date(p.createdAt) desc
@@ -506,9 +561,10 @@
 		 * A bare "now" passed as an interval to arithmetic must not be treated
 		 * as a zero interval — it emits the NOW function, so subtracting
 		 * date("now") from date("now") is legal and should yield ~0.
+		 * @return void
 		 */
 		public function testDateNowMinusDateNowIsApproximatelyZero(): void {
-			$result = $this->em->executeQuery("
+			$result = $this->queryResult("
 				range of p is PostEntity
 				retrieve (diff = date(\"now\") - date(\"now\"))
 				where p.id = 1
@@ -516,6 +572,6 @@
 			
 			$this->assertCount(1, $result);
 			// The difference between two NOW() calls should be 0 or 1 second.
-			$this->assertLessThanOrEqual(1, abs((int) $result[0]['diff']));
+			$this->assertLessThanOrEqual(1, abs($this->integerResultValue($result, 0, 'diff')));
 		}
 	}

@@ -26,7 +26,9 @@
 		 * @return EntityManager The suite's shared entity manager
 		 */
 		private function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(EntityManager::class, $entityManager);
+			return $entityManager;
 		}
 
 		/**
