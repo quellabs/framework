@@ -20,11 +20,28 @@
 	class CanvasAutowirerRequiredParameterTarget {
 	}
 
+	/**
+	 * Provider that always reports NotFound::instance() for
+	 * CanvasAutowirerRequiredParameterTarget.
+	 */
 	class CanvasAutowirerRequiredParameterEntityProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
 		public function supports(string $className, array $metadata): bool {
 			return $className === CanvasAutowirerRequiredParameterTarget::class;
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return NotFound Always the shared NotFound sentinel
+		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			return NotFound::instance();
 		}
@@ -39,26 +56,64 @@
 	class CanvasAutowirerRequiredParameterOrdinaryTarget {
 	}
 
+	/**
+	 * Provider that always reports plain null for
+	 * CanvasAutowirerRequiredParameterOrdinaryTarget.
+	 */
 	class CanvasAutowirerRequiredParameterOrdinaryProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
 		public function supports(string $className, array $metadata): bool {
 			return $className === CanvasAutowirerRequiredParameterOrdinaryTarget::class;
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Always null
+		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			return null;
 		}
 	}
 
+	/**
+	 * Controller-shaped fixture whose methods exercise each required/nullable
+	 * resolution scenario under test.
+	 */
 	class CanvasAutowirerRequiredParameterController {
+
+		/**
+		 * @param CanvasAutowirerRequiredParameterTarget $target
+		 * @return void
+		 */
 		public function required(CanvasAutowirerRequiredParameterTarget $target): void {
 		}
 
+		/**
+		 * @param CanvasAutowirerRequiredParameterTarget|null $target
+		 * @return void
+		 */
 		public function nullable(?CanvasAutowirerRequiredParameterTarget $target): void {
 		}
 
+		/**
+		 * @param CanvasAutowirerRequiredParameterOrdinaryTarget $service
+		 * @return void
+		 */
 		public function requiredOrdinaryService(CanvasAutowirerRequiredParameterOrdinaryTarget $service): void {
 		}
 
+		/**
+		 * @param string $value
+		 * @return void
+		 */
 		public function requiredString(string $value = 'default'): void {
 		}
 	}
@@ -76,6 +131,9 @@
 	 */
 	class CanvasAutowirerRequiredParameterTest extends TestCase {
 
+		/**
+		 * @return CanvasAutowirer
+		 */
 		private function makeAutowirer(): CanvasAutowirer {
 			$container = new CanvasContainer(new AnnotationReader(new Configuration()));
 			$container->register(new CanvasAutowirerRequiredParameterEntityProvider());

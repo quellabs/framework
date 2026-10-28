@@ -54,6 +54,7 @@
 		 * Builds a Kernel with a mocked EntityManager and a canvas-objectquel
 		 * ServiceProvider configured to recognize the fixture entity's namespace.
 		 * @param EntityBindingPostEntity|null $findResult What EntityManager::find() returns
+		 * @return Kernel
 		 */
 		private function makeKernel(?EntityBindingPostEntity $findResult): Kernel {
 			$kernel = new Kernel();
@@ -76,7 +77,10 @@
 		 * exception-to-Response conversion reproduced around it. Route matching
 		 * itself is not exercised — $urlData is supplied as if a route had
 		 * already matched.
+		 * @param Kernel $kernel
+		 * @param string $method Controller method to dispatch to
 		 * @param array<string, mixed> $variables Matched route variables
+		 * @return Response
 		 */
 		private function dispatch(Kernel $kernel, string $method, array $variables): Response {
 			$urlData = [
@@ -96,6 +100,11 @@
 			}
 		}
 
+		/**
+		 * @param string $slug
+		 * @param string $title
+		 * @return EntityBindingPostEntity
+		 */
 		private function makePost(string $slug, string $title): EntityBindingPostEntity {
 			$post = new EntityBindingPostEntity();
 			$post->setSlug($slug);

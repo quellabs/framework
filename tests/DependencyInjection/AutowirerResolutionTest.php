@@ -27,16 +27,35 @@
 	 * recording how many times it was actually asked.
 	 */
 	class AutowirerResolutionNullProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @var int Number of times createInstance() was called
+		 */
 		public int $calls = 0;
 
+		/**
+		 * @return array<string, mixed>
+		 */
 		public static function getMetadata(): array {
 			return [];
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
 		public function supports(string $className, array $metadata): bool {
 			return $className === AutowirerResolutionNullableTarget::class;
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Always null, recording the call
+		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			$this->calls++;
 			return null;
@@ -51,11 +70,28 @@
 	class AutowirerResolutionNotFoundTarget {
 	}
 
+	/**
+	 * Provider that always reports NotFound::instance() for
+	 * AutowirerResolutionNotFoundTarget.
+	 */
 	class AutowirerResolutionNotFoundProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
 		public function supports(string $className, array $metadata): bool {
 			return $className === AutowirerResolutionNotFoundTarget::class;
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return NotFound Always the shared NotFound sentinel
+		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			return NotFound::instance();
 		}
@@ -68,15 +104,35 @@
 	class AutowirerResolutionFailingTarget {
 	}
 
+	/**
+	 * Provider that always throws for AutowirerResolutionFailingTarget.
+	 */
 	class AutowirerResolutionFailingProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @return array<string, mixed>
+		 */
 		public static function getMetadata(): array {
 			return [];
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
 		public function supports(string $className, array $metadata): bool {
 			return $className === AutowirerResolutionFailingTarget::class;
 		}
 
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Never returns; always throws
+		 * @throws \DomainException Always
+		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			throw new \DomainException('autowirer-resolution-provider-failure');
 		}
@@ -88,6 +144,10 @@
 	 * UnresolvableParameterException — a recoverable miss for this one candidate.
 	 */
 	class AutowirerResolutionCandidateA {
+
+		/**
+		 * @param string $missing A required scalar nothing can supply, by design
+		 */
 		public function __construct(string $missing) {
 		}
 	}
@@ -99,58 +159,128 @@
 	class AutowirerResolutionCandidateB {
 	}
 
+	/**
+	 * Depends on AutowirerResolutionCircularB, forming a circular dependency
+	 * with it when both are autowired.
+	 */
 	class AutowirerResolutionCircularA {
+
+		/**
+		 * @var AutowirerResolutionCircularB
+		 */
 		private AutowirerResolutionCircularB $b;
 
+		/**
+		 * @param AutowirerResolutionCircularB $b
+		 */
 		public function __construct(AutowirerResolutionCircularB $b) {
 			$this->b = $b;
 		}
 	}
 
+	/**
+	 * Depends on AutowirerResolutionCircularA, forming a circular dependency
+	 * with it when both are autowired.
+	 */
 	class AutowirerResolutionCircularB {
+
+		/**
+		 * @var AutowirerResolutionCircularA
+		 */
 		private AutowirerResolutionCircularA $a;
 
+		/**
+		 * @param AutowirerResolutionCircularA $a
+		 */
 		public function __construct(AutowirerResolutionCircularA $a) {
 			$this->a = $a;
 		}
 	}
 
+	/**
+	 * Ordinary, provider-free dependency used to confirm the DI change does
+	 * not affect normal (non-entity) autowiring.
+	 */
 	class AutowirerResolutionPlainDependency {
 	}
 
+	/**
+	 * Ordinary consumer of AutowirerResolutionPlainDependency, resolved purely
+	 * through constructor autowiring with no provider involved.
+	 */
 	class AutowirerResolutionPlainConsumer {
+
+		/**
+		 * @var AutowirerResolutionPlainDependency
+		 */
 		private AutowirerResolutionPlainDependency $dependency;
 
+		/**
+		 * @param AutowirerResolutionPlainDependency $dependency
+		 */
 		public function __construct(AutowirerResolutionPlainDependency $dependency) {
 			$this->dependency = $dependency;
 		}
 
+		/**
+		 * @return AutowirerResolutionPlainDependency
+		 */
 		public function getDependency(): AutowirerResolutionPlainDependency {
 			return $this->dependency;
 		}
 	}
 
+	/**
+	 * Controller-shaped fixture whose methods exercise each resolution
+	 * scenario under test.
+	 */
 	class AutowirerResolutionController {
+
+		/**
+		 * @param AutowirerResolutionNullableTarget $target
+		 * @return AutowirerResolutionNullableTarget|null
+		 */
 		public function requiredTarget(AutowirerResolutionNullableTarget $target): ?AutowirerResolutionNullableTarget {
 			return $target;
 		}
 
+		/**
+		 * @param AutowirerResolutionNullableTarget|null $target
+		 * @return AutowirerResolutionNullableTarget|null
+		 */
 		public function nullableTarget(?AutowirerResolutionNullableTarget $target): ?AutowirerResolutionNullableTarget {
 			return $target;
 		}
 
+		/**
+		 * @param AutowirerResolutionFailingTarget $target
+		 * @return AutowirerResolutionFailingTarget
+		 */
 		public function failingTarget(AutowirerResolutionFailingTarget $target): AutowirerResolutionFailingTarget {
 			return $target;
 		}
 
+		/**
+		 * @param AutowirerResolutionNotFoundTarget $target
+		 * @return AutowirerResolutionNotFoundTarget|null
+		 */
 		public function requiredNotFoundTarget(AutowirerResolutionNotFoundTarget $target): ?AutowirerResolutionNotFoundTarget {
 			return $target;
 		}
 
+		/**
+		 * @param AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate
+		 * @return AutowirerResolutionCandidateA|AutowirerResolutionCandidateB
+		 */
 		public function pickCandidate(AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate): AutowirerResolutionCandidateA|AutowirerResolutionCandidateB {
 			return $candidate;
 		}
 
+		/**
+		 * @param string $missing
+		 * @param string $alsoMissing
+		 * @return void
+		 */
 		public function twoRequiredScalars(string $missing, string $alsoMissing): void {
 		}
 	}
@@ -175,6 +305,7 @@
 		 * so it crashes during discovery. CanvasContainer's DependencyAwareDiscover
 		 * handles that; these tests otherwise exercise the base Autowirer/Container
 		 * resolution logic directly, not anything Canvas-specific.
+		 * @return ContainerInterface
 		 */
 		private function makeContainer(): ContainerInterface {
 			return new CanvasContainer(new AnnotationReader(new Configuration()));

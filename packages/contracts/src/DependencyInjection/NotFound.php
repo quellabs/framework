@@ -15,11 +15,21 @@
 	 */
 	final class NotFound {
 
+		/**
+		 * @var self|null The shared instance
+		 */
 		private static ?self $instance = null;
 
+		/**
+		 * Private: only instance() constructs this sentinel.
+		 */
 		private function __construct() {
 		}
 
+		/**
+		 * Returns the shared sentinel instance, creating it on first call.
+		 * @return self
+		 */
 		public static function instance(): self {
 			return self::$instance ??= new self();
 		}
