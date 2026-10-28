@@ -179,8 +179,15 @@
 		
 		/**
 		 * Get a service with centralized dependency resolution.
-		 * Returns null when the provider signals the resource does not exist
-		 * (e.g. no database row for a requested entity).
+		 * Returns null when the provider itself returns null to signal the
+		 * resource does not exist (e.g. no database row for a requested
+		 * entity). This method never catches or converts a provider's own
+		 * exceptions: a provider resolving a parameter during autowiring (a
+		 * $methodContext with an active parameter name) may instead throw
+		 * ResolutionNotFoundException for exactly that situation, and such an
+		 * exception propagates from here unchanged, not as null. An ordinary
+		 * call — no $methodContext, or one with no active parameter — is
+		 * unaffected by that distinction.
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for creation

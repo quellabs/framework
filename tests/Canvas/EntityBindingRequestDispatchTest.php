@@ -8,6 +8,8 @@
 	use Quellabs\Canvas\Tests\Fixtures\Entities\EntityBindingPostEntity;
 	use Quellabs\Canvas\Tests\Fixtures\EntityBindingControllers\EntityBindingPostController;
 	use Quellabs\CanvasObjectQuel\ServiceProvider;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
+	use Quellabs\DependencyInjection\Autowiring\MethodContext;
 	use Quellabs\DependencyInjection\Provider\SimpleBinding;
 	use Quellabs\ObjectQuel\EntityManager;
 	use Symfony\Component\HttpFoundation\Request;
@@ -47,6 +49,18 @@
 	 * SignalHub signals with no duplicate-registration guard, and
 	 * tests/bootstrap.php already creates the one EntityManager this PHPUnit
 	 * process is allowed to have (see its comments).
+	 *
+	 * Also covers a narrower edge directly against Container::get(): its own
+	 * interface documentation says it returns null when a resource doesn't
+	 * exist, but get() has no try/catch of its own — it only ever returns
+	 * null because the chosen provider itself chose to return null. canvas-
+	 * objectquel's ServiceProvider only returns null for "nothing to bind
+	 * to" (no MethodContext, or no active parameter name); given one with an
+	 * active parameter name — the same shape Autowirer::resolveType()
+	 * passes — it throws ResolutionNotFoundException instead, and get()
+	 * propagates that unchanged. Any caller constructing such a context
+	 * directly and calling get() sees the same distinction Autowirer relies
+	 * on, not something special to autowiring.
 	 */
 	class EntityBindingRequestDispatchTest extends TestCase {
 
@@ -145,5 +159,30 @@
 
 			$this->assertSame(200, $response->getStatusCode());
 			$this->assertSame('not-found', $response->getContent());
+		}
+
+		public function testContainerGetPropagatesResolutionNotFoundWhenCalledWithAnActiveParameterContext(): void {
+			$kernel = $this->makeKernel(null);
+			$container = $kernel->getDependencyInjector();
+
+			// Constructed directly, not produced by Autowirer — proving this is
+			// a property of calling get() with this shape of context, not
+			// something only the autowiring call site can trigger.
+			$context = new MethodContext(EntityBindingPostController::class, 'show', ['slug' => 'does-not-exist']);
+			$context->setParameterName('slug');
+
+			$this->expectException(ResolutionNotFoundException::class);
+			$container->get(EntityBindingPostEntity::class, [], $context);
+		}
+
+		public function testContainerGetReturnsNullForAnOrdinaryLookupWithNoActiveParameterContext(): void {
+			$kernel = $this->makeKernel(null);
+			$container = $kernel->getDependencyInjector();
+
+			// Same entity type, same "no row" EntityManager mock, but no
+			// MethodContext at all this time: the provider never attempts the
+			// lookup, and get() returns null exactly as its interface
+			// documentation describes.
+			$this->assertNull($container->get(EntityBindingPostEntity::class));
 		}
 	}
