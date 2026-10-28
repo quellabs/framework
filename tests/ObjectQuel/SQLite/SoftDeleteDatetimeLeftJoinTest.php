@@ -7,13 +7,25 @@
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelPlainChildOfSoftParentEntity;
 	use Quellabs\ObjectQuel\Tests\Fixtures\RelationshipEntities\RelSoftParentEntity;
 
-	/** Companion to SoftDeleteBooleanLeftJoinTest: confirms the ON-clause fix also applies to the `datetime` branch. */
+	/**
+	 * Confirms soft-deleted datetime parents do not remove their child rows.
+	 */
 	class SoftDeleteDatetimeLeftJoinTest extends TestCase {
 
+		/**
+		 * Returns the test suite's entity manager.
+		 * @return EntityManager
+		 */
 		private static function em(): EntityManager {
-			return $GLOBALS['test_em'];
+			$entityManager = $GLOBALS['test_em'];
+			self::assertInstanceOf(EntityManager::class, $entityManager);
+			return $entityManager;
 		}
 
+		/**
+		 * Clears the relationship fixtures before each test.
+		 * @return void
+		 */
 		protected function setUp(): void {
 			$adapter = self::em()->getConnection();
 
@@ -27,6 +39,10 @@
 			self::em()->getUnitOfWork()->clear();
 		}
 
+		/**
+		 * Keeps children visible when their datetime parent is soft-deleted.
+		 * @return void
+		 */
 		public function testChildOfSoftDeletedDatetimeParentSurvivesWithParentColumnsNull(): void {
 			$em = self::em();
 
@@ -57,14 +73,23 @@
 				retrieve (ch.id, p.id)
 				sort by ch.id asc
 			");
+			self::assertNotNull($rows);
 
 			$rowsById = [];
 			foreach ($rows as $row) {
+				self::assertArrayHasKey('ch.id', $row);
+				self::assertIsInt($row['ch.id']);
 				$rowsById[$row['ch.id']] = $row;
 			}
 
 			$this->assertCount(2, $rowsById, 'Both children must survive, including the one pointing at a soft-deleted parent');
-			$this->assertNull($rowsById[$childOfDeletedParent->getId()]['p.id'], 'The soft-deleted parent must not be visible through the join');
-			$this->assertSame($activeParent->getId(), $rowsById[$childOfActiveParent->getId()]['p.id']);
+			$deletedChildId = $childOfDeletedParent->getId();
+			$activeChildId = $childOfActiveParent->getId();
+			self::assertIsInt($deletedChildId);
+			self::assertIsInt($activeChildId);
+			self::assertArrayHasKey($deletedChildId, $rowsById);
+			self::assertArrayHasKey($activeChildId, $rowsById);
+			$this->assertNull($rowsById[$deletedChildId]['p.id'], 'The soft-deleted parent must not be visible through the join');
+			$this->assertSame($activeParent->getId(), $rowsById[$activeChildId]['p.id']);
 		}
 	}
