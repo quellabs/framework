@@ -10,6 +10,7 @@
 	use Quellabs\Canvas\Exceptions\RequiredParameterNotFoundException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\NotFound;
+	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
 	use Quellabs\Discover\Provider\AbstractProvider;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
@@ -123,11 +124,13 @@
 	 * (non-nullable) parameter a provider resolved to NotFound::instance()
 	 * becomes a deliberate RequiredParameterNotFoundException (HTTP 404), a
 	 * nullable one still receives null, and — critically — plain null from an
-	 * ordinary provider (not NotFound::instance()) is left as an ordinary DI
-	 * outcome, never turned into a 404. The distinction lives entirely in which
-	 * value a provider returns, not in which provider or interface produced it.
-	 * This decision lives here (Canvas), not in the base Autowirer or in
-	 * canvas-objectquel's provider.
+	 * ordinary provider (not NotFound::instance()) still never becomes a 404;
+	 * it is instead rejected as a generic UnresolvableParameterException (the
+	 * base Autowirer's own guard against a required parameter silently
+	 * resolving to null). The 404-vs-DI-failure distinction lives entirely in
+	 * which value a provider returns, not in which provider or interface
+	 * produced it. The 404 decision itself lives here (Canvas), not in the
+	 * base Autowirer or in canvas-objectquel's provider.
 	 */
 	class CanvasAutowirerRequiredParameterTest extends TestCase {
 
@@ -164,11 +167,12 @@
 			$controller = new CanvasAutowirerRequiredParameterController();
 
 			// Plain null from an ordinary provider must not become a 404; it
-			// stays the ordinary resolved value (a real controller invocation
-			// would then hit PHP's own TypeError, same as any other DI failure).
-			$args = $autowirer->getMethodArguments($controller, 'requiredOrdinaryService');
-
-			$this->assertSame([null], $args);
+			// must still be rejected as a clear DI failure rather than being
+			// silently injected (which would only surface later as an opaque
+			// PHP TypeError when the controller method is actually invoked).
+			$this->expectException(UnresolvableParameterException::class);
+			$this->expectExceptionMessageMatches('/resolved to null/');
+			$autowirer->getMethodArguments($controller, 'requiredOrdinaryService');
 		}
 
 		public function testRequiredScalarParameterWithDefaultIsUnaffected(): void {

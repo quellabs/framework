@@ -175,11 +175,16 @@
 			$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
 
 			if ($resolved instanceof NotFound) {
-				return $this->handleNotFound($param, $className, $methodName);
+				return $this->rejectNullForRequiredParameter(
+					$this->handleNotFound($param, $className, $methodName),
+					$param,
+					$className,
+					$methodName
+				);
 			}
 
 			if ($resolved !== self::unresolved()) {
-				return $resolved;
+				return $this->rejectNullForRequiredParameter($resolved, $param, $className, $methodName);
 			}
 
 			// Strategy 3: Default value from method signature
@@ -200,9 +205,11 @@
 		 * Called when a provider resolved this parameter's type to NotFound
 		 * rather than an instance or an ordinary null. The base implementation
 		 * treats it as the generic, framework-agnostic outcome — inject null —
-		 * since base Autowirer has no concept of an HTTP response. A subclass
-		 * (Canvas, for a required parameter) can override this to react
-		 * differently, e.g. by throwing to produce a 404.
+		 * since base Autowirer has no concept of an HTTP response. The caller
+		 * still rejects that null if the parameter turns out to be required
+		 * (see rejectNullForRequiredParameter()). A subclass (Canvas, for a
+		 * required parameter) can override this to react differently instead,
+		 * e.g. by throwing to produce a 404.
 		 * @param ParameterMeta $param Parameter metadata (name, types, nullable, etc.)
 		 * @param string $className Class name for error reporting
 		 * @param string $methodName Method name for error reporting
@@ -211,7 +218,31 @@
 		protected function handleNotFound(array $param, string $className, string $methodName): mixed {
 			return null;
 		}
-		
+
+		/**
+		 * Guards a resolved value against silently becoming an opaque PHP
+		 * TypeError at the actual method call: null is only a valid answer for
+		 * a parameter that is itself nullable. A required (non-nullable)
+		 * parameter that a provider (directly, or via handleNotFound()) resolved
+		 * to null is a DI failure and is reported as one immediately, with the
+		 * parameter and method named, instead of deferred past this point.
+		 * @param mixed $value The value Strategy 2 (or handleNotFound()) resolved to
+		 * @param ParameterMeta $param Parameter metadata (name, nullable, etc.)
+		 * @param string $className Class name for error reporting
+		 * @param string $methodName Method name for error reporting
+		 * @return mixed $value, unchanged, when it is acceptable
+		 * @throws UnresolvableParameterException If the parameter is required but resolved to null
+		 */
+		protected function rejectNullForRequiredParameter(mixed $value, array $param, string $className, string $methodName): mixed {
+			if ($value === null && !($param['nullable'] ?? true)) {
+				throw new UnresolvableParameterException(
+					"Cannot autowire required parameter '{$param['name']}' for $className::$methodName: resolved to null"
+				);
+			}
+
+			return $value;
+		}
+
 		/**
 		 * Determines if a parameter is the magic __all__ parameter.
 		 * @param ParameterMeta $param Parameter metadata

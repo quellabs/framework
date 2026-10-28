@@ -269,6 +269,14 @@
 		}
 
 		/**
+		 * @param AutowirerResolutionNotFoundTarget|null $target
+		 * @return AutowirerResolutionNotFoundTarget|null
+		 */
+		public function nullableNotFoundTarget(?AutowirerResolutionNotFoundTarget $target): ?AutowirerResolutionNotFoundTarget {
+			return $target;
+		}
+
+		/**
 		 * @param AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate
 		 * @return AutowirerResolutionCandidateA|AutowirerResolutionCandidateB
 		 */
@@ -287,13 +295,16 @@
 
 	/**
 	 * Unit tests for the base Autowirer/Container resolution-signal fix:
-	 * a provider's null is a final, resolved answer (not "unresolved"), a
-	 * provider's NotFound::instance() is unwrapped to plain null by the base
-	 * (framework-agnostic) handleNotFound() default, a provider's own
-	 * exception survives the call chain unchanged, a known recoverable miss on
-	 * one union candidate still falls through to the next, circular
-	 * dependencies are still reported, and the current parameter name is reset
-	 * even when resolution throws.
+	 * a provider's null is a resolved answer (not "unresolved") for a nullable
+	 * parameter, but is rejected with a clear UnresolvableParameterException
+	 * for a required one — whether that null came directly from a provider or
+	 * via the base (framework-agnostic) handleNotFound() default for
+	 * NotFound::instance() — rather than being silently injected and left to
+	 * surface later as an opaque PHP TypeError. A provider's own exception
+	 * survives the call chain unchanged, a known recoverable miss on one union
+	 * candidate still falls through to the next, circular dependencies are
+	 * still reported, and the current parameter name is reset even when
+	 * resolution throws.
 	 */
 	class AutowirerResolutionTest extends TestCase {
 
@@ -311,16 +322,24 @@
 			return new CanvasContainer(new AnnotationReader(new Configuration()));
 		}
 
-		public function testProviderResolvedNullIsInjectedIntoARequiredParameterInsteadOfThrowing(): void {
+		public function testProviderResolvedNullForARequiredParameterThrowsAClearDIError(): void {
 			$container = $this->makeContainer();
 			$provider = new AutowirerResolutionNullProvider();
 			$container->register($provider);
 
 			$autowirer = new Autowirer($container);
 			$controller = new AutowirerResolutionController();
-			$args = $autowirer->getMethodArguments($controller, 'requiredTarget');
 
-			$this->assertSame([null], $args);
+			// Silently injecting null here would only surface later as an
+			// opaque PHP TypeError at the actual method call; reject it
+			// immediately, with the parameter and method named, instead.
+			try {
+				$autowirer->getMethodArguments($controller, 'requiredTarget');
+				$this->fail('Expected UnresolvableParameterException was not thrown');
+			} catch (UnresolvableParameterException $e) {
+				$this->assertStringContainsString('target', $e->getMessage());
+			}
+
 			$this->assertSame(1, $provider->calls);
 		}
 
@@ -337,18 +356,33 @@
 			$this->assertSame(1, $provider->calls);
 		}
 
-		public function testProviderNotFoundIsUnwrappedToNullByTheBaseDefault(): void {
+		public function testProviderNotFoundIsUnwrappedToNullByTheBaseDefaultForANullableParameter(): void {
 			$container = $this->makeContainer();
 			$container->register(new AutowirerResolutionNotFoundProvider());
 
 			$autowirer = new Autowirer($container);
 			$controller = new AutowirerResolutionController();
-			$args = $autowirer->getMethodArguments($controller, 'requiredNotFoundTarget');
+			$args = $autowirer->getMethodArguments($controller, 'nullableNotFoundTarget');
 
 			// Base Autowirer has no concept of an HTTP response, so its default
 			// handleNotFound() just injects null — the same outcome as an
-			// ordinary provider's plain null, by design.
+			// ordinary provider's plain null, by design. Allowed here only
+			// because the parameter itself is nullable.
 			$this->assertSame([null], $args);
+		}
+
+		public function testProviderNotFoundForARequiredParameterThrowsAClearDIErrorByTheBaseDefault(): void {
+			$container = $this->makeContainer();
+			$container->register(new AutowirerResolutionNotFoundProvider());
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			// Same guard as the plain-null case: the base handleNotFound()
+			// default resolves NotFound to null, and a required parameter
+			// still rejects that null rather than injecting it silently.
+			$this->expectException(UnresolvableParameterException::class);
+			$autowirer->getMethodArguments($controller, 'requiredNotFoundTarget');
 		}
 
 		public function testProviderExceptionPropagatesUnchangedThroughContainerAndAutowirer(): void {
