@@ -7,6 +7,7 @@ declare(strict_types=1);
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Annotations\CacheContext;
 	use Quellabs\Canvas\Annotations\InterceptWith;
+	use Quellabs\Canvas\Annotations\LoggerContext;
 	use Quellabs\Canvas\Cache\CacheAspect;
 	use Quellabs\Canvas\Annotations\ListenTo;
 	use Quellabs\Canvas\Annotations\Route;
@@ -293,5 +294,45 @@ declare(strict_types=1);
 			$cc = new CacheContext(foo: 'bar', baz: 42);
 			$this->assertSame('bar', $cc->getParameters()['foo']);
 			$this->assertSame(42, $cc->getParameters()['baz']);
+		}
+
+		public function testCacheContextGetContextDefaultsToNull(): void {
+			$cc = new CacheContext(namespace: 'users');
+			$this->assertNull($cc->getContext());
+		}
+
+		public function testCacheContextGetContextReturnsProvidedValue(): void {
+			$cc = new CacheContext(context: 'redis', namespace: 'users');
+			$this->assertSame('redis', $cc->getContext());
+		}
+
+		public function testCacheContextContextIsExcludedFromParameters(): void {
+			$cc = new CacheContext(context: 'redis', namespace: 'users');
+			$this->assertSame(['namespace' => 'users'], $cc->getParameters());
+		}
+
+		// =========================================================================
+		// LoggerContext
+		// =========================================================================
+
+		public function testLoggerContextAcceptsEmptyParameters(): void {
+			$lc = new LoggerContext();
+			$this->assertSame([], $lc->getParameters());
+			$this->assertNull($lc->getContext());
+		}
+
+		public function testLoggerContextGetContextReturnsProvidedValue(): void {
+			$lc = new LoggerContext(context: 'rotating', channel: 'payments');
+			$this->assertSame('rotating', $lc->getContext());
+		}
+
+		public function testLoggerContextContextIsExcludedFromParameters(): void {
+			$lc = new LoggerContext(context: 'rotating', logfile: 'payments.log', channel: 'payments');
+			$this->assertSame(['logfile' => 'payments.log', 'channel' => 'payments'], $lc->getParameters());
+		}
+
+		public function testLoggerContextThrowsWhenOptionsAreNotNamedArguments(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new LoggerContext(null, 'payments.log');
 		}
 	}

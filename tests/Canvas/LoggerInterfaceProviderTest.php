@@ -58,11 +58,12 @@ declare(strict_types=1);
 	}
 
 	/**
-	 * Fixture whose @LoggerContext overrides handler, logfile, and channel.
+	 * Fixture whose @LoggerContext overrides logfile and channel. Handler
+	 * selection is never affected by @LoggerContext — only @WithContext can do that.
 	 */
 	class LoggerInterfaceProviderOverrideFixture {
 		/**
-		 * @LoggerContext(handler="rotating", logfile="payments.log", channel="payments")
+		 * @LoggerContext(logfile="payments.log", channel="payments")
 		 */
 		public function index(): void {
 		}
@@ -81,10 +82,24 @@ declare(strict_types=1);
 	}
 
 	/**
+	 * Fixture carrying one @LoggerContext per handler @WithContext can resolve
+	 * to, plus an untagged default used when the resolved handler matches neither.
+	 */
+	class LoggerInterfaceProviderMultiContextFixture {
+		/**
+		 * @LoggerContext(context="rotating", logfile="payments.log", channel="payments")
+		 * @LoggerContext(context="stderr", channel="alerts")
+		 * @LoggerContext(channel="admin")
+		 */
+		public function index(): void {
+		}
+	}
+
+	/**
 	 * Verifies LoggerInterfaceProvider's handler/logfile/channel resolution:
-	 * @WithContext's literal context tag (via $metadata) still selects the
-	 * handler, while @LoggerContext — read directly off the method — supplies
-	 * logfile/channel overrides and may itself override the handler.
+	 * @WithContext's literal context tag (via $metadata) is the sole handler
+	 * selector, while @LoggerContext — read directly off the method — only
+	 * supplies logfile/channel overrides.
 	 */
 	class LoggerInterfaceProviderTest extends TestCase {
 
@@ -113,22 +128,21 @@ declare(strict_types=1);
 			$this->assertInstanceOf(ErrorLogHandler::class, $logger->getHandlers()[0]);
 		}
 
-		public function testLoggerContextOverridesHandlerLogfileAndChannel(): void {
+		public function testLoggerContextOverridesChannelButNotHandler(): void {
 			$provider = $this->makeProvider();
 			$methodContext = new LoggerInterfaceProviderFakeMethodContext(LoggerInterfaceProviderOverrideFixture::class, 'index');
 
 			$logger = $provider->createInstance(LoggerInterface::class, [], [], $methodContext);
 
 			$this->assertSame('payments', $logger->getName());
-			$this->assertInstanceOf(RotatingFileHandler::class, $logger->getHandlers()[0]);
+			$this->assertInstanceOf(StreamHandler::class, $logger->getHandlers()[0]);
 		}
 
-		public function testLoggerContextHandlerTakesPrecedenceOverWithContextTag(): void {
+		public function testWithContextTagSelectsHandlerEvenWithLoggerContextPresent(): void {
 			$provider = $this->makeProvider();
 			$methodContext = new LoggerInterfaceProviderFakeMethodContext(LoggerInterfaceProviderOverrideFixture::class, 'index');
 
-			// WithContext says 'stream', but @LoggerContext's handler="rotating" wins
-			$logger = $provider->createInstance(LoggerInterface::class, [], ['context' => 'stream'], $methodContext);
+			$logger = $provider->createInstance(LoggerInterface::class, [], ['context' => 'rotating'], $methodContext);
 
 			$this->assertInstanceOf(RotatingFileHandler::class, $logger->getHandlers()[0]);
 		}
@@ -141,6 +155,36 @@ declare(strict_types=1);
 
 			$this->assertSame('admin', $logger->getName());
 			$this->assertInstanceOf(RotatingFileHandler::class, $logger->getHandlers()[0]);
+		}
+
+		public function testMultiContextFixtureUsesTheLoggerContextTaggedForTheResolvedHandler(): void {
+			$provider = $this->makeProvider();
+			$methodContext = new LoggerInterfaceProviderFakeMethodContext(LoggerInterfaceProviderMultiContextFixture::class, 'index');
+
+			$logger = $provider->createInstance(LoggerInterface::class, [], ['context' => 'rotating'], $methodContext);
+
+			$this->assertSame('payments', $logger->getName());
+			$this->assertInstanceOf(RotatingFileHandler::class, $logger->getHandlers()[0]);
+		}
+
+		public function testMultiContextFixtureSwitchesLoggerContextWhenResolvedHandlerChanges(): void {
+			$provider = $this->makeProvider();
+			$methodContext = new LoggerInterfaceProviderFakeMethodContext(LoggerInterfaceProviderMultiContextFixture::class, 'index');
+
+			$logger = $provider->createInstance(LoggerInterface::class, [], ['context' => 'stderr'], $methodContext);
+
+			$this->assertSame('alerts', $logger->getName());
+			$this->assertInstanceOf(ErrorLogHandler::class, $logger->getHandlers()[0]);
+		}
+
+		public function testMultiContextFixtureFallsBackToUntaggedDefaultWhenNoTagMatches(): void {
+			$provider = $this->makeProvider();
+			$methodContext = new LoggerInterfaceProviderFakeMethodContext(LoggerInterfaceProviderMultiContextFixture::class, 'index');
+
+			$logger = $provider->createInstance(LoggerInterface::class, [], ['context' => 'stream'], $methodContext);
+
+			$this->assertSame('admin', $logger->getName());
+			$this->assertInstanceOf(StreamHandler::class, $logger->getHandlers()[0]);
 		}
 
 		public function testNullMethodContextLeavesLoggerContextUnresolved(): void {
