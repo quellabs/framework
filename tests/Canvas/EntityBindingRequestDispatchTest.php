@@ -143,6 +143,17 @@
 			$this->assertSame(404, $response->getStatusCode());
 		}
 
+		public function testMissingRouteKeyProducesA500NotA404(): void {
+			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
+
+			// The route simply has no 'slug' value at all — a binding/
+			// configuration mistake (EntityBindingException), not "no row
+			// found", so this must come back as a server error, never a 404.
+			$response = $this->dispatch($kernel, 'show', []);
+
+			$this->assertSame(500, $response->getStatusCode());
+		}
+
 		public function testNullableParameterResolvesTheEntityWhenARowExists(): void {
 			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
 
