@@ -7,6 +7,7 @@
 	use Quellabs\Canvas\Error\ProvidesResponseHeaders;
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
+	use Quellabs\Canvas\Exceptions\RequiredParameterNotFoundException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Symfony\Component\HttpFoundation\Request;
@@ -43,6 +44,14 @@
 
 			$this->assertSame(404, $response->getStatusCode());
 			$this->assertFalse($response->headers->has('Allow'));
+		}
+
+		public function testRequiredParameterNotFoundProducesA404(): void {
+			$exception = new RequiredParameterNotFoundException('App\\Controllers\\PostController', 'show', 'post');
+
+			$response = $this->handler->handle($exception, Request::create('/posts/missing'), false);
+
+			$this->assertSame(404, $response->getStatusCode());
 		}
 
 		public function testRateLimitExceptionAppliesItsOwnHeadersIncludingRetryAfter(): void {

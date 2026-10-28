@@ -5,13 +5,15 @@
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
-	
+	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
+
 	/**
 	 * class Autowirer
 	 *
 	 * @phpstan-type ParameterMeta array{
 	 *     name: string,
 	 *     types?: array<int, string>,
+	 *     nullable: bool,
 	 *     default_value?: mixed,
 	 *     context?: array<string, mixed>
 	 * }
@@ -105,26 +107,29 @@
 			// Process each method parameter to build the argument array
 			$arguments = [];
 			$allParameterIndex = null; // Track position of special "all parameter" if found
-			
-			foreach ($methodParams as $index => $param) {
-				// Check if this parameter is a special "all parameter" type
-				// This might be a parameter that receives all other resolved parameters
-				if ($this->isAllParameter($param)) {
-					$allParameterIndex = $index;
-					$arguments[] = null;
-					continue;
+
+			try {
+				foreach ($methodParams as $index => $param) {
+					// Check if this parameter is a special "all parameter" type
+					// This might be a parameter that receives all other resolved parameters
+					if ($this->isAllParameter($param)) {
+						$allParameterIndex = $index;
+						$arguments[] = null;
+						continue;
+					}
+
+					// Set the parameter that we're currently resolving
+					$methodContext->setParameterName($param['name']);
+
+					// Resolve the current parameter using the provided parameters and context
+					// This handles type conversion, default values, dependency injection, etc.
+					$arguments[] = $this->resolveParameter($param, $parameters, $methodContext, $className, $methodName);
 				}
-				
-				// Set the parameter that we're currently resolving
-				$methodContext->setParameterName($param['name']);
-				
-				// Resolve the current parameter using the provided parameters and context
-				// This handles type conversion, default values, dependency injection, etc.
-				$arguments[] = $this->resolveParameter($param, $parameters, $methodContext, $className, $methodName);
+			} finally {
+				// Reset the parameter that we're currently resolving, even if resolution
+				// threw, so a reused context object never retains a stale parameter name.
+				$methodContext->setParameterName(null);
 			}
-			
-			// Reset the parameter that we're currently resolving
-			$methodContext->setParameterName(null);
 			
 			// If we found an "all parameter", give it the entire original parameters array
 			// This allows access to all input parameters, including those not defined in the method signature
@@ -181,8 +186,8 @@
 			if (in_array("array", $paramTypes, true)) {
 				return [];
 			}
-			
-			throw new \RuntimeException("Cannot autowire parameter '$paramName' for $className::$methodName");
+
+			throw new UnresolvableParameterException("Cannot autowire parameter '$paramName' for $className::$methodName");
 		}
 		
 		/**
@@ -205,46 +210,50 @@
 		
 		/**
 		 * Tries to resolve a parameter against each of its type hints in order.
-		 * Returns the unresolved sentinel when no type could be resolved.
-		 * Returns null when a provider resolved the type to null (e.g. entity not found),
-		 * which the caller propagates without falling through to further strategies.
+		 * Returns the unresolved sentinel only when no candidate type could even be
+		 * attempted, or every candidate's own construction failed. A provider that
+		 * supports a candidate type always gives a final answer for it — an instance,
+		 * or an explicit null (e.g. no database row for the requested entity) — so
+		 * that answer is returned as-is instead of falling through to further
+		 * strategies or further union candidates.
 		 * @param string $paramName Parameter name for error messages
 		 * @param array<int, string> $types Array of type hints to attempt resolution for
 		 * @param MethodContextInterface|null $methodContext
-		 * @return mixed The resolved value, or the unresolved sentinel
+		 * @return mixed The resolved value (possibly null), or the unresolved sentinel
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
 			// Early return sentinel if no types provided - nothing to resolve
 			if (empty($types)) {
 				return self::unresolved();
 			}
-			
+
 			// Filter out built-in PHP types (int, string, bool, etc.) and null type
 			// as these cannot be resolved through dependency injection
 			/** @var list<class-string> $resolvableTypes */
 			$resolvableTypes = array_values(array_filter($types, fn($type) => $type !== 'null' && !$this->isBuiltinType($type)));
-			
+
 			// If all types are built-in or null, there's nothing we can resolve via DI
 			if (empty($resolvableTypes)) {
 				return self::unresolved();
 			}
-			
+
 			// Attempt to resolve each resolvable type in order
 			foreach ($resolvableTypes as $type) {
 				try {
-					// Try to get an instance of this type from the container
-					$instance = $this->resolveType($type, [], $methodContext);
-					
-					// Non-null instance: resolved successfully
-					if ($instance !== null) {
-						return $instance;
-					}
-				} catch (\Throwable) {
-					// Resolution threw — this type is not resolvable, try the next one
+					// The provider for $type gives the final answer for this parameter,
+					// instance or null alike; return it without trying further candidates.
+					return $this->resolveType($type, [], $methodContext);
+				} catch (UnresolvableParameterException) {
+					// $type itself could not be built (e.g. one of its own constructor
+					// parameters failed to autowire) — a known, recoverable miss for
+					// this specific candidate. Try the next union candidate.
+					// Every other Throwable (annotation, database, circular-dependency,
+					// or provider configuration errors) is a real failure and must
+					// propagate untouched rather than being discarded here.
 				}
 			}
-			
-			// No type could be resolved; signal to resolveParameter() to try further strategies
+
+			// No candidate type could be resolved; signal to resolveParameter() to try further strategies
 			return self::unresolved();
 		}
 		
@@ -284,19 +293,24 @@
 				foreach ($methodReflector->getParameters() as $parameter) {
 					// Get the name of the parameter
 					$param = ['name' => $parameter->getName()];
-					
+
 					// Get the type of the parameter if available
 					if ($parameter->hasType()) {
 						$param['types'] = $this->extractTypes($parameter->getType());
 					}
-					
+
+					// allowsNull() is the canonical source of truth for nullability: it
+					// correctly covers "?Type", "Type|null", and untyped parameters alike,
+					// unlike inferring it from the 'types' list or a coincidental default.
+					$param['nullable'] = $parameter->allowsNull();
+
 					// Get the default value if available
 					if ($parameter->isDefaultValueAvailable()) {
 						$param['default_value'] = $parameter->getDefaultValue();
 					} elseif ($parameter->allowsNull()) {
 						$param['default_value'] = null;
 					}
-					
+
 					// Add the parameter to the parameter list
 					$result[] = $param;
 				}

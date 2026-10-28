@@ -1,7 +1,5 @@
 # Canvas ObjectQuel Integration
 
-![Canvas ObjectQuel Logo](https://placeholder-for-logo.png)
-
 [![Latest Version](https://img.shields.io/packagist/v/quellabs/canvas-objectquel.svg)](https://packagist.org/packages/quellabs/canvas-objectquel)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 [![Downloads](https://img.shields.io/packagist/dt/quellabs/canvas-objectquel.svg)](https://packagist.org/packages/quellabs/canvas-objectquel)
@@ -14,6 +12,7 @@ The Canvas ObjectQuel Integration package provides seamless integration between 
 - [Features](#features)
 - [Configuration](#configuration)
 - [Service Discovery](#service-discovery)
+- [Entity Parameter Binding](#entity-parameter-binding)
 - [Sculpt Commands](#sculpt-commands)
 - [Quick Start](#quick-start)
 - [Configuration Reference](#configuration-reference)
@@ -32,7 +31,7 @@ composer require quellabs/canvas-objectquel
 The package requires:
 - PHP 8.2 or higher
 - Canvas PHP framework
-- ObjectQuel ORM (>=1.0)
+- ObjectQuel ORM (2.*)
 
 ## Features
 
@@ -58,15 +57,11 @@ Edit this file to configure your database connection.
 
 ## Service Discovery
 
-The package automatically registers ObjectQuel services with Canvas's dependency injection container through two service providers:
+The package automatically registers ObjectQuel services with Canvas's dependency injection container through two service providers, both discovered automatically via `composer.json` — no manual registration is needed:
 
-### EntityManager Service Provider
+### ConfigurationServiceProvider
 
-Located in `Quellabs\Canvas\ObjectQuel\Discovery\ObjectQuelServiceProvider`, this provider:
-
-- Registers the ObjectQuel EntityManager as a singleton service
-- Automatically configures the EntityManager using your database configuration
-- Provides dependency injection support for controllers and services
+`Quellabs\CanvasObjectQuel\ConfigurationServiceProvider` registers the ObjectQuel `EntityManager` as a singleton service, configured from `config/database.php`.
 
 ```php
 // The EntityManager is automatically available in your Canvas application
@@ -88,9 +83,47 @@ class ProductController extends BaseController {
 }
 ```
 
-### Sculpt Service Provider
+### ServiceProvider (entity parameter binding)
 
-Located in `Quellabs\Canvas\ObjectQuel\Sculpt\ServiceProvider`, this provider registers ObjectQuel CLI commands with the Sculpt framework.
+`Quellabs\CanvasObjectQuel\ServiceProvider` resolves controller method parameters typed as an entity class directly to an entity instance. See [Entity Parameter Binding](#entity-parameter-binding) below.
+
+## Entity Parameter Binding
+
+A controller parameter typed as an entity class is resolved automatically from a route value, without calling `em()->find()` yourself.
+
+### Implicit binding by parameter name
+
+By default, the route value with the same name as the controller parameter is used as the primary key:
+
+```php
+// Route: /posts/{slug}
+public function show(PostEntity $slug) {
+    // $slug is the PostEntity whose primary key matches the route's {slug} value
+}
+```
+
+### `@ResolveEntity` for a differently-named route value
+
+When the route value's name differs from the controller parameter's name, add `@ResolveEntity` to map them:
+
+```php
+/**
+ * @Route('/posts/{id}')
+ * @ResolveEntity(parameter="post", routeParam="id")
+ */
+public function show(PostEntity $post) {
+    // $post is resolved from the route's {id} value
+}
+```
+
+### Not-found behavior
+
+- **Required parameter** (`PostEntity $post`): if the lookup finds no row, the request fails with an HTTP 404.
+- **Nullable parameter** (`?PostEntity $post`): if the lookup finds no row, the controller receives `null` and must handle it.
+
+### Binding errors vs. a missing row
+
+A missing row is not the only possible outcome. If the route has no value at all for the key the parameter is bound to, or the value's shape is not supported (this provider only binds scalar primary keys — composite/array keys are not supported), that is a binding or configuration mistake, not "no row found", and raises a server error identifying the controller, parameter, and route key involved rather than silently injecting `null` or a default.
 
 ## Sculpt Commands
 

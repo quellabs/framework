@@ -7,6 +7,7 @@
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\CanvasObjectQuel\Annotations\ResolveEntity;
+	use Quellabs\CanvasObjectQuel\Exceptions\EntityBindingException;
 	use Quellabs\CanvasObjectQuel\ServiceProvider;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
@@ -16,8 +17,10 @@
 	 * Unit tests for ServiceProvider::createInstance().
 	 *
 	 * Covers the DI-provided parameter name as the resolution key, the implicit
-	 * {parameterName} binding convention, and @ResolveEntity annotation overrides
-	 * matched by parameter name.
+	 * {parameterName} binding convention, @ResolveEntity annotation overrides matched
+	 * by parameter name, and that a missing route key or unsupported value shape is a
+	 * binding error (EntityBindingException) distinct from a valid lookup with no row
+	 * (which returns null).
 	 */
 	class ResolveEntityServiceProviderTest extends TestCase {
 
@@ -108,22 +111,43 @@
 			$this->assertNull($provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
 		}
 
-		public function testReturnsNullWhenRouteArgumentIsMissing(): void {
+		public function testThrowsBindingExceptionWhenRouteArgumentIsMissing(): void {
 			$entityManager = $this->createMock(EntityManager::class);
 			$entityManager->expects($this->never())->method('find');
 
 			$provider = $this->makeProvider($entityManager);
 			$context = $this->makeContext('post', ['id' => 42]);
 
-			$this->assertNull($provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
+			$this->expectException(EntityBindingException::class);
+			$this->expectExceptionMessage("route has no value for key 'post'");
+			$provider->createInstance('App\\Entities\\PostEntity', [], [], $context);
 		}
 
-		public function testReturnsNullWhenRouteArgumentIsNotStringOrInt(): void {
+		public function testThrowsBindingExceptionWhenRouteArgumentIsNotStringOrInt(): void {
 			$entityManager = $this->createMock(EntityManager::class);
 			$entityManager->expects($this->never())->method('find');
 
 			$provider = $this->makeProvider($entityManager);
 			$context = $this->makeContext('post', ['post' => ['not' => 'scalar']]);
+
+			$this->expectException(EntityBindingException::class);
+			$this->expectExceptionMessage('composite-key binding is not supported');
+			$provider->createInstance('App\\Entities\\PostEntity', [], [], $context);
+		}
+
+		// =========================================================================
+		// Valid lookup, no row — the only case that legitimately returns null
+		// =========================================================================
+
+		public function testReturnsNullWhenLookupFindsNoRow(): void {
+			$entityManager = $this->createMock(EntityManager::class);
+			$entityManager->expects($this->once())
+				->method('find')
+				->with('App\\Entities\\PostEntity', 'missing-slug')
+				->willReturn(null);
+
+			$provider = $this->makeProvider($entityManager);
+			$context = $this->makeContext('post', ['post' => 'missing-slug']);
 
 			$this->assertNull($provider->createInstance('App\\Entities\\PostEntity', [], [], $context));
 		}

@@ -80,7 +80,8 @@
 				'internal',   // Internal use only
 				'api',        // API documentation
 				'version',    // Version information
-				'category'    // Category classification
+				'category',   // Category classification
+				'phpstan'     // PHPStan pseudo-tags (@phpstan-type, @phpstan-ignore, etc.), static analysis only
 			];
 			
 			// Create a fast lookup set from ignored annotations (O(1) instead of O(n) lookups)
@@ -107,10 +108,12 @@
 						continue;
 					}
 					
-					// Skip ignored annotations
+					// Skip ignored annotations. Matched case-insensitively: standard PHPDoc
+					// tags are conventionally written in either case (@inheritDoc vs
+					// @inheritdoc), and this list exists to recognize them regardless.
 					$value = $token->getStringValue();
-					
-					if (isset($this->ignore_annotations_set[$value])) {
+
+					if (isset($this->ignore_annotations_set[strtolower($value)])) {
 						$token = $this->lexer->get();
 						$this->lexer->setAnnotationMode(false);
 						continue;
