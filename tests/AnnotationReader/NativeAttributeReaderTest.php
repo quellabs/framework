@@ -457,9 +457,10 @@ class NativeAttributeReaderTest extends TestCase {
     }
 
     /**
-     * CacheContext, InterceptWith, and WithContext accept arbitrary caller-defined keys
-     * through a variadic constructor tail, so the exact same named arguments work whether
-     * declared as a docblock annotation or as a native PHP attribute.
+     * CacheContext and InterceptWith accept arbitrary caller-defined keys through a
+     * variadic constructor tail, and WithContext's fixed parameter/context pair behaves
+     * the same way too: the exact same named arguments work whether declared as a
+     * docblock annotation or as a native PHP attribute.
      * @return void
      */
     public function testOpenEndedCanvasAnnotationsWorkIdenticallyAsNativeAttributes(): void {

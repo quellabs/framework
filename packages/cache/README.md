@@ -171,15 +171,17 @@ class UserService {
 
 #### Method-Level Cache Context
 
-For method-specific cache configuration, the `@CacheContext` annotation works with method-level dependency injection:
+For method-specific cache configuration, the `@CacheContext` annotation works with method-level dependency injection. `@CacheContext` only carries configuration (e.g. `namespace`); selecting which driver to inject is `@WithContext`'s job:
 
 ```php
 use Quellabs\Canvas\Annotations\CacheContext;
+use Quellabs\Canvas\Annotations\WithContext;
 
 class UserService {
     
     /**
-     * @CacheContext(namespace="users", driver="redis")
+     * @CacheContext(namespace="users")
+     * @WithContext(parameter="cache", context="redis")
      */
     public function getUser(int $id, CacheInterface $cache): User {
         return $cache->remember("user:{$id}", 300, function() use ($id) {
@@ -188,13 +190,30 @@ class UserService {
     }
     
     /**
-     * @CacheContext(namespace="sessions", driver="memcached")  
+     * @CacheContext(namespace="sessions")
+     * @WithContext(parameter="cache", context="memcached")
      */
     public function getUserSessions(int $userId, CacheInterface $cache): array {
         return $cache->remember("sessions:{$userId}", 600, function() use ($userId) {
             return $this->database->findUserSessions($userId);
         });
     }
+}
+```
+
+`@CacheContext` is repeatable. When a single method's `@WithContext` resolves to different providers at runtime (e.g. via a `ContextProviderInterface`), tag each `@CacheContext` with the `context` it configures; an untagged `@CacheContext` (no `context` argument) acts as the default used when none of the tagged ones match:
+
+```php
+/**
+ * @CacheContext(context="redis", namespace="users", ttl=300)
+ * @CacheContext(context="memcached", namespace="users", ttl=60)
+ * @CacheContext(namespace="users")
+ * @WithContext(parameter="cache", context=TenantCacheProvider::class)
+ */
+public function getUser(int $id, CacheInterface $cache): User {
+    return $cache->remember("user:{$id}", 300, function() use ($id) {
+        return $this->database->findUser($id);
+    });
 }
 ```
 
