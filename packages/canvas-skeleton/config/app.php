@@ -33,6 +33,7 @@
 		// Built-in policies: Basic, Medium, and Strict (Quellabs\Canvas\Security\Policies).
 		'security_header_policy'  => \Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy::class,
 
-		// Optional OutputFilterInterface class; use \Quellabs\Canvas\Output\HtmlMinifyFilter::class to minify HTML.
+		// Optional OutputFilterInterface class, or an ordered list of classes applied
+		// in turn; use \Quellabs\Canvas\Output\HtmlMinifyFilter::class to minify HTML.
 		'output_filter'           => null
 	];

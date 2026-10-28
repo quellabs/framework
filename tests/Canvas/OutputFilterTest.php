@@ -60,6 +60,54 @@
 		}
 
 		/**
+		 * Confirms that a list of filters all run, in order, on the completed response.
+		 * @return void
+		 */
+		public function testKernelRunsConfiguredFilterList(): void {
+			$kernel = new Kernel(['output_filter' => [TestOutputFilter::class, SecondTestOutputFilter::class]]);
+			$response = $kernel->handle(Request::create('/missing-output-filter-test-route'));
+
+			$this->assertSame('filtered', $response->headers->get('X-Output-Filter'));
+			$this->assertSame('filtered-2', $response->headers->get('X-Output-Filter-2'));
+		}
+
+		/**
+		 * Rejects an empty output_filter list.
+		 * @return void
+		 */
+		public function testKernelRejectsEmptyFilterList(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new Kernel(['output_filter' => []]);
+		}
+
+		/**
+		 * Rejects an output_filter list with non-sequential keys.
+		 * @return void
+		 */
+		public function testKernelRejectsNonSequentialFilterList(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new Kernel(['output_filter' => [1 => TestOutputFilter::class]]);
+		}
+
+		/**
+		 * Rejects an output_filter list containing a non-string entry.
+		 * @return void
+		 */
+		public function testKernelRejectsNonStringFilterListEntry(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new Kernel(['output_filter' => [TestOutputFilter::class, 123]]);
+		}
+
+		/**
+		 * Rejects an output_filter value that is neither a class-string, a list, nor null.
+		 * @return void
+		 */
+		public function testKernelRejectsNonStringNonArrayFilterValue(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			new Kernel(['output_filter' => 123]);
+		}
+
+		/**
 		 * Checks that HEAD reports the length of the filtered representation.
 		 * @return void
 		 */
@@ -196,6 +244,19 @@
 		 */
 		public function filter(Request $request, Response $response): void {
 			$response->headers->set('X-Output-Filter', 'filtered');
+		}
+	}
+
+	class SecondTestOutputFilter implements OutputFilterInterface {
+
+		/**
+		 * Marks the completed response to show that the kernel invoked this second filter.
+		 * @param Request $request
+		 * @param Response $response
+		 * @return void
+		 */
+		public function filter(Request $request, Response $response): void {
+			$response->headers->set('X-Output-Filter-2', 'filtered-2');
 		}
 	}
 
