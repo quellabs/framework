@@ -180,11 +180,11 @@
 				);
 			}
 
-			$value = $arguments[$routeParam];
-
 			// EntityManager::find() also accepts composite (array) primary keys, but
 			// mapping a route to a composite key needs its own, explicit design — this
 			// provider deliberately supports only scalar keys for now.
+			$value = $arguments[$routeParam];
+			
 			if (!is_string($value) && !is_int($value)) {
 				throw new EntityBindingException(
 					$methodContext->getClassName(),
@@ -216,6 +216,7 @@
 		 */
 		private function getEntityManager(): EntityManager {
 			if ($this->entityManager === null) {
+				// Resolve the EntityManager
 				$entityManager = $this->container->get(EntityManager::class);
 				
 				// container->get() returns T|null; assert presence so PHPStan
