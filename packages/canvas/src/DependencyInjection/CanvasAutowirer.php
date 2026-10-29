@@ -8,6 +8,7 @@
 	use Quellabs\DependencyInjection\Autowiring\Autowirer;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\Canvas\Annotations\WithContext;
+	use Quellabs\Canvas\Exceptions\RequiredParameterNotFoundException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Contracts\DependencyInjection\ContextProviderInterface;
@@ -50,38 +51,37 @@
 		
 		/**
 		 * Extends parent by reading @WithContext annotations and attaching their context
-		 * to the matching parameter entry before resolution runs. Annotation failures are
-		 * silently swallowed and fall back to normal resolution.
+		 * to the matching parameter entry before resolution runs. A method with no
+		 * @WithContext annotation simply gets an empty collection back — that is not an
+		 * error. A malformed annotation is, and must propagate rather than silently
+		 * leaving the parameter on the default context.
 		 * @param class-string $className The fully qualified class name containing the method
 		 * @param string $methodName The name of the method to reflect
 		 * @return array<int, ParameterMeta> Parameter metadata array, each entry optionally containing 'context'
+		 * @throws AnnotationReaderException If annotation parsing fails
 		 */
 		protected function getMethodParameters(string $className, string $methodName): array {
 			// Delegate to parent for base parameter metadata (types, defaults, names)
 			$params = parent::getMethodParameters($className, $methodName);
-			
+
 			// Build a map of param name -> metadata array from @WithContext annotations
 			$withContextMap = [];
-			
-			try {
-				$annotations = $this->annotationReader->getMethodAnnotations(
-					$className,
-					$methodName,
-					WithContext::class
-				);
-				
-				foreach ($annotations as $annotation) {
-					// This was added to make phpstan happy
-					if (!$annotation instanceof WithContext) {
-						continue;
-					}
-					
-					$withContextMap[$annotation->getParameter()] = $annotation->getContext();
+
+			$annotations = $this->annotationReader->getMethodAnnotations(
+				$className,
+				$methodName,
+				WithContext::class
+			);
+
+			foreach ($annotations as $annotation) {
+				// This was added to make phpstan happy
+				if (!$annotation instanceof WithContext) {
+					continue;
 				}
-			} catch (\Throwable) {
-				// Annotation parsing failed or no docblock present — proceed without context
+
+				$withContextMap[$annotation->getParameter()] = $annotation->getContext();
 			}
-			
+
 			// Attach context to any parameter entry that has a matching annotation
 			if (!empty($withContextMap)) {
 				foreach ($params as &$param) {
@@ -90,7 +90,7 @@
 					}
 				}
 			}
-			
+
 			return $params;
 		}
 		
@@ -126,6 +126,30 @@
 				// from this parameter never bleeds into the next one
 				$this->currentParamContext = null;
 			}
+		}
+
+		/**
+		 * A provider throwing ResolutionNotFoundException (e.g. no database row
+		 * for the requested entity) becomes a deliberate 404 for a required
+		 * parameter, rather than letting PHP raise a TypeError when the
+		 * controller method is actually invoked. A nullable parameter still
+		 * receives null unchanged. This is the only place that distinguishes
+		 * the two — base Autowirer has no concept of an HTTP response, and a
+		 * provider that doesn't deal in "missing records" never throws that
+		 * exception in the first place, so its ordinary null is untouched by
+		 * this override entirely.
+		 * @param ParameterMeta $param Parameter metadata (name, types, nullable, etc.)
+		 * @param string $className Class name for error reporting
+		 * @param string $methodName Method name for error reporting
+		 * @return mixed
+		 * @throws RequiredParameterNotFoundException If the parameter is required
+		 */
+		protected function handleNotFound(array $param, string $className, string $methodName): mixed {
+			if ($param['nullable'] ?? true) {
+				return null;
+			}
+
+			throw new RequiredParameterNotFoundException($className, $methodName, $param['name']);
 		}
 
 		/**

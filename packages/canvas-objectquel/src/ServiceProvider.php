@@ -7,11 +7,13 @@
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\CanvasObjectQuel\Annotations\ResolveEntity;
+	use Quellabs\CanvasObjectQuel\Exceptions\EntityBindingException;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
-	
+
 	/**
 	 * ServiceProvider bridges Canvas's DI system and ObjectQuel's EntityManager,
 	 * enabling automatic entity resolution for controller method parameters.
@@ -27,6 +29,13 @@
 	 * "/posts/{slug}" binds to "function show(PostEntity $slug)" with no annotation
 	 * needed). The annotation is only required when the route parameter name differs
 	 * from the controller parameter's name.
+	 *
+	 * Throws ResolutionNotFoundException (rather than returning plain null) when
+	 * the lookup finds no row, so Autowirer can tell "no matching record" apart
+	 * from a null that an ordinary service provider (cache, logger, etc.) might
+	 * return for its own, unrelated reason — only the former is routed through
+	 * handleNotFound(), which Canvas overrides to produce a required-parameter
+	 * 404.
 	 */
 	class ServiceProvider implements ServiceProviderInterface {
 		
@@ -98,15 +107,25 @@
 		 * 3. Look up that map by the parameter name found in step 1
 		 * 4. If no annotation targets this parameter, use the parameter's own name as the
 		 *    route parameter (Laravel/Symfony-style implicit binding)
-		 * 5. Fetch and return the entity via EntityManager::find(), or null if not found
+		 * 5. Fetch the entity via EntityManager::find(), throwing
+		 *    ResolutionNotFoundException in place of its null when no row exists
+		 *
+		 * A missing route key or an unsupported value shape (e.g. a composite-key array —
+		 * not supported by this provider) is a binding/configuration mistake and throws
+		 * EntityBindingException; it is never silently treated as "no row found". Only a
+		 * valid lookup that genuinely finds nothing throws ResolutionNotFoundException —
+		 * plain null is reserved for "nothing to bind to" (no method context, or no
+		 * parameter being resolved), which is a different situation entirely.
 		 *
 		 * @param string $className Fully qualified entity class name to resolve
 		 * @param array<string, mixed> $dependencies Already-resolved dependencies (unused for entities)
 		 * @param array<string, mixed> $metadata Provider metadata
 		 * @param MethodContextInterface|null $methodContext Context of the controller method being invoked
-		 * @return object|null The resolved entity, or null if no matching record exists
+		 * @return object|null The resolved entity, or null if nothing to bind to
 		 * @throws AnnotationReaderException If annotation parsing fails
+		 * @throws EntityBindingException If the route has no value for the binding, or an unsupported shape
 		 * @throws EntityResolutionException If the entity cannot be resolved
+		 * @throws ResolutionNotFoundException If no row matches the resolved primary key
 		 * @throws QuelException If the ObjectQuel query fails
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
@@ -149,16 +168,44 @@
 			// Use the routeParam from the annotation targeting this parameter, if any;
 			// otherwise bind implicitly by the parameter's own name
 			$routeParam = $routeParamByParameter[$parameterName] ?? $parameterName;
-			$value = $arguments[$routeParam] ?? null;
 
-			// A null primary key would cause EntityManager::find() to throw — return
-			// null instead so the controller receives null and can handle it gracefully
+			if (!array_key_exists($routeParam, $arguments)) {
+				throw new EntityBindingException(
+					$methodContext->getClassName(),
+					$methodContext->getMethodName(),
+					$parameterName,
+					$routeParam,
+					$className,
+					"the route has no value for key '{$routeParam}'"
+				);
+			}
+
+			// EntityManager::find() also accepts composite (array) primary keys, but
+			// mapping a route to a composite key needs its own, explicit design — this
+			// provider deliberately supports only scalar keys for now.
+			$value = $arguments[$routeParam];
+			
 			if (!is_string($value) && !is_int($value)) {
-				return null;
+				throw new EntityBindingException(
+					$methodContext->getClassName(),
+					$methodContext->getMethodName(),
+					$parameterName,
+					$routeParam,
+					$className,
+					'route value is not a string or integer, and composite-key binding is not supported'
+				);
 			}
 
 			/** @var class-string<object> $className */
-			return $this->getEntityManager()->find($className, $value);
+			$entity = $this->getEntityManager()->find($className, $value);
+
+			if ($entity === null) {
+				throw new ResolutionNotFoundException(
+					"No {$className} found for '{$routeParam}' = '{$value}'"
+				);
+			}
+
+			return $entity;
 		}
 		
 		/**
@@ -169,6 +216,7 @@
 		 */
 		private function getEntityManager(): EntityManager {
 			if ($this->entityManager === null) {
+				// Resolve the EntityManager
 				$entityManager = $this->container->get(EntityManager::class);
 				
 				// container->get() returns T|null; assert presence so PHPStan

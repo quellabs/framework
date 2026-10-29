@@ -21,7 +21,10 @@
 		/**
 		 * Create an instance of the class with pre-resolved dependencies.
 		 * Returns null when the resource legitimately does not exist (e.g. no database
-		 * row for the requested entity). Throw for actual errors.
+		 * row for the requested entity). Throw for actual errors — including
+		 * ResolutionNotFoundException, a provider's deliberate way of saying "no
+		 * record exists for this lookup" rather than "something went wrong", which
+		 * autowiring catches and treats differently from a thrown error.
 		 * @param class-string $className The class to instantiate
 		 * @param array<int|string, mixed> $dependencies Pre-resolved constructor dependencies
 		 * @param array<string, mixed> $metadata Metadata as received by supports()

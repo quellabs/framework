@@ -1,0 +1,199 @@
+<?php
+
+	namespace Quellabs\Canvas\Tests;
+
+	use PHPUnit\Framework\TestCase;
+	use Quellabs\Canvas\Kernel;
+	use Quellabs\Canvas\Routing\RequestHandler;
+	use Quellabs\Canvas\Tests\Fixtures\Entities\EntityBindingPostEntity;
+	use Quellabs\Canvas\Tests\Fixtures\EntityBindingControllers\EntityBindingPostController;
+	use Quellabs\CanvasObjectQuel\ServiceProvider;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
+	use Quellabs\DependencyInjection\Autowiring\MethodContext;
+	use Quellabs\DependencyInjection\Provider\SimpleBinding;
+	use Quellabs\ObjectQuel\EntityManager;
+	use Symfony\Component\HttpFoundation\Request;
+	use Symfony\Component\HttpFoundation\Response;
+
+	/**
+	 * Integration coverage for the entity-binding contract across the real
+	 * Container/Autowirer/CanvasAutowirer resolution chain and
+	 * canvas-objectquel's real ServiceProvider: a required parameter whose
+	 * lookup finds no row must come back as a genuine HTTP 404 Response
+	 * produced by Kernel's actual error-handling path (not a hand-built one);
+	 * the nullable counterpart must come back as a normal 200 with null
+	 * injected.
+	 *
+	 * This is NOT a route-discovery or Kernel::handle() test. An already-
+	 * matched route is supplied directly to
+	 * RequestHandler::executeCanvasRoute() (the same private method Kernel's
+	 * real routing calls once a route has matched, invoked here via
+	 * reflection), and Kernel::handle()'s own try/catch-to-Response conversion
+	 * is reproduced by hand around it — route matching and Kernel::handle()
+	 * itself are not exercised. That's deliberate: Kernel's
+	 * controller_directory scan goes through
+	 * ComposerUtils::findClassesInDirectory(), which — independently of this
+	 * change — cannot resolve a PSR-4 namespace for any path under tests/
+	 * (confirmed against the pre-existing tests/Canvas/Fixtures/Controllers
+	 * too), because it string-matches against the autoloader's raw,
+	 * un-normalized "vendor/composer/../../tests/Canvas" path instead of a
+	 * resolved one; fixing that is a separate, unrelated bug in
+	 * quellabs/support. Route matching has its own dedicated coverage
+	 * elsewhere (RouteMatcherTest, AnnotationResolverMethodHandlingTest,
+	 * etc.), so this test's job is narrower: everything from
+	 * executeCanvasRoute() down — DI, autowiring, entity binding, and error
+	 * mapping — is real.
+	 *
+	 * EntityManager::find() itself is mocked rather than backed by a second
+	 * real EntityManager: ObjectQuel's UnitOfWork registers process-wide
+	 * SignalHub signals with no duplicate-registration guard, and
+	 * tests/bootstrap.php already creates the one EntityManager this PHPUnit
+	 * process is allowed to have (see its comments).
+	 *
+	 * Also covers a narrower edge directly against Container::get(): its own
+	 * interface documentation says it returns null when a resource doesn't
+	 * exist, but get() has no try/catch of its own — it only ever returns
+	 * null because the chosen provider itself chose to return null. canvas-
+	 * objectquel's ServiceProvider only returns null for "nothing to bind
+	 * to" (no MethodContext, or no active parameter name); given one with an
+	 * active parameter name — the same shape Autowirer::resolveType()
+	 * passes — it throws ResolutionNotFoundException instead, and get()
+	 * propagates that unchanged. Any caller constructing such a context
+	 * directly and calling get() sees the same distinction Autowirer relies
+	 * on, not something special to autowiring.
+	 */
+	class EntityBindingRequestDispatchTest extends TestCase {
+
+		/**
+		 * Builds a Kernel with a mocked EntityManager and a canvas-objectquel
+		 * ServiceProvider configured to recognize the fixture entity's namespace.
+		 * @param EntityBindingPostEntity|null $findResult What EntityManager::find() returns
+		 * @return Kernel
+		 */
+		private function makeKernel(?EntityBindingPostEntity $findResult): Kernel {
+			$kernel = new Kernel();
+			$container = $kernel->getDependencyInjector();
+
+			$entityManager = $this->createMock(EntityManager::class);
+			$entityManager->method('find')->willReturn($findResult);
+			$container->register(new SimpleBinding(EntityManager::class, $entityManager));
+
+			$entityProvider = new ServiceProvider($container);
+			$entityProvider->setConfig(['entity_namespace' => 'Quellabs\\Canvas\\Tests\\Fixtures\\Entities']);
+			$container->register($entityProvider);
+
+			return $kernel;
+		}
+
+		/**
+		 * Dispatches an already-matched route through the real
+		 * RequestHandler::executeCanvasRoute(), with Kernel::handle()'s own
+		 * exception-to-Response conversion reproduced around it. Route matching
+		 * itself is not exercised — $urlData is supplied as if a route had
+		 * already matched.
+		 * @param Kernel $kernel
+		 * @param string $method Controller method to dispatch to
+		 * @param array<string, mixed> $variables Matched route variables
+		 * @return Response
+		 */
+		private function dispatch(Kernel $kernel, string $method, array $variables): Response {
+			$urlData = [
+				'controller' => EntityBindingPostController::class,
+				'method'     => $method,
+				'variables'  => $variables,
+			];
+
+			$handler = new RequestHandler($kernel);
+			$reflection = new \ReflectionMethod($handler, 'executeCanvasRoute');
+			$reflection->setAccessible(true);
+
+			try {
+				return $reflection->invoke($handler, Request::create('/'), $urlData);
+			} catch (\Throwable $e) {
+				return $kernel->createErrorResponse($e, Request::create('/'));
+			}
+		}
+
+		/**
+		 * @param string $slug
+		 * @param string $title
+		 * @return EntityBindingPostEntity
+		 */
+		private function makePost(string $slug, string $title): EntityBindingPostEntity {
+			$post = new EntityBindingPostEntity();
+			$post->setSlug($slug);
+			$post->setTitle($title);
+			return $post;
+		}
+
+		public function testRequiredParameterResolvesTheEntityWhenARowExists(): void {
+			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
+
+			$response = $this->dispatch($kernel, 'show', ['slug' => 'hello-world']);
+
+			$this->assertSame(200, $response->getStatusCode());
+			$this->assertSame('Hello World', $response->getContent());
+		}
+
+		public function testRequiredParameterProducesA404WhenNoRowExists(): void {
+			$kernel = $this->makeKernel(null);
+
+			$response = $this->dispatch($kernel, 'show', ['slug' => 'does-not-exist']);
+
+			$this->assertSame(404, $response->getStatusCode());
+		}
+
+		public function testMissingRouteKeyProducesA500NotA404(): void {
+			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
+
+			// The route simply has no 'slug' value at all — a binding/
+			// configuration mistake (EntityBindingException), not "no row
+			// found", so this must come back as a server error, never a 404.
+			$response = $this->dispatch($kernel, 'show', []);
+
+			$this->assertSame(500, $response->getStatusCode());
+		}
+
+		public function testNullableParameterResolvesTheEntityWhenARowExists(): void {
+			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
+
+			$response = $this->dispatch($kernel, 'showOptional', ['slug' => 'hello-world']);
+
+			$this->assertSame(200, $response->getStatusCode());
+			$this->assertSame('Hello World', $response->getContent());
+		}
+
+		public function testNullableParameterReceivesNullWhenNoRowExists(): void {
+			$kernel = $this->makeKernel(null);
+
+			$response = $this->dispatch($kernel, 'showOptional', ['slug' => 'does-not-exist']);
+
+			$this->assertSame(200, $response->getStatusCode());
+			$this->assertSame('not-found', $response->getContent());
+		}
+
+		public function testContainerGetPropagatesResolutionNotFoundWhenCalledWithAnActiveParameterContext(): void {
+			$kernel = $this->makeKernel(null);
+			$container = $kernel->getDependencyInjector();
+
+			// Constructed directly, not produced by Autowirer — proving this is
+			// a property of calling get() with this shape of context, not
+			// something only the autowiring call site can trigger.
+			$context = new MethodContext(EntityBindingPostController::class, 'show', ['slug' => 'does-not-exist']);
+			$context->setParameterName('slug');
+
+			$this->expectException(ResolutionNotFoundException::class);
+			$container->get(EntityBindingPostEntity::class, [], $context);
+		}
+
+		public function testContainerGetReturnsNullForAnOrdinaryLookupWithNoActiveParameterContext(): void {
+			$kernel = $this->makeKernel(null);
+			$container = $kernel->getDependencyInjector();
+
+			// Same entity type, same "no row" EntityManager mock, but no
+			// MethodContext at all this time: the provider never attempts the
+			// lookup, and get() returns null exactly as its interface
+			// documentation describes.
+			$this->assertNull($container->get(EntityBindingPostEntity::class));
+		}
+	}

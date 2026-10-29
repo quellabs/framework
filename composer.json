@@ -376,7 +376,8 @@
       "Quellabs\\Support\\Tests\\": "tests/Support/",
       "Quellabs\\Discover\\Tests\\": "tests/Discover/",
       "Quellabs\\Recommender\\Tests\\": "tests/Recommender/",
-      "Quellabs\\AnnotationReader\\Tests\\": "tests/AnnotationReader/"
+      "Quellabs\\AnnotationReader\\Tests\\": "tests/AnnotationReader/",
+      "Quellabs\\DependencyInjection\\Tests\\": "tests/DependencyInjection/"
     }
   },
   "scripts": {
