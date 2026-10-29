@@ -6,8 +6,6 @@
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\Internal\Identifier;
 	use Quellabs\Recommender\Internal\ImplicitRating;
-	use Quellabs\Recommender\MemberId;
-	use Quellabs\Recommender\ProductId;
 	use Quellabs\Recommender\Internal\Links\LinkUpdater;
 	use Quellabs\Recommender\Internal\RatingRule;
 	
@@ -283,19 +281,18 @@
 		
 		/**
 		 * Return the rating a member gave a product, or null when none exists.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param RatingKind $kind Which ratings to match
 		 * @param int|null $category Defaults to configured default
 		 * @return Rating|null
 		 * @throws \InvalidArgumentException When an ID is outside the unsigned 32-bit range
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function memberRating(int|MemberId $member, int|ProductId $product, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
-			$memberId = self::memberIdValue($member);
-			$productId = self::productIdValue($product);
+		public function memberRating(int $member, int $product, RatingKind $kind = RatingKind::Genuine, ?int $category = null): ?Rating {
+			Identifier::assertId($member, 'Member ID');
+			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
-			
+
 			$sql = '
 				SELECT
 					`rating`,
@@ -305,81 +302,78 @@
 				      `product_id` = :product_id AND
 				      `category` = :category
 			';
-			
+
 			$params = [
-				'member_id'  => $memberId,
-				'product_id' => $productId,
+				'member_id'  => $member,
+				'product_id' => $product,
 				'category'   => $resolvedCategory,
 			];
-			
+
 			$sql .= $this->ratingFilterSql($kind, $params);
-			
+
 			$row = $this->connection->execute($sql, $params)->fetchAssoc();
-			
+
 			if (empty($row)) {
 				return null;
 			}
-			
-			return new Rating($memberId, $productId, (float)$row['rating'], (string)$row['ts']);
+
+			return new Rating($member, $product, (float)$row['rating'], (string)$row['ts']);
 		}
 		
 		/**
 		 * Set or update a rating for a member and product pair, with incremental link and slope updates when enabled.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param float $rating Must be in [0.0, 1.0] or equal RecommendationConfig::NOT_INTERESTED
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is negative or the rating is not in [0.0, 1.0] or the not-interested value
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function setRating(int|MemberId $member, int|ProductId $product, float $rating, ?int $category = null): void {
-			$memberId = self::memberIdValue($member);
-			$productId = self::productIdValue($product);
+		public function setRating(int $member, int $product, float $rating, ?int $category = null): void {
+			Identifier::assertId($member, 'Member ID');
+			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
-			
+
 			if (!RatingRule::isValid($rating, RecommendationConfig::NOT_INTERESTED)) {
 				throw new \InvalidArgumentException("Rating must be in [0.0, 1.0] or the not-interested value, got {$rating}.");
 			}
-			
+
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
-			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory, $rating): void {
-				$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
-				
+			$this->connection->transactional(function () use ($member, $product, $resolvedCategory, $rating): void {
+				$previous = $this->fetchExistingRating($member, $product, $resolvedCategory);
+
 				// -1.0 marks "no previous rating" for the link and slope updates
-				$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, $rating, $previous ?? -1.0);
-				
+				$this->triggerIncrementalUpdates($member, $product, $resolvedCategory, $rating, $previous ?? -1.0);
+
 				if ($previous !== null) {
-					$this->updateRatingRow($memberId, $productId, $resolvedCategory, $rating);
+					$this->updateRatingRow($member, $product, $resolvedCategory, $rating);
 				} else {
-					$this->insertRatingRow($memberId, $productId, $resolvedCategory, $rating);
+					$this->insertRatingRow($member, $product, $resolvedCategory, $rating);
 				}
 			});
 		}
 		
 		/**
 		 * Record a purchase as a rating of 1.0.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function recordPurchase(int|MemberId $member, int|ProductId $product, ?int $category = null): void {
+		public function recordPurchase(int $member, int $product, ?int $category = null): void {
 			$this->setRating($member, $product, ImplicitRating::PURCHASE, $category);
 		}
 
 		/**
 		 * Record a click as a rating of 0.7, or raise an existing rating by 0.01 up to 1.0.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function recordClick(int|MemberId $member, int|ProductId $product, ?int $category = null): void {
+		public function recordClick(int $member, int $product, ?int $category = null): void {
 			$resolvedCategory = $this->config->resolveCategory($category);
 			$existing = $this->memberRating($member, $product, RatingKind::Genuine, $resolvedCategory);
 
@@ -390,41 +384,39 @@
 
 		/**
 		 * Mark a product as not interested for a member.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \InvalidArgumentException When an ID is negative
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function setNotInterested(int|MemberId $member, int|ProductId $product, ?int $category = null): void {
+		public function setNotInterested(int $member, int $product, ?int $category = null): void {
 			$this->setRating($member, $product, RecommendationConfig::NOT_INTERESTED, $category);
 		}
 
 		/**
 		 * Delete a single member and product rating, with incremental link and slope cleanup when enabled.
-		 * @param int|MemberId $member The member ID
-		 * @param int|ProductId $product The product ID
+		 * @param int $member The member ID
+		 * @param int $product The product ID
 		 * @param int|null $category Defaults to configured default
 		 * @return void
 		 * @throws \Exception When a database statement fails
-		 * @deprecated Passing MemberId/ProductId will be removed in the next major version; pass a plain int
 		 */
-		public function deleteRating(int|MemberId $member, int|ProductId $product, ?int $category = null): void {
-			$memberId = self::memberIdValue($member);
-			$productId = self::productIdValue($product);
+		public function deleteRating(int $member, int $product, ?int $category = null): void {
+			Identifier::assertId($member, 'Member ID');
+			Identifier::assertId($product, 'Product ID');
 			$resolvedCategory = $this->config->resolveCategory($category);
-			
+
 			// One transaction keeps vogoo_links consistent with vogoo_ratings if a statement fails.
-			$this->connection->transactional(function () use ($memberId, $productId, $resolvedCategory): void {
+			$this->connection->transactional(function () use ($member, $product, $resolvedCategory): void {
 				if ($this->config->isDirectLinks() || $this->config->isDirectSlope()) {
-					$previous = $this->fetchExistingRating($memberId, $productId, $resolvedCategory);
-					
+					$previous = $this->fetchExistingRating($member, $product, $resolvedCategory);
+
 					if ($previous !== null) {
-						$this->triggerIncrementalUpdates($memberId, $productId, $resolvedCategory, -1.0, $previous);
+						$this->triggerIncrementalUpdates($member, $product, $resolvedCategory, -1.0, $previous);
 					}
 				}
-				
+
 				$this->connection->execute('
 					DELETE
 					FROM `vogoo_ratings`
@@ -432,46 +424,14 @@
 					      `product_id` = :product_id AND
 					      `category` = :category
 				', [
-					'member_id'  => $memberId,
-					'product_id' => $productId,
+					'member_id'  => $member,
+					'product_id' => $product,
 					'category'   => $resolvedCategory,
 				]);
 			});
 		}
 		
 		// ----- Internal helpers -----
-
-		/**
-		 * Unwrap a member ID given as a plain int or a deprecated MemberId, validating a plain int's range
-		 * (MemberId already validated its own).
-		 * @param int|MemberId $member The member ID
-		 * @return int Raw member ID
-		 * @throws \InvalidArgumentException When a plain int is outside the unsigned 32-bit range
-		 */
-		private static function memberIdValue(int|MemberId $member): int {
-			if ($member instanceof MemberId) {
-				return $member->value;
-			}
-
-			Identifier::assertId($member, 'Member ID');
-			return $member;
-		}
-
-		/**
-		 * Unwrap a product ID given as a plain int or a deprecated ProductId, validating a plain int's range
-		 * (ProductId already validated its own).
-		 * @param int|ProductId $product The product ID
-		 * @return int Raw product ID
-		 * @throws \InvalidArgumentException When a plain int is outside the unsigned 32-bit range
-		 */
-		private static function productIdValue(int|ProductId $product): int {
-			if ($product instanceof ProductId) {
-				return $product->value;
-			}
-
-			Identifier::assertId($product, 'Product ID');
-			return $product;
-		}
 
 		/**
 		 * Validate one raw vogoo_ratings row and return its ID, rating and timestamp in typed form.

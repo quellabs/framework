@@ -217,10 +217,7 @@ and must not be compared against each other.
 
 ### Identifiers
 
-Every ID-taking method accepts a plain `int`, validated the same way everywhere. `setRating()`, `memberRating()`,
-`recordPurchase()`, `recordClick()`, `setNotInterested()`, and `deleteRating()` also still accept the legacy
-`MemberId`/`ProductId` value objects, but that support is `@deprecated` and will be removed in the next major
-version — pass plain integers in new code.
+Every ID-taking method accepts a plain `int`, validated the same way everywhere.
 
 ### Evaluation
 

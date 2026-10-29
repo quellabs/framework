@@ -2,9 +2,6 @@
 	
 	namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\ProductId;
-use Quellabs\Recommender\MemberId;
-
 	use Quellabs\Recommender\RatingKind;
 	use Quellabs\Recommender\RatingOrder;
 	use Quellabs\Recommender\Config\RecommendationConfig;
@@ -328,32 +325,5 @@ use Quellabs\Recommender\MemberId;
 		public function testNegativeMemberIdIsRejected(): void {
 			$this->expectException(\InvalidArgumentException::class);
 			$this->engine->memberNumRatings(-1);
-		}
-
-		// =========================================================================
-		// Deprecated MemberId/ProductId arguments (removed in the next major version)
-		// =========================================================================
-
-		/** setRating(), memberRating(), and deleteRating() still accept MemberId/ProductId identically to plain int.
-		 * @return void
-		 */
-		public function testDeprecatedValueObjectsBehaveLikePlainIntsForSetGetAndDeleteRating(): void {
-			$this->engine->setRating(new MemberId(1), new ProductId(10), 0.8);
-			$this->assertEqualsWithDelta(0.8, $this->engine->memberRating(new MemberId(1), new ProductId(10))->rating, 0.0001);
-			$this->engine->deleteRating(new MemberId(1), new ProductId(10));
-			$this->assertNull($this->engine->memberRating(1, 10));
-		}
-
-		/** recordPurchase(), recordClick(), and setNotInterested() still accept MemberId/ProductId identically to plain int.
-		 * @return void
-		 */
-		public function testDeprecatedValueObjectsBehaveLikePlainIntsForImplicitRatings(): void {
-			$this->engine->recordPurchase(new MemberId(1), new ProductId(10));
-			$this->assertEqualsWithDelta(1.0, $this->engine->memberRating(1, 10)->rating, 0.0001);
-			$this->engine->recordClick(new MemberId(1), new ProductId(11));
-			$this->assertEqualsWithDelta(0.7, $this->engine->memberRating(1, 11)->rating, 0.0001);
-			$this->engine->setNotInterested(new MemberId(1), new ProductId(12));
-			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED,
-				$this->engine->memberRating(1, 12, RatingKind::All)->rating, 0.0001);
 		}
 	}
