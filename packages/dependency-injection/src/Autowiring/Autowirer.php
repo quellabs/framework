@@ -476,7 +476,7 @@
 		protected function valueSatisfiesBuiltinType(mixed $value, string $type): bool {
 			return match ($type) {
 				'string' => is_scalar($value) || (is_object($value) && method_exists($value, '__toString')),
-				'int', 'integer' => is_int($value) || is_bool($value) || ((is_float($value) || is_string($value)) && $this->isSafeIntCoercion($value)),
+				'int', 'integer' => is_int($value) || is_bool($value) || is_float($value) || (is_string($value) && is_numeric($value)),
 				'float', 'double' => is_float($value) || is_int($value) || is_bool($value) || (is_string($value) && is_numeric($value)),
 				'bool', 'boolean' => is_scalar($value),
 				'array' => is_array($value),
@@ -490,34 +490,6 @@
 				'null' => $value === null,
 				default => false,
 			};
-		}
-
-		/**
-		 * Whether a float or numeric string converts to int without PHP
-		 * throwing. is_numeric() alone isn't enough - it accepts strings like
-		 * '1e999' that overflow to INF and crash at the actual method call, so
-		 * a numeric string is first run through Zend's own numeric-string
-		 * parsing (`+ 0`) before the same finite/lossless/in-range check as a
-		 * raw float. (float)PHP_INT_MAX already rounds up to 2^63 - the exact
-		 * point real coercion starts rejecting - so comparing against it
-		 * directly mirrors PHP's own boundary.
-		 * @param float|string $value
-		 * @return bool
-		 */
-		private function isSafeIntCoercion(float|string $value): bool {
-			if (is_string($value)) {
-				if (!is_numeric($value)) {
-					return false;
-				}
-
-				$value = $value + 0;
-			}
-
-			if (is_int($value)) {
-				return true;
-			}
-
-			return is_finite($value) && floor($value) === $value && $value >= PHP_INT_MIN && $value < (float)PHP_INT_MAX;
 		}
 
 		/**
