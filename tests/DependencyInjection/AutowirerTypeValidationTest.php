@@ -222,4 +222,33 @@
 			$this->expectException(UnresolvableParameterException::class);
 			$autowirer->getMethodArguments($controller, 'invalidDirectValue', ['value' => 'not-an-instance']);
 		}
+
+		public function testReflectingAMisspelledMethodNameThrowsInsteadOfReturningNoArguments(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerTypeCheckController();
+
+			// 'intersectoin' doesn't exist on the controller; this must fail
+			// here, naming the class and method, rather than silently caching
+			// an empty argument list and surfacing later as a less
+			// informative invocation failure.
+			try {
+				$autowirer->getMethodArguments($controller, 'intersectoin');
+				$this->fail('Expected UnresolvableParameterException was not thrown');
+			} catch (UnresolvableParameterException $e) {
+				$this->assertStringContainsString('intersectoin', $e->getMessage());
+				$this->assertStringContainsString(AutowirerTypeCheckController::class, $e->getMessage());
+			}
+		}
+
+		public function testAClassWithNoConstructorStillReturnsNoArgumentsRatherThanThrowing(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+
+			// AutowirerTypeCheckSimple has no constructor at all - that's not
+			// an error, unlike a named method that can't be reflected.
+			$args = $autowirer->getMethodArguments(AutowirerTypeCheckSimple::class, '__construct');
+
+			$this->assertSame([], $args);
+		}
 	}

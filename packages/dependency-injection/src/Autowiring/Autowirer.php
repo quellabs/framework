@@ -459,18 +459,23 @@
 		}
 
 		/**
-		 * Checks whether a value actually matches a built-in type - instanceof
-		 * doesn't apply to scalars/arrays, so each needs its own test.
+		 * Checks whether a value matches a built-in type under PHP's own
+		 * weak-typing coercion rules (e.g. a route segment's numeric string for
+		 * an int parameter) - the value itself is passed through unconverted
+		 * and PHP coerces it when the method is actually called, exactly as it
+		 * did before autowiring got involved. Array/object/callable/iterable/
+		 * resource/true/false/null are not coercible targets in PHP either, so
+		 * those stay exact matches.
 		 * @param mixed $value
 		 * @param string $type One of self::BUILTIN_TYPES
 		 * @return bool
 		 */
 		protected function valueSatisfiesBuiltinType(mixed $value, string $type): bool {
 			return match ($type) {
-				'string' => is_string($value),
-				'int', 'integer' => is_int($value),
-				'float', 'double' => is_float($value) || is_int($value),
-				'bool', 'boolean' => is_bool($value),
+				'string' => is_scalar($value) || (is_object($value) && method_exists($value, '__toString')),
+				'int', 'integer' => is_int($value) || is_bool($value) || is_float($value) || (is_string($value) && is_numeric($value)),
+				'float', 'double' => is_float($value) || is_int($value) || is_bool($value) || (is_string($value) && is_numeric($value)),
+				'bool', 'boolean' => is_scalar($value),
 				'array' => is_array($value),
 				'object' => is_object($value),
 				'callable' => is_callable($value),
