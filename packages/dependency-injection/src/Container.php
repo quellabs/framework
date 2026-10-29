@@ -179,8 +179,15 @@
 		
 		/**
 		 * Get a service with centralized dependency resolution.
-		 * Returns null when the provider signals the resource does not exist
-		 * (e.g. no database row for a requested entity).
+		 * Returns null when the provider itself returns null to signal the
+		 * resource does not exist (e.g. no database row for a requested
+		 * entity). This method never catches or converts a provider's own
+		 * exceptions: a provider resolving a parameter during autowiring (a
+		 * $methodContext with an active parameter name) may instead throw
+		 * ResolutionNotFoundException for exactly that situation, and such an
+		 * exception propagates from here unchanged, not as null. An ordinary
+		 * call — no $methodContext, or one with no active parameter — is
+		 * unaffected by that distinction.
 		 * @template T of object
 		 * @param class-string<T> $className Class name to resolve
 		 * @param array<string, mixed> $parameters Additional parameters for creation
@@ -191,23 +198,23 @@
 		public function get(string $className, array $parameters = [], ?MethodContextInterface $methodContext = null): ?object {
 			// Resolve the class; null means the provider found no result
 			$instance = $this->resolveWithDependencies($className, $parameters, true, $methodContext);
-			
+
 			if ($instance === null) {
 				return null;
 			}
-			
+
 			// If the instance is not of the requested type, the provider has a bug
 			if (!$instance instanceof $className) {
 				throw new \RuntimeException("Container returned an instance of " . get_class($instance) . ", expected {$className}");
 			}
-			
+
 			/**
 			 * PHPStan needs to be told instance is of type T
 			 * @var T $instance
 			 */
 			return $instance;
 		}
-		
+
 		/**
 		 * Create an instance with autowired constructor parameters.
 		 * Bypasses service providers - only handles dependency injection.
@@ -394,11 +401,13 @@
 		
 		/**
 		 * Safely executes a resolution callback while managing the resolution stack for circular dependency detection.
+		 * Rethrows resolution failures unchanged so callers can classify them by their real type
+		 * (annotation, database, HTTP, or programming error) instead of a generic wrapper.
 		 * @template T of object
 		 * @param string $className The class being resolved
 		 * @param callable(): (T|null) $resolutionCallback The callback that performs the actual resolution
 		 * @return T|null The resolved instance, or null if the provider found no result
-		 * @throws \RuntimeException When circular dependencies are detected or resolution fails
+		 * @throws \RuntimeException When circular dependencies are detected
 		 */
 		protected function safeResolve(string $className, callable $resolutionCallback): ?object {
 			try {
@@ -411,21 +420,21 @@
 						" -> {$className}"
 					);
 				}
-				
+
 				// Track current resolution in the stack for circular dependency detection
 				// This maintains a breadcrumb trail of what we're currently resolving
 				$this->resolutionStack[] = $className;
-				
+
 				// Execute the resolution callback; null is a valid result
 				$instance = $resolutionCallback();
-				
+
 				// Clean up: Remove current class from resolution stack since we're done
 				// This allows the same class to be resolved again in different dependency chains
 				array_pop($this->resolutionStack);
-				
+
 				// Return the instance
 				return $instance;
-				
+
 			} catch (\Throwable $e) {
 				// Error recovery: Clean up the resolution stack to prevent corruption
 				// Find and remove everything up to and including the current class
@@ -434,17 +443,14 @@
 					while (end($this->resolutionStack) !== $className && !empty($this->resolutionStack)) {
 						array_pop($this->resolutionStack);
 					}
-					
+
 					// Remove the current class itself
 					array_pop($this->resolutionStack);
 				}
-				
-				// Wrap and rethrow with additional context
-				throw new \RuntimeException(
-					$e->getMessage(),
-					$e->getCode(),
-					$e
-				);
+
+				// Rethrow as-is: wrapping would hide the concrete exception type (and any
+				// HTTP-mapped code) from everything above this call.
+				throw $e;
 			}
 		}
 		

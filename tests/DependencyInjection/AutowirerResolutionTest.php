@@ -1,0 +1,443 @@
+<?php
+
+	namespace Quellabs\DependencyInjection\Tests;
+
+	use PHPUnit\Framework\TestCase;
+	use Quellabs\AnnotationReader\AnnotationReader;
+	use Quellabs\AnnotationReader\Configuration;
+	use Quellabs\Canvas\DependencyInjection\CanvasContainer;
+	use Quellabs\Contracts\Context\MethodContextInterface;
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\DependencyInjection\Autowiring\Autowirer;
+	use Quellabs\DependencyInjection\Autowiring\MethodContext;
+	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
+	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
+	use Quellabs\Discover\Provider\AbstractProvider;
+	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
+
+	/**
+	 * Target type a provider can legitimately resolve to no value for, e.g. an
+	 * entity with no matching database row.
+	 */
+	class AutowirerResolutionNullableTarget {
+	}
+
+	/**
+	 * Provider that always reports "no result" for AutowirerResolutionNullableTarget,
+	 * recording how many times it was actually asked.
+	 */
+	class AutowirerResolutionNullProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @var int Number of times createInstance() was called
+		 */
+		public int $calls = 0;
+
+		/**
+		 * @return array<string, mixed>
+		 */
+		public static function getMetadata(): array {
+			return [];
+		}
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
+		public function supports(string $className, array $metadata): bool {
+			return $className === AutowirerResolutionNullableTarget::class;
+		}
+
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Always null, recording the call
+		 */
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
+			$this->calls++;
+			return null;
+		}
+	}
+
+	/**
+	 * Target type whose provider explicitly reports "no record exists" by
+	 * throwing ResolutionNotFoundException, distinct from
+	 * AutowirerResolutionNullableTarget's plain null.
+	 */
+	class AutowirerResolutionNotFoundTarget {
+	}
+
+	/**
+	 * Provider that always throws ResolutionNotFoundException for
+	 * AutowirerResolutionNotFoundTarget.
+	 */
+	class AutowirerResolutionNotFoundProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
+		public function supports(string $className, array $metadata): bool {
+			return $className === AutowirerResolutionNotFoundTarget::class;
+		}
+
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Never returns; always throws
+		 * @throws ResolutionNotFoundException Always
+		 */
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
+			throw new ResolutionNotFoundException('no record for ' . $className);
+		}
+	}
+
+	/**
+	 * Target type whose provider always throws, to verify the exception survives
+	 * the Container/Autowirer call chain unchanged.
+	 */
+	class AutowirerResolutionFailingTarget {
+	}
+
+	/**
+	 * Provider that always throws for AutowirerResolutionFailingTarget.
+	 */
+	class AutowirerResolutionFailingProvider extends AbstractProvider implements ServiceProviderInterface {
+
+		/**
+		 * @return array<string, mixed>
+		 */
+		public static function getMetadata(): array {
+			return [];
+		}
+
+		/**
+		 * @param string $className
+		 * @param array<string, mixed> $metadata
+		 * @return bool
+		 */
+		public function supports(string $className, array $metadata): bool {
+			return $className === AutowirerResolutionFailingTarget::class;
+		}
+
+		/**
+		 * @param string $className
+		 * @param array<int|string, mixed> $dependencies
+		 * @param array<string, mixed> $metadata
+		 * @param MethodContextInterface|null $methodContext
+		 * @return object|null Never returns; always throws
+		 * @throws \DomainException Always
+		 */
+		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
+			throw new \DomainException('autowirer-resolution-provider-failure');
+		}
+	}
+
+	/**
+	 * First union candidate: its own constructor parameter cannot be autowired
+	 * (a required, un-provided scalar), so resolving it throws
+	 * UnresolvableParameterException — a recoverable miss for this one candidate.
+	 */
+	class AutowirerResolutionCandidateA {
+
+		/**
+		 * @param string $missing A required scalar nothing can supply, by design
+		 */
+		public function __construct(string $missing) {
+		}
+	}
+
+	/**
+	 * Second union candidate: trivially constructible, so it is the one that
+	 * should win once the first candidate fails.
+	 */
+	class AutowirerResolutionCandidateB {
+	}
+
+	/**
+	 * Depends on AutowirerResolutionCircularB, forming a circular dependency
+	 * with it when both are autowired.
+	 */
+	class AutowirerResolutionCircularA {
+
+		/**
+		 * @var AutowirerResolutionCircularB
+		 */
+		private AutowirerResolutionCircularB $b;
+
+		/**
+		 * @param AutowirerResolutionCircularB $b
+		 */
+		public function __construct(AutowirerResolutionCircularB $b) {
+			$this->b = $b;
+		}
+	}
+
+	/**
+	 * Depends on AutowirerResolutionCircularA, forming a circular dependency
+	 * with it when both are autowired.
+	 */
+	class AutowirerResolutionCircularB {
+
+		/**
+		 * @var AutowirerResolutionCircularA
+		 */
+		private AutowirerResolutionCircularA $a;
+
+		/**
+		 * @param AutowirerResolutionCircularA $a
+		 */
+		public function __construct(AutowirerResolutionCircularA $a) {
+			$this->a = $a;
+		}
+	}
+
+	/**
+	 * Ordinary, provider-free dependency used to confirm the DI change does
+	 * not affect normal (non-entity) autowiring.
+	 */
+	class AutowirerResolutionPlainDependency {
+	}
+
+	/**
+	 * Ordinary consumer of AutowirerResolutionPlainDependency, resolved purely
+	 * through constructor autowiring with no provider involved.
+	 */
+	class AutowirerResolutionPlainConsumer {
+
+		/**
+		 * @var AutowirerResolutionPlainDependency
+		 */
+		private AutowirerResolutionPlainDependency $dependency;
+
+		/**
+		 * @param AutowirerResolutionPlainDependency $dependency
+		 */
+		public function __construct(AutowirerResolutionPlainDependency $dependency) {
+			$this->dependency = $dependency;
+		}
+
+		/**
+		 * @return AutowirerResolutionPlainDependency
+		 */
+		public function getDependency(): AutowirerResolutionPlainDependency {
+			return $this->dependency;
+		}
+	}
+
+	/**
+	 * Controller-shaped fixture whose methods exercise each resolution
+	 * scenario under test.
+	 */
+	class AutowirerResolutionController {
+
+		/**
+		 * @param AutowirerResolutionNullableTarget $target
+		 * @return AutowirerResolutionNullableTarget|null
+		 */
+		public function requiredTarget(AutowirerResolutionNullableTarget $target): ?AutowirerResolutionNullableTarget {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionNullableTarget|null $target
+		 * @return AutowirerResolutionNullableTarget|null
+		 */
+		public function nullableTarget(?AutowirerResolutionNullableTarget $target): ?AutowirerResolutionNullableTarget {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionFailingTarget $target
+		 * @return AutowirerResolutionFailingTarget
+		 */
+		public function failingTarget(AutowirerResolutionFailingTarget $target): AutowirerResolutionFailingTarget {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionNotFoundTarget $target
+		 * @return AutowirerResolutionNotFoundTarget|null
+		 */
+		public function requiredNotFoundTarget(AutowirerResolutionNotFoundTarget $target): ?AutowirerResolutionNotFoundTarget {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionNotFoundTarget|null $target
+		 * @return AutowirerResolutionNotFoundTarget|null
+		 */
+		public function nullableNotFoundTarget(?AutowirerResolutionNotFoundTarget $target): ?AutowirerResolutionNotFoundTarget {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate
+		 * @return AutowirerResolutionCandidateA|AutowirerResolutionCandidateB
+		 */
+		public function pickCandidate(AutowirerResolutionCandidateA|AutowirerResolutionCandidateB $candidate): AutowirerResolutionCandidateA|AutowirerResolutionCandidateB {
+			return $candidate;
+		}
+
+		/**
+		 * @param string $missing
+		 * @param string $alsoMissing
+		 * @return void
+		 */
+		public function twoRequiredScalars(string $missing, string $alsoMissing): void {
+		}
+	}
+
+	/**
+	 * Unit tests for the base Autowirer/Container resolution-signal fix:
+	 * a provider's null is a resolved answer (not "unresolved") for a nullable
+	 * parameter, but is rejected with a clear UnresolvableParameterException
+	 * for a required one — whether that null came directly from a provider or
+	 * via the base (framework-agnostic) handleNotFound() default for a thrown
+	 * ResolutionNotFoundException — rather than being silently injected and
+	 * left to surface later as an opaque PHP TypeError. A provider's own exception
+	 * survives the call chain unchanged, a known recoverable miss on one union
+	 * candidate still falls through to the next, circular dependencies are
+	 * still reported, and the current parameter name is reset even when
+	 * resolution throws.
+	 */
+	class AutowirerResolutionTest extends TestCase {
+
+		/**
+		 * A real, working ContainerInterface implementation. The bare base
+		 * Container cannot be used standalone here: its plain Discover cannot
+		 * autowire the constructor-dependent providers already registered
+		 * elsewhere in this monorepo (e.g. canvas-objectquel's ServiceProvider),
+		 * so it crashes during discovery. CanvasContainer's DependencyAwareDiscover
+		 * handles that; these tests otherwise exercise the base Autowirer/Container
+		 * resolution logic directly, not anything Canvas-specific.
+		 * @return ContainerInterface
+		 */
+		private function makeContainer(): ContainerInterface {
+			return new CanvasContainer(new AnnotationReader(new Configuration()));
+		}
+
+		public function testProviderResolvedNullForARequiredParameterThrowsAClearDIError(): void {
+			$container = $this->makeContainer();
+			$provider = new AutowirerResolutionNullProvider();
+			$container->register($provider);
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			// Silently injecting null here would only surface later as an
+			// opaque PHP TypeError at the actual method call; reject it
+			// immediately, with the parameter and method named, instead.
+			try {
+				$autowirer->getMethodArguments($controller, 'requiredTarget');
+				$this->fail('Expected UnresolvableParameterException was not thrown');
+			} catch (UnresolvableParameterException $e) {
+				$this->assertStringContainsString('target', $e->getMessage());
+			}
+
+			$this->assertSame(1, $provider->calls);
+		}
+
+		public function testProviderResolvedNullIsInjectedIntoANullableParameter(): void {
+			$container = $this->makeContainer();
+			$provider = new AutowirerResolutionNullProvider();
+			$container->register($provider);
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+			$args = $autowirer->getMethodArguments($controller, 'nullableTarget');
+
+			$this->assertSame([null], $args);
+			$this->assertSame(1, $provider->calls);
+		}
+
+		public function testProviderNotFoundIsUnwrappedToNullByTheBaseDefaultForANullableParameter(): void {
+			$container = $this->makeContainer();
+			$container->register(new AutowirerResolutionNotFoundProvider());
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+			$args = $autowirer->getMethodArguments($controller, 'nullableNotFoundTarget');
+
+			// Base Autowirer has no concept of an HTTP response, so its default
+			// handleNotFound() just injects null — the same outcome as an
+			// ordinary provider's plain null, by design. Allowed here only
+			// because the parameter itself is nullable.
+			$this->assertSame([null], $args);
+		}
+
+		public function testProviderNotFoundForARequiredParameterThrowsAClearDIErrorByTheBaseDefault(): void {
+			$container = $this->makeContainer();
+			$container->register(new AutowirerResolutionNotFoundProvider());
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			// Same guard as the plain-null case: the base handleNotFound()
+			// default resolves NotFound to null, and a required parameter
+			// still rejects that null rather than injecting it silently.
+			$this->expectException(UnresolvableParameterException::class);
+			$autowirer->getMethodArguments($controller, 'requiredNotFoundTarget');
+		}
+
+		public function testProviderExceptionPropagatesUnchangedThroughContainerAndAutowirer(): void {
+			$container = $this->makeContainer();
+			$container->register(new AutowirerResolutionFailingProvider());
+
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			$this->expectException(\DomainException::class);
+			$this->expectExceptionMessage('autowirer-resolution-provider-failure');
+			$autowirer->getMethodArguments($controller, 'failingTarget');
+		}
+
+		public function testUnresolvableUnionCandidateFallsThroughToTheNextOne(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			$args = $autowirer->getMethodArguments($controller, 'pickCandidate');
+
+			$this->assertCount(1, $args);
+			$this->assertInstanceOf(AutowirerResolutionCandidateB::class, $args[0]);
+		}
+
+		public function testCircularDependencyIsStillReportedAndNotSwallowed(): void {
+			$container = $this->makeContainer();
+
+			$this->expectException(\RuntimeException::class);
+			$this->expectExceptionMessageMatches('/Circular dependency detected/');
+			$container->make(AutowirerResolutionCircularA::class);
+		}
+
+		public function testOrdinaryNonEntityConstructorDependencyStillResolves(): void {
+			$container = $this->makeContainer();
+
+			$consumer = $container->make(AutowirerResolutionPlainConsumer::class);
+
+			$this->assertInstanceOf(AutowirerResolutionPlainDependency::class, $consumer->getDependency());
+		}
+
+		public function testParameterNameIsResetAfterResolutionThrows(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+			$context = new MethodContext(AutowirerResolutionController::class, 'twoRequiredScalars');
+
+			try {
+				$autowirer->getMethodArguments($controller, 'twoRequiredScalars', [], $context);
+				$this->fail('Expected UnresolvableParameterException was not thrown');
+			} catch (UnresolvableParameterException) {
+				// Expected: neither scalar parameter has a provider, value, or default.
+			}
+
+			$this->assertNull($context->getParameterName());
+		}
+	}

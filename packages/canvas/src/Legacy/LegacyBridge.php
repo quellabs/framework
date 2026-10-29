@@ -47,23 +47,6 @@
 		}
 		
 		/**
-		 * Get any service from the Canvas container
-		 * @template T of object
-		 * @param class-string<T> $service The service identifier/name to retrieve
-		 * @return T The requested service instance
-		 * @throws \RuntimeException When the service is not found
-		 */
-		public static function get(string $service): object {
-			$instance = self::$container->get($service);
-			
-			if ($instance === null) {
-				throw new \RuntimeException("Service '{$service}' is not available. Ensure a matching service provider is registered.");
-			}
-			
-			return $instance;
-		}
-		
-		/**
 		 * Get the container itself
 		 * @return Container The dependency injection container
 		 */
@@ -80,14 +63,12 @@
 	// check must match that.
 	if (!function_exists(__NAMESPACE__ . '\\canvas')) {
 		/**
-		 * Global helper function for accessing Canvas services
-		 * @template TService of object
-		 * @param class-string<TService>|null $service Optional service name to retrieve
-		 * @return ($service is null ? Container : TService) If $service provided, returns the service; otherwise returns the container
+		 * Global helper function for accessing the Canvas container from legacy code
+		 * @param string|array<string, mixed>|null $context Optional DI context to scope resolution, as accepted by Container::for()
+		 * @return Container The container, scoped to $context when given
 		 */
-		function canvas(?string $service = null): mixed {
-			// If a service name is provided, get that specific service
-			// Otherwise, return the container itself for advanced usage
-			return $service ? LegacyBridge::get($service) : LegacyBridge::container();
+		function canvas(string|array|null $context = null): Container {
+			$container = LegacyBridge::container();
+			return $context === null ? $container : $container->for($context);
 		}
 	}
