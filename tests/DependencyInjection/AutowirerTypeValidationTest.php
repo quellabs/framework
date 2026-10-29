@@ -199,6 +199,20 @@
 			$this->assertInstanceOf(AutowirerTypeCheckSimple::class, $args[0]);
 		}
 
+		public function testOverflowingNumericStringDoesNotSatisfyIntAndFallsThroughToTheClassBranch(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerTypeCheckController();
+
+			// is_numeric('1e999') is true, but PHP cannot coerce it to int
+			// (it overflows to INF) - accepting it directly would pass the
+			// raw string through to an uncaught TypeError at the method call.
+			$args = $autowirer->getMethodArguments($controller, 'mixedUnion', ['value' => '1e999']);
+
+			$this->assertCount(1, $args);
+			$this->assertInstanceOf(AutowirerTypeCheckSimple::class, $args[0]);
+		}
+
 		public function testExplicitNullUnionAcceptsAMatchingInstanceDirectly(): void {
 			$container = $this->makeContainer();
 			$autowirer = new Autowirer($container);
