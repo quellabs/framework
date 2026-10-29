@@ -277,6 +277,7 @@
 		 * @throws ResolutionNotFoundException If a provider explicitly found no record
 		 */
 		protected function resolveParameterFromTypes(string $paramName, array $typeGroups, ?MethodContextInterface $methodContext = null): mixed {
+			// Early return sentinel if no types provided - nothing to resolve
 			if (empty($typeGroups)) {
 				return self::unresolved();
 			}
@@ -320,8 +321,10 @@
 				return $this->parameterCache[$cacheKey];
 			}
 			
+			// New reflection class to get information about the class name
 			$reflectionClass = new \ReflectionClass($className);
 
+			// Determine which method to reflect
 			if (empty($methodName) || $methodName === '__construct') {
 				$methodReflector = $reflectionClass->getConstructor();
 
