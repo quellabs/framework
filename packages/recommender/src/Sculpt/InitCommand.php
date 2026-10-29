@@ -3,22 +3,20 @@
 	namespace Quellabs\Recommender\Sculpt;
 	
 	use Quellabs\Sculpt\ConfigurationManager;
-	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Cake\Database\Connection;
 	
 	/**
-	 * Creates the vogoo_ratings and vogoo_links tables required by the
-	 * recommender engine.
+	 * Creates the vogoo_ratings and vogoo_links tables required by the recommender engine.
 	 *
 	 * Usage:
 	 *   sculpt recommender:init-db
 	 *   sculpt recommender:init-db --force   (drop and recreate existing tables)
 	 */
-	class InitCommand extends CommandBase {
+	class InitCommand extends RecommenderCommand {
 		
 		/**
-		 * Return the command's invocable signature.
-		 * @return string The command signature (its invocable name)
+		 * Return the command signature.
+		 * @return string The command signature
 		 */
 		public function getSignature(): string {
 			return 'recommender:init-db';
@@ -38,53 +36,34 @@
 		 */
 		public function getHelp(): string {
 			return <<<HELP
-<bold>Usage:</bold>
-  sculpt recommender:init-db [--force]
-
-<bold>Options:</bold>
-  --force   Drop existing tables before creating them. All data will be lost.
-
-<bold>Tables created:</bold>
-  vogoo_ratings   Stores member/product ratings (float 0.0-1.0, -1.0 = not interested)
-  vogoo_links     Stores independent liked and slope counts and differential sums
-
-<bold>Notes:</bold>
-  Existing installations must migrate and rebuild from ratings; --force deletes ratings.
-HELP;
+	<bold>Usage:</bold>
+	  sculpt recommender:init-db [--force]
+	
+	<bold>Options:</bold>
+	  --force   Drop existing tables before creating them. All data will be lost.
+	
+	<bold>Tables created:</bold>
+	  vogoo_ratings   Stores member/product ratings (float 0.0-1.0, -1.0 = not interested)
+	  vogoo_links     Stores independent liked and slope counts and differential sums
+	
+	<bold>Notes:</bold>
+	  Existing installations must migrate and rebuild from ratings; --force deletes ratings.
+	HELP;
 		}
 		
 		/**
 		 * Create the recommender database tables (vogoo_ratings, vogoo_links).
 		 * @param ConfigurationManager $config The Sculpt configuration manager (flags and arguments)
-		 * @return int Exit code: 0 on success, 1 on failure
+		 * @return int Exit code: 0 on success, 1 when a table exists and --force was not given
 		 */
 		public function execute(ConfigurationManager $config): int {
-			/** @var RecommenderProvider $provider */
-			$provider   = $this->provider;
-			$connection = $provider->getConnection();
-			$force      = $config->hasFlag('force');
-			
+			$connection = $this->getRecommenderProvider()->getConnection();
+			$force = $config->hasFlag('force');
 			$tables = ['vogoo_ratings', 'vogoo_links'];
-			
-			// Check which tables already exist
-			$existing = [];
-			
-			foreach ($tables as $table) {
-				$rows = $connection->execute(
-					'SELECT COUNT(*) AS cnt
-				 FROM information_schema.tables
-				 WHERE table_schema = DATABASE()
-				   AND table_name = :table',
-					['table' => $table],
-				)->fetchAssoc();
-				
-				if ((int)$rows['cnt'] > 0) {
-					$existing[] = $table;
-				}
-			}
+			$existing = $this->existingTables($connection, $tables);
 			
 			// Bail out if tables exist and --force was not given
-			if (!empty($existing) && !$force) {
+			if ($existing !== [] && !$force) {
 				foreach ($existing as $table) {
 					$this->output->warning("Table '{$table}' already exists. Use --force to drop and recreate.");
 				}
@@ -92,12 +71,8 @@ HELP;
 				return 1;
 			}
 			
-			// Drop existing tables when --force is set (reverse order to avoid FK issues)
-			if ($force && !empty($existing)) {
-				foreach (array_reverse($tables) as $table) {
-					$connection->execute("DROP TABLE IF EXISTS `{$table}`");
-					$this->output->writeLn("<dim>Dropped table '{$table}'.</dim>");
-				}
+			if ($force && $existing !== []) {
+				$this->dropTables($connection, $tables);
 			}
 			
 			$this->createRatingsTable($connection);
@@ -107,12 +82,52 @@ HELP;
 		}
 		
 		/**
+		 * Return the subset of tables that already exist in the current database.
+		 * @param Connection $connection The recommender database connection
+		 * @param array<int, string> $tables Table names to check
+		 * @return array<int, string> Names of the existing tables
+		 */
+		private function existingTables(Connection $connection, array $tables): array {
+			$existing = [];
+			
+			foreach ($tables as $table) {
+				$rows = $connection->execute(
+					'
+						SELECT
+							COUNT(*) AS cnt
+						FROM information_schema.tables
+						WHERE table_schema = DATABASE() AND
+							table_name = :table',
+					['table' => $table],
+				)->fetchAssoc();
+				
+				if ((int)$rows['cnt'] > 0) {
+					$existing[] = $table;
+				}
+			}
+			
+			return $existing;
+		}
+		
+		/**
+		 * Drop the given tables, in reverse order to avoid foreign key issues.
+		 * @param Connection $connection The recommender database connection
+		 * @param array<int, string> $tables Table names in creation order
+		 * @return void
+		 */
+		private function dropTables(Connection $connection, array $tables): void {
+			foreach (array_reverse($tables) as $table) {
+				$connection->execute("DROP TABLE IF EXISTS `{$table}`");
+				$this->output->writeLn("<dim>Dropped table '{$table}'.</dim>");
+			}
+		}
+		
+		/**
 		 * Create the vogoo_ratings table.
 		 * @param Connection $connection The CakePHP database connection
 		 * @return void
 		 */
 		private function createRatingsTable(Connection $connection): void {
-			// Create vogoo_ratings
 			$connection->execute(
 				'CREATE TABLE `vogoo_ratings` (
 			    `member_id`  INT UNSIGNED  NOT NULL,
@@ -135,7 +150,6 @@ HELP;
 		 * @return void
 		 */
 		private function createLinksTable(Connection $connection): void {
-			// Create vogoo_links
 			$connection->execute(
 				'CREATE TABLE `vogoo_links` (
 			    `item_id1`   INT UNSIGNED  NOT NULL,
