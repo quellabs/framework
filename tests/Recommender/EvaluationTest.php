@@ -413,4 +413,19 @@ class EvaluationTest extends IntegrationTestCase {
         $this->expectException(\UnexpectedValueException::class);
         (new EvaluationRecorder($this->connection))->recordImpression($list, null, new DateTimeImmutable('2026-01-01T00:00:00Z'));
     }
+
+    /** A ranked slate built with withDiagnostics() carries diagnostics and can be recorded.
+     * @return void
+     */
+    public function testWithDiagnosticsProducesARecordableRankedImpression(): void {
+        $this->insertRating(1, 999, 0.9);
+        $request = (new ReconciliationRequest(new ArrayEligibilityProvider([40]),
+            [RecommendationSource::NewProducts], 1, 'home', [40]))->withDiagnostics();
+        $list = $this->reconciler()->slate(Subject::member(1), $request);
+        $id = (new EvaluationRecorder($this->connection))->recordImpression($list, null,
+            new DateTimeImmutable('2026-01-01T00:00:00Z'));
+        $count = $this->connection->execute('SELECT COUNT(*) AS total FROM vogoo_impressions WHERE id = ?',
+            [$id->binary()])->fetchAssoc();
+        $this->assertSame(1, (int)$count['total']);
+    }
 }

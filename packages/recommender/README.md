@@ -94,6 +94,19 @@ sources for a cold subject falls back to trying `TopRated` alone; `TopRated` can
 example when none meet `topRatedMinRatings` or eligibility rejects them all, so handle an empty list regardless.
 Set `ReconciliationTuning::$coldStartSources` to a fixed source list to override this per request instead.
 
+```php
+// Member 1 has no ratings, so ItemLinks and UserSimilarity are dropped; only TopRated survives.
+$request = new ReconciliationRequest(new ArrayEligibilityProvider([101, 102, 103]),
+    [RecommendationSource::ItemLinks, RecommendationSource::UserSimilarity, RecommendationSource::TopRated],
+    5, 'home');
+$list = $reconciler->slate(Subject::member(1), $request);
+$list->sources; // [RecommendationSource::TopRated]
+```
+
+`$list->sources` always reflects the sources actually used, so compare it against the request's own sources to
+tell whether cold-start fallback happened. An empty result remains possible even after fallback, for example when
+no item meets `topRatedMinRatings` or eligibility rejects every candidate.
+
 ## API at a glance
 
 | Task                                                                       | Method                                                                                       | Returns                                                                  |
@@ -152,8 +165,36 @@ takes a `Subject`, which is a member, a visitor or a product:
   `memberRating()` first only when the new value depends on it. `deleteRating()` removes the rating.
 - Rating accessors return objects. `memberRating()` returns a `Rating`, `memberRatings()` and `productRatings()` return
   `Rating[]`, and `VisitorContext::ratings()` returns `VisitorRating[]`. Read their properties, such as `->rating`.
-- Pass `null` for "no eligibility filter". An `ArrayEligibilityProvider` built from an empty list accepts no candidates,
-  so the call returns no results.
+- Pass `null` for "no eligibility filter" to a standalone candidate source's `candidates()` method (see
+  `Quellabs\Recommender\Sources`). `ReconciliationRequest` requires a non-null `EligibilityProvider`: reconciliation
+  serves a displayed slate, where catalogue eligibility is a required application decision, and passing `null` there
+  is a type error. An `ArrayEligibilityProvider` built from an empty list accepts no candidates, so it cannot stand
+  in for "no filter" either, standalone or in reconciliation — it rejects every candidate.
+- Write an `EligibilityProvider` that queries the current catalogue for a batch of candidate IDs, applying whatever
+  publication, stock and visibility rules the application needs, and returns an order-preserving subset:
+
+  ```php
+  use Quellabs\Recommender\EligibilityProvider;
+
+  readonly class CatalogEligibilityProvider implements EligibilityProvider {
+      public function __construct(private \Cake\Database\Connection $connection) {}
+
+      public function filterEligible(array $candidateIds): array {
+          if ($candidateIds === []) {
+              return [];
+          }
+
+          $placeholders = implode(',', array_fill(0, count($candidateIds), '?'));
+          $rows = $this->connection->execute("
+              SELECT id FROM products
+              WHERE id IN ({$placeholders}) AND published = 1 AND stock > 0
+          ", $candidateIds)->fetchAll('assoc');
+          $eligible = array_flip(array_column($rows, 'id'));
+
+          return array_values(array_filter($candidateIds, fn($id) => isset($eligible[$id])));
+      }
+  }
+  ```
 
 ### Scores
 
@@ -185,9 +226,15 @@ Two calling conventions coexist. Both validate their range; neither is safer tha
 | `RecommendationEngine::setRating()`   | `RecommendationEngine::memberRatings()`, `productRatings()`, `deleteMember()`, `deleteProduct()`, `productNumRatings()`, `productAverageRating()` |
 | `RecommendationEngine::memberRating()`| `Subject::member()`, `Subject::product()`, `VisitorContext` methods                |
 
+A future major version will standardize on plain `int` everywhere and drop `MemberId`/`ProductId` from
+`setRating()` and `memberRating()`; new code can pass plain integers to every method without risking a later
+migration.
+
 ### Evaluation
 
-Evaluation is opt-in and separate from serving a slate: generating a slate never records anything by itself.
+Evaluation is opt-in and separate from serving a slate: generating a slate never records anything by itself. A
+slate built without diagnostics — including the one in Quick start — cannot be recorded; call `withDiagnostics()`
+on the request before serving a slate whose impression will be recorded.
 
 ```bash
 sculpt recommender:init-evaluation-db   # create the evaluation tables, once
@@ -200,11 +247,13 @@ use DateTimeImmutable;
 
 $recorder = new EvaluationRecorder($connection);
 
-// Continuing the Quick start example: same $reconciler and ratings. diagnostics: true is required to record it.
-$slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
-    new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home', diagnostics: true));
+// Continuing the Quick start example: same $reconciler and ratings. withDiagnostics() is required to record it.
+$request = (new ReconciliationRequest(
+    new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'))->withDiagnostics();
+$slate = $reconciler->slate(Subject::member(1), $request);
 
 // Record the subset and order actually displayed, not the full pool; here $slate->items is just [102].
+// recordImpression() rejects an empty list, so selecting nothing to display is not itself recordable.
 $shown = $slate->selectDisplayedProducts(array_map(fn($item) => $item->productId, $slate->items));
 $impressionId = $recorder->recordImpression($shown, member: 1);
 

@@ -48,4 +48,24 @@ class ReconciliationContractsTest extends TestCase {
         $this->assertSame('tenant-a', RecommendationList::fromDisplayedItems(1, 'home', [],
             'tenant-a')->contextKey);
     }
+
+    /** @return void */
+    public function testWithDiagnosticsTogglesTheFlagAndKeepsEveryOtherField(): void {
+        $eligibility = new ArrayEligibilityProvider([1, 2]);
+        $request = new ReconciliationRequest($eligibility, [RecommendationSource::NewProducts], 5, 'home',
+            [5, 3], [8, 2], category: 9, contextKey: 'tenant-a');
+        $this->assertFalse($request->diagnostics);
+        $withDiagnostics = $request->withDiagnostics();
+        $this->assertTrue($withDiagnostics->diagnostics);
+        $this->assertSame($eligibility, $withDiagnostics->eligibility);
+        $this->assertSame($request->sources, $withDiagnostics->sources);
+        $this->assertSame($request->limit, $withDiagnostics->limit);
+        $this->assertSame($request->placement, $withDiagnostics->placement);
+        $this->assertSame($request->newProductIds, $withDiagnostics->newProductIds);
+        $this->assertSame($request->additionalCandidateIds, $withDiagnostics->additionalCandidateIds);
+        $this->assertSame($request->category, $withDiagnostics->category);
+        $this->assertSame($request->contextKey, $withDiagnostics->contextKey);
+        $this->assertSame($request->tuning, $withDiagnostics->tuning);
+        $this->assertFalse($withDiagnostics->withDiagnostics(false)->diagnostics);
+    }
 }

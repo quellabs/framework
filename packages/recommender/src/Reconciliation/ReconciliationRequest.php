@@ -90,6 +90,18 @@
 		}
 		
 		/**
+		 * Return a copy of this request with diagnostics enabled or disabled. Diagnostics are required
+		 * before EvaluationRecorder::recordImpression() can record the slate's impression.
+		 * @param bool $diagnostics Attach serving-time diagnostics to each item
+		 * @return self Request with the same inputs and the given diagnostics flag
+		 */
+		public function withDiagnostics(bool $diagnostics = true): self {
+			return new self($this->eligibility, $this->sources, $this->limit, $this->placement,
+				$this->newProductIds, $this->additionalCandidateIds, $this->category, $this->contextKey, $this->tuning,
+				$diagnostics);
+		}
+
+		/**
 		 * Validate and deduplicate sources, returning them in canonical bit order.
 		 * @param array<mixed> $sources Requested sources
 		 * @return array<int, RecommendationSource> Distinct sources ordered by bit
