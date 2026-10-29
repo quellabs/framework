@@ -60,8 +60,6 @@ use Quellabs\Recommender\RecommendationSource;
 use Quellabs\Recommender\Reconciliation\ReconciliationRequest;
 use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
 use Quellabs\Recommender\Evaluation\ModelScorerResolver;
-use Quellabs\Recommender\MemberId;
-use Quellabs\Recommender\ProductId;
 use Quellabs\Recommender\RecommendationEngine;
 use Quellabs\Recommender\Subject;
 
@@ -70,9 +68,9 @@ $config     = new RecommendationConfig(directLinks: true);
 $engine     = new RecommendationEngine($connection, $config);
 $reconciler = RecommendationReconciler::fromConnection($connection, $config, new ModelScorerResolver($connection));
 
-$engine->setRating(MemberId::of(1), ProductId::of(101), 0.9);
-$engine->setRating(MemberId::of(2), ProductId::of(101), 0.8);
-$engine->setRating(MemberId::of(2), ProductId::of(102), 0.7);
+$engine->setRating(1, 101, 0.9);
+$engine->setRating(2, 101, 0.8);
+$engine->setRating(2, 102, 0.7);
 
 $slate = $reconciler->slate(Subject::member(1), new ReconciliationRequest(
     new ArrayEligibilityProvider([102]), [RecommendationSource::ItemLinks], 5, 'home'));
@@ -219,16 +217,10 @@ and must not be compared against each other.
 
 ### Identifiers
 
-Two calling conventions coexist. Both validate their range; neither is safer than the other.
-
-| Takes `MemberId`/`ProductId`         | Takes plain `int`                                                                  |
-|---------------------------------------|--------------------------------------------------------------------------------------|
-| `RecommendationEngine::setRating()`   | `RecommendationEngine::memberRatings()`, `productRatings()`, `deleteMember()`, `deleteProduct()`, `productNumRatings()`, `productAverageRating()` |
-| `RecommendationEngine::memberRating()`| `Subject::member()`, `Subject::product()`, `VisitorContext` methods                |
-
-A future major version will standardize on plain `int` everywhere and drop `MemberId`/`ProductId` from
-`setRating()` and `memberRating()`; new code can pass plain integers to every method without risking a later
-migration.
+Every ID-taking method accepts a plain `int`, validated the same way everywhere. `setRating()`, `memberRating()`,
+`recordPurchase()`, `recordClick()`, `setNotInterested()`, and `deleteRating()` also still accept the legacy
+`MemberId`/`ProductId` value objects, but that support is `@deprecated` and will be removed in the next major
+version — pass plain integers in new code.
 
 ### Evaluation
 

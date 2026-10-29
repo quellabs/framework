@@ -2,10 +2,6 @@
 
 namespace Quellabs\Recommender\Tests;
 
-use Quellabs\Recommender\ProductId;
-
-use Quellabs\Recommender\MemberId;
-
 use PHPUnit\Framework\Attributes\DataProvider;
 use Quellabs\Recommender\Reconciliation\ReconciliationTuning;
 use Quellabs\Recommender\Reconciliation\SourceSettings;
@@ -44,17 +40,17 @@ class DerivedPairsTest extends IntegrationTestCase {
         $config = new RecommendationConfig(directLinks: $links, directSlope: $slope);
         $engine = new RecommendationEngine($this->connection, $config);
         $items = new ItemLinksSource($this->connection, $config);
-        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
-        $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
-        $engine->setRating(new MemberId(2), new ProductId(10), 0.4);
-        $engine->setRating(new MemberId(2), new ProductId(20), 0.7);
+        $engine->setRating(1, 10, 0.9);
+        $engine->setRating(1, 20, 0.8);
+        $engine->setRating(2, 10, 0.4);
+        $engine->setRating(2, 20, 0.7);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 2 : 0, $slope ? 0.2 : 0.0);
         $this->assertSame($links ? [20] : [], array_map(fn($item) => $item->productId, $items->candidates(Subject::product(10), null, 10, new SourceSettings())));
 
-        $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
-        $engine->setNotInterested(new MemberId(1), new ProductId(20));
-        $engine->setRating(new MemberId(1), new ProductId(20), 0.7);
-        $engine->deleteRating(new MemberId(2), new ProductId(20));
+        $engine->setRating(2, 10, 0.9);
+        $engine->setNotInterested(1, 20);
+        $engine->setRating(1, 20, 0.7);
+        $engine->deleteRating(2, 20);
         $this->assertPair(10, 20, $links ? 1 : 0, $slope ? 1 : 0, $slope ? -0.2 : 0.0);
         $before = $this->rows();
 
@@ -75,8 +71,8 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testRebuildClearsStaleCategories(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
-        $engine->setRating(new MemberId(1), new ProductId(10), 0.9, 2);
-        $engine->setRating(new MemberId(1), new ProductId(20), 0.9, 2);
+        $engine->setRating(1, 10, 0.9, 2);
+        $engine->setRating(1, 20, 0.9, 2);
         $this->assertNotEmpty($this->rows());
         $this->connection->execute('DELETE FROM vogoo_ratings WHERE category = 2');
         $this->rebuild($config);
@@ -94,13 +90,13 @@ class DerivedPairsTest extends IntegrationTestCase {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $this->config = $config;
         $engine = new RecommendationEngine($this->connection, $config);
-        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
-        $engine->setRating(new MemberId(1), new ProductId(20), 0.8);
-        $engine->setRating(new MemberId(2), new ProductId(10), 0.9);
-        $engine->setRating(new MemberId(2), new ProductId(20), 0.8);
-        $engine->setRating(new MemberId(2), new ProductId(30), 0.9);
-        $engine->setNotInterested(new MemberId(3), new ProductId(20));
-        $engine->setRating(new MemberId(3), new ProductId(10), 0.9);
+        $engine->setRating(1, 10, 0.9);
+        $engine->setRating(1, 20, 0.8);
+        $engine->setRating(2, 10, 0.9);
+        $engine->setRating(2, 20, 0.8);
+        $engine->setRating(2, 30, 0.9);
+        $engine->setNotInterested(3, 20);
+        $engine->setRating(3, 10, 0.9);
         $member = $this->memberLinks(3, new ArrayEligibilityProvider([20, 30]));
         $this->assertSame(RecommendationSource::ItemLinks, $member[0]->evidence[0]->source);
         $this->assertSame(30, $member[0]->productId);
@@ -131,8 +127,8 @@ class DerivedPairsTest extends IntegrationTestCase {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
         foreach ([1, 2] as $member) {
-            $engine->setRating(new MemberId($member), new ProductId(10), 0.9);
-            $engine->setRating(new MemberId($member), new ProductId(20), 0.8);
+            $engine->setRating($member, 10, 0.9);
+            $engine->setRating($member, 20, 0.8);
         }
         $engine->deleteMember(1);
         $this->assertPair(10, 20, 1, 1, -0.1);
@@ -182,13 +178,13 @@ class DerivedPairsTest extends IntegrationTestCase {
     public function testRatingWriteFailureRollsBackDerivedRows(): void {
         $config = new RecommendationConfig(directLinks: true, directSlope: true);
         $engine = new RecommendationEngine($this->connection, $config);
-        $engine->setRating(new MemberId(1), new ProductId(10), 0.9);
+        $engine->setRating(1, 10, 0.9);
         $this->connection->execute("CREATE TRIGGER vogoo_rating_failure BEFORE INSERT ON vogoo_ratings
             FOR EACH ROW BEGIN IF NEW.product_id = 30 THEN SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Injected rating failure'; END IF; END");
         try {
             try {
-                $engine->setRating(new MemberId(1), new ProductId(30), 0.8);
+                $engine->setRating(1, 30, 0.8);
                 $this->fail('Expected rating insert failure');
             } catch (\Exception $exception) {
                 $this->assertNull($this->fetchRatingRow(1, 30));
