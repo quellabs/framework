@@ -30,7 +30,10 @@
 	 * real routing calls once a route has matched, invoked here via
 	 * reflection), and Kernel::handle()'s own try/catch-to-Response conversion
 	 * is reproduced by hand around it — route matching and Kernel::handle()
-	 * itself are not exercised. That's deliberate: Kernel's
+	 * itself are not exercised. Also covers the @ResolveEntity annotation path
+	 * end to end, through the real AnnotationReader rather than a mock — the
+	 * one binding mechanism ResolveEntityServiceProviderTest only exercises
+	 * with a mocked reader. That's deliberate: Kernel's
 	 * controller_directory scan goes through
 	 * ComposerUtils::findClassesInDirectory(), which — independently of this
 	 * change — cannot resolve a PSR-4 namespace for any path under tests/
@@ -170,6 +173,18 @@
 
 			$this->assertSame(200, $response->getStatusCode());
 			$this->assertSame('not-found', $response->getContent());
+		}
+
+		public function testResolveEntityAnnotationBindsARouteParameterWithADifferentName(): void {
+			$kernel = $this->makeKernel($this->makePost('hello-world', 'Hello World'));
+
+			// {postSlug} binds to $post only via the real @ResolveEntity
+			// annotation, parsed by the real AnnotationReader (not mocked,
+			// unlike ResolveEntityServiceProviderTest's unit coverage).
+			$response = $this->dispatch($kernel, 'showByAnnotation', ['postSlug' => 'hello-world']);
+
+			$this->assertSame(200, $response->getStatusCode());
+			$this->assertSame('Hello World', $response->getContent());
 		}
 
 		public function testContainerGetPropagatesResolutionNotFoundWhenCalledWithAnActiveParameterContext(): void {

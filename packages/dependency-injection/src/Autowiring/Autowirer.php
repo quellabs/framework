@@ -14,6 +14,7 @@
 	 * @phpstan-type ParameterMeta array{
 	 *     name: string,
 	 *     types?: array<int, string>,
+	 *     typeGroups?: array<int, array<int, string>>,
 	 *     nullable: bool,
 	 *     default_value?: mixed,
 	 *     context?: array<string, mixed>
@@ -162,11 +163,12 @@
 		): mixed {
 			$paramName = $param['name'];
 			$paramTypes = $param['types'] ?? [];
+			$paramTypeGroups = $param['typeGroups'] ?? [];
 
 			// Strategy 1: Direct parameter name match. A raw scalar (e.g. a route
 			// argument) must not satisfy a class-typed parameter - those are left
 			// for Strategy 2 so providers (e.g. entity resolution) get a chance.
-			if (isset($parameters[$paramName]) && $this->valueSatisfiesTypes($parameters[$paramName], $paramTypes)) {
+			if (isset($parameters[$paramName]) && $this->valueSatisfiesTypes($parameters[$paramName], $paramTypeGroups)) {
 				return $parameters[$paramName];
 			}
 
@@ -174,7 +176,7 @@
 			// resolved-to-null, ResolutionNotFoundException means a provider
 			// explicitly found no record for this lookup
 			try {
-				$resolved = $this->resolveParameterFromTypes($paramName, $paramTypes, $methodContext);
+				$resolved = $this->resolveParameterFromTypes($paramName, $paramTypeGroups, $methodContext);
 			} catch (ResolutionNotFoundException) {
 				return $this->rejectNullForRequiredParameter(
 					$this->handleNotFound($param, $className, $methodName),
@@ -264,54 +266,43 @@
 		}
 		
 		/**
-		 * Tries to resolve a parameter against each of its type hints in order.
-		 * Returns the unresolved sentinel only when no candidate type could even be
-		 * attempted, or every candidate's own construction failed. A provider that
-		 * supports a candidate type always gives a final answer for it — an instance
-		 * or an explicit null — so that answer is returned as-is instead of falling
-		 * through to further strategies or further union candidates. A provider may
-		 * instead throw ResolutionNotFoundException to mean "no record exists"
-		 * specifically; that propagates to resolveParameter() uncaught here, since
-		 * it is not a "try the next candidate" situation.
+		 * Tries each union branch in order. A branch with multiple members is an
+		 * intersection: resolved through its first member, then the result is
+		 * verified against the rest. ResolutionNotFoundException propagates
+		 * uncaught - it means "no record", not "try the next candidate".
 		 * @param string $paramName Parameter name for error messages
-		 * @param array<int, string> $types Array of type hints to attempt resolution for
+		 * @param array<int, array<int, string>> $typeGroups Union branches, each an intersection of type names
 		 * @param MethodContextInterface|null $methodContext
 		 * @return mixed The resolved value (possibly null), or the unresolved sentinel
 		 * @throws ResolutionNotFoundException If a provider explicitly found no record
 		 */
-		protected function resolveParameterFromTypes(string $paramName, array $types, ?MethodContextInterface $methodContext = null): mixed {
-			// Early return sentinel if no types provided - nothing to resolve
-			if (empty($types)) {
+		protected function resolveParameterFromTypes(string $paramName, array $typeGroups, ?MethodContextInterface $methodContext = null): mixed {
+			if (empty($typeGroups)) {
 				return self::unresolved();
 			}
 
-			// Filter out built-in PHP types (int, string, bool, etc.) and null type
-			// as these cannot be resolved through dependency injection
-			/** @var list<class-string> $resolvableTypes */
-			$resolvableTypes = array_values(array_filter($types, fn($type) => $type !== 'null' && !$this->isBuiltinType($type)));
+			foreach ($typeGroups as $group) {
+				// Scalars/null can't be resolved via DI
+				/** @var list<class-string> $resolvableGroup */
+				$resolvableGroup = array_values(array_filter($group, fn($type) => $type !== 'null' && !$this->isBuiltinType($type)));
 
-			// If all types are built-in or null, there's nothing we can resolve via DI
-			if (empty($resolvableTypes)) {
-				return self::unresolved();
-			}
+				if (empty($resolvableGroup)) {
+					continue;
+				}
 
-			// Attempt to resolve each resolvable type in order
-			foreach ($resolvableTypes as $type) {
 				try {
-					// The provider for $type gives the final answer for this parameter,
-					// instance or null alike; return it without trying further candidates.
-					return $this->resolveType($type, [], $methodContext);
+					$resolved = $this->resolveType($resolvableGroup[0], [], $methodContext);
 				} catch (UnresolvableParameterException) {
-					// $type itself could not be built (e.g. one of its own constructor
-					// parameters failed to autowire) — a known, recoverable miss for
-					// this specific candidate. Try the next union candidate.
-					// Every other Throwable (annotation, database, circular-dependency,
-					// or provider configuration errors) is a real failure and must
-					// propagate untouched rather than being discarded here.
+					// This candidate's own construction failed; try the next union branch
+					continue;
+				}
+
+				// Null is accepted as-is; an instance must satisfy the whole intersection
+				if ($resolved === null || $this->valueSatisfiesGroup($resolved, $resolvableGroup)) {
+					return $resolved;
 				}
 			}
 
-			// No candidate type could be resolved; signal to resolveParameter() to try further strategies
 			return self::unresolved();
 		}
 		
@@ -329,59 +320,63 @@
 				return $this->parameterCache[$cacheKey];
 			}
 			
-			try {
-				// New reflection class to get information about the class name
-				$reflectionClass = new \ReflectionClass($className);
-				
-				// Determine which method to reflect
-				if (empty($methodName) || $methodName === '__construct') {
-					$methodReflector = $reflectionClass->getConstructor();
-				} else {
-					$methodReflector = $reflectionClass->getMethod($methodName);
-				}
-				
-				// Return an empty array when the method does not exist
+			$reflectionClass = new \ReflectionClass($className);
+
+			if (empty($methodName) || $methodName === '__construct') {
+				$methodReflector = $reflectionClass->getConstructor();
+
+				// No constructor at all is not an error
 				if (!$methodReflector) {
 					return $this->parameterCache[$cacheKey] = [];
 				}
-				
-				// Process each parameter
-				$result = [];
-				
-				foreach ($methodReflector->getParameters() as $parameter) {
-					// Get the name of the parameter
-					$param = ['name' => $parameter->getName()];
-
-					// Get the type of the parameter if available
-					if ($parameter->hasType()) {
-						$param['types'] = $this->extractTypes($parameter->getType());
-					}
-
-					// allowsNull() is the canonical source of truth for nullability: it
-					// correctly covers "?Type", "Type|null", and untyped parameters alike,
-					// unlike inferring it from the 'types' list or a coincidental default.
-					$param['nullable'] = $parameter->allowsNull();
-
-					// Get the default value if available
-					if ($parameter->isDefaultValueAvailable()) {
-						$param['default_value'] = $parameter->getDefaultValue();
-					} elseif ($parameter->allowsNull()) {
-						$param['default_value'] = null;
-					}
-
-					// Add the parameter to the parameter list
-					$result[] = $param;
+			} else {
+				try {
+					$methodReflector = $reflectionClass->getMethod($methodName);
+				} catch (\ReflectionException $e) {
+					// Fail here, not later as an opaque invocation failure
+					throw new UnresolvableParameterException(
+						"Cannot reflect method '$methodName' on class '$className': {$e->getMessage()}",
+						0,
+						$e
+					);
 				}
-				
-				return $this->parameterCache[$cacheKey] = $result;
-			} catch (\ReflectionException $e) {
-				return $this->parameterCache[$cacheKey] = [];
 			}
+
+			// Process each parameter
+			$result = [];
+
+			foreach ($methodReflector->getParameters() as $parameter) {
+				// Get the name of the parameter
+				$param = ['name' => $parameter->getName()];
+
+				// Get the type of the parameter if available
+				if ($parameter->hasType()) {
+					$param['types'] = $this->extractTypes($parameter->getType());
+					$param['typeGroups'] = $this->extractTypeGroups($parameter->getType());
+				}
+
+				// allowsNull() is the canonical source of truth for nullability: it
+				// correctly covers "?Type", "Type|null", and untyped parameters alike,
+				// unlike inferring it from the 'types' list or a coincidental default.
+				$param['nullable'] = $parameter->allowsNull();
+
+				// Get the default value if available
+				if ($parameter->isDefaultValueAvailable()) {
+					$param['default_value'] = $parameter->getDefaultValue();
+				} elseif ($parameter->allowsNull()) {
+					$param['default_value'] = null;
+				}
+
+				// Add the parameter to the parameter list
+				$result[] = $param;
+			}
+
+			return $this->parameterCache[$cacheKey] = $result;
 		}
-		
+
 		/**
-		 * Extract all possible types from a ReflectionType
-		 * Handles union types, intersection types, and named types
+		 * Extracts all type hints as a flat list, ignoring union/intersection
+		 * structure - only used where that structure doesn't matter.
 		 * @param \ReflectionType $type
 		 * @return array<int, string>
 		 */
@@ -389,34 +384,71 @@
 			// Handle union types (Type1|Type2|Type3)
 			if ($type instanceof \ReflectionUnionType) {
 				$types = [];
-				
+
 				foreach ($type->getTypes() as $unionType) {
 					$types = array_merge($types, $this->extractTypes($unionType));
 				}
-				
+
 				return $types;
 			}
-			
+
 			// Handle intersection types (Type1&Type2&Type3)
 			if ($type instanceof \ReflectionIntersectionType) {
 				$types = [];
-				
+
 				foreach ($type->getTypes() as $intersectionType) {
 					$types = array_merge($types, $this->extractTypes($intersectionType));
 				}
-				
+
 				return $types;
 			}
-			
+
 			// Handle named types (regular class/interface names and built-in types)
 			if ($type instanceof \ReflectionNamedType) {
 				return [$type->getName()];
 			}
-			
+
 			// Fallback for unknown type implementations
 			return [];
 		}
-		
+
+		/**
+		 * Extracts type hints as union branches, each branch a list of names
+		 * that must ALL be satisfied (an intersection) - preserving the
+		 * union/intersection distinction a flat list loses.
+		 * @param \ReflectionType $type
+		 * @return array<int, array<int, string>>
+		 */
+		protected function extractTypeGroups(\ReflectionType $type): array {
+			if ($type instanceof \ReflectionUnionType) {
+				$groups = [];
+
+				foreach ($type->getTypes() as $unionType) {
+					$groups = array_merge($groups, $this->extractTypeGroups($unionType));
+				}
+
+				return $groups;
+			}
+
+			if ($type instanceof \ReflectionIntersectionType) {
+				$names = [];
+
+				foreach ($type->getTypes() as $intersectionType) {
+					if ($intersectionType instanceof \ReflectionNamedType) {
+						$names[] = $intersectionType->getName();
+					}
+				}
+
+				return [$names];
+			}
+
+			if ($type instanceof \ReflectionNamedType) {
+				return [[$type->getName()]];
+			}
+
+			return [];
+		}
+
 		/**
 		 * Check if a type is a built-in PHP type that can be used in parameter lists
 		 * @param string $type
@@ -427,33 +459,86 @@
 		}
 
 		/**
-		 * Checks whether a value is acceptable for a parameter's declared type(s).
-		 * Untyped and builtin-typed parameters accept any value (PHP coerces or the
-		 * caller's intent is scalar). A class-typed parameter requires the value to
-		 * already be an instance of one of the declared types, so a raw scalar (e.g.
-		 * a route argument) cannot satisfy it and is left for provider resolution.
+		 * Checks whether a value actually matches a built-in type - instanceof
+		 * doesn't apply to scalars/arrays, so each needs its own test.
 		 * @param mixed $value
-		 * @param array<int, string> $types
+		 * @param string $type One of self::BUILTIN_TYPES
 		 * @return bool
 		 */
-		protected function valueSatisfiesTypes(mixed $value, array $types): bool {
-			if (empty($types)) {
+		protected function valueSatisfiesBuiltinType(mixed $value, string $type): bool {
+			return match ($type) {
+				'string' => is_string($value),
+				'int', 'integer' => is_int($value),
+				'float', 'double' => is_float($value) || is_int($value),
+				'bool', 'boolean' => is_bool($value),
+				'array' => is_array($value),
+				'object' => is_object($value),
+				'callable' => is_callable($value),
+				'iterable' => is_iterable($value),
+				'false' => $value === false,
+				'true' => $value === true,
+				'resource' => is_resource($value),
+				'mixed' => true,
+				'null' => $value === null,
+				default => false,
+			};
+		}
+
+		/**
+		 * Checks whether a value satisfies at least one union branch of a
+		 * parameter's declared type(s). Untyped (no groups) accepts anything.
+		 * @param mixed $value
+		 * @param array<int, array<int, string>> $typeGroups
+		 * @return bool
+		 */
+		protected function valueSatisfiesTypes(mixed $value, array $typeGroups): bool {
+			if (empty($typeGroups)) {
 				return true;
 			}
 
-			foreach ($types as $type) {
-				if ($this->isBuiltinType($type) || $type === 'null') {
-					return true;
-				}
-
-				if ($value instanceof $type) {
+			foreach ($typeGroups as $group) {
+				if ($this->valueSatisfiesGroup($value, $group)) {
 					return true;
 				}
 			}
 
 			return false;
 		}
-		
+
+		/**
+		 * Checks whether a value satisfies every member of one union branch
+		 * (an intersection: A&B requires both). A single-element group is just
+		 * an ordinary type check.
+		 * @param mixed $value
+		 * @param array<int, string> $group
+		 * @return bool
+		 */
+		protected function valueSatisfiesGroup(mixed $value, array $group): bool {
+			foreach ($group as $type) {
+				if ($type === 'null') {
+					if ($value !== null) {
+						return false;
+					}
+
+					continue;
+				}
+
+				if ($this->isBuiltinType($type)) {
+					if (!$this->valueSatisfiesBuiltinType($value, $type)) {
+						return false;
+					}
+
+					continue;
+				}
+
+				if (!($value instanceof $type)) {
+					return false;
+				}
+			}
+
+			return true;
+		}
+
 		/**
 		 * Resolves a type from the container. Extracted so subclasses can swap the
 		 * container without duplicating the resolution loop.
