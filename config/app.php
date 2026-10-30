@@ -33,7 +33,13 @@
 		
 		// Whether to match routes with trailing slashes
 		'match_trailing_slashes'  => false,
-		
+
+		// Metadata source for annotations, both read at runtime and written by the
+		// make:* CLI generators. One of Configuration::SOURCE_DOCBLOCKS (@Route(...)
+		// style doc comments) or Configuration::SOURCE_ATTRIBUTES (native #[Route(...)]
+		// PHP attributes).
+		'annotation_source'       => \Quellabs\AnnotationReader\Configuration::SOURCE_DOCBLOCKS,
+
 		// Default SecurityHeaderPolicyInterface implementation used by SecurityHeadersAspect
 		// (unless overridden per route) and DefaultErrorHandler. Set null to disable.
 		// Built-in policies: Basic, Medium, and Strict (Quellabs\Canvas\Security\Policies).
