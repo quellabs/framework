@@ -6,7 +6,6 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
-	use Quellabs\Canvas\Kernel;
 	use Quellabs\CanvasEloquent\Annotations\ResolveModel;
 	use Quellabs\CanvasEloquent\Exceptions\ModelBindingException;
 	use Quellabs\CanvasEloquent\ModelBindingServiceProvider;
@@ -84,9 +83,9 @@
 		/**
 		 * Boots the Eloquent connection (in-memory SQLite) via the plain
 		 * ServiceProvider and builds a ModelBindingServiceProvider wired to a
-		 * container that serves a Kernel whose AnnotationReader returns
-		 * $annotations for any getMethodAnnotations() call. The fixture's table
-		 * is created fresh for each call.
+		 * container that serves an AnnotationReader returning $annotations for
+		 * any getMethodAnnotations() call. The fixture's table is created
+		 * fresh for each call.
 		 * @param array<int, ResolveModel> $annotations
 		 */
 		private function makeProvider(array $annotations = []): ModelBindingServiceProvider {
@@ -96,14 +95,11 @@
 			$annotationReader = $this->createMock(AnnotationReader::class);
 			$annotationReader->method('getMethodAnnotations')->willReturn(new AnnotationCollection($annotations));
 
-			$kernel = $this->createMock(Kernel::class);
-			$kernel->method('getAnnotationsReader')->willReturn($annotationReader);
-
 			$container = $this->createMock(ContainerInterface::class);
 			$container->method('get')->willReturnCallback(
-				function (string $className) use ($kernel): ?object {
+				function (string $className) use ($annotationReader): ?object {
 					return match ($className) {
-						Kernel::class => $kernel,
+						AnnotationReader::class => $annotationReader,
 						default => null,
 					};
 				}

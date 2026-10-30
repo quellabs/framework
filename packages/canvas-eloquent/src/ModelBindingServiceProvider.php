@@ -3,7 +3,7 @@
 	namespace Quellabs\CanvasEloquent;
 
 	use Illuminate\Database\Eloquent\Model;
-	use Quellabs\Canvas\Kernel;
+	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\CanvasEloquent\Annotations\ResolveModel;
 	use Quellabs\CanvasEloquent\Exceptions\ModelBindingException;
 	use Quellabs\Contracts\Context\MethodContextInterface;
@@ -26,16 +26,16 @@
 	class ModelBindingServiceProvider implements ServiceProviderInterface {
 
 		/**
-		 * Dependency injection container, used to lazily resolve the Kernel's AnnotationReader
+		 * Dependency injection container, used to lazily resolve the AnnotationReader
 		 * @var ContainerInterface
 		 */
 		private ContainerInterface $container;
 
 		/**
-		 * Cached Kernel instance, resolved from the container on first use
-		 * @var Kernel|null
+		 * Cached AnnotationReader instance, resolved from the container on first use
+		 * @var AnnotationReader|null
 		 */
-		private ?Kernel $kernel = null;
+		private ?AnnotationReader $annotationReader = null;
 
 		/**
 		 * @var array<string, mixed>
@@ -114,7 +114,7 @@
 				return null;
 			}
 
-			$annotationReader = $this->getKernel()->getAnnotationsReader();
+			$annotationReader = $this->getAnnotationReader();
 			$arguments = $methodContext->getArguments();
 
 			// The autowirer sets this to the exact parameter currently being resolved
@@ -188,24 +188,24 @@
 		}
 
 		/**
-		 * Returns the Kernel, resolving it from the container on first use.
-		 * Lazy resolution is required because the Kernel is not available at
-		 * provider construction time — it is registered after the container boots.
-		 * @return Kernel
+		 * Returns the AnnotationReader, resolving it from the container on first use.
+		 * Lazy resolution is required because it is not available at provider
+		 * construction time — it is registered after the container boots.
+		 * @return AnnotationReader
 		 */
-		private function getKernel(): Kernel {
-			if ($this->kernel === null) {
-				$kernel = $this->container->get(Kernel::class);
+		private function getAnnotationReader(): AnnotationReader {
+			if ($this->annotationReader === null) {
+				$annotationReader = $this->container->get(AnnotationReader::class);
 
 				// container->get() returns T|null; assert presence so PHPStan
 				// narrows the type and we fail fast if wiring is broken
-				if (!$kernel instanceof Kernel) {
-					throw new \RuntimeException('Kernel could not be resolved from the container');
+				if (!$annotationReader instanceof AnnotationReader) {
+					throw new \RuntimeException('AnnotationReader could not be resolved from the container');
 				}
 
-				$this->kernel = $kernel;
+				$this->annotationReader = $annotationReader;
 			}
 
-			return $this->kernel;
+			return $this->annotationReader;
 		}
 	}
