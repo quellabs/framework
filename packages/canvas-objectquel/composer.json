@@ -41,11 +41,6 @@
       "Quellabs\\CanvasObjectQuel\\": "src/"
     }
   },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if(!file_exists('config/database.php')) copy('vendor/quellabs/canvas-objectquel/config/database.php', 'config/database.php');\""
-    ]
-  },
   "extra": {
     "discover": {
       "di": {
