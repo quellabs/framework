@@ -1,0 +1,37 @@
+{
+  "name": "quellabs/canvas-eloquent",
+  "description": "Eloquent ORM integration for Canvas framework",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.1",
+    "quellabs/contracts": "^1.0",
+    "quellabs/dependency-injection": "^1.0",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1.",
+    "illuminate/database": "^10.0 || ^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\CanvasEloquent\\": "src/"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+    "discover": {
+      "di": {
+        "provider": {
+          "class": "Quellabs\\CanvasEloquent\\ServiceProvider",
+          "config": "config/eloquent.php"
+        }
+      },
+      "sculpt": {
+        "provider": "Quellabs\\CanvasEloquent\\Sculpt\\EloquentProvider",
+        "config": [
+          "config/eloquent.php"
+        ]
+      }
+    }
+  }
+}

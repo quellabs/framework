@@ -3,6 +3,7 @@
   "cache": "1.0.5",
   "canvas": "1.25.0",
   "canvas-blade": "1.1.1",
+  "canvas-eloquent": "1.0.0",
   "canvas-database": "1.0.2",
   "canvas-handlebars": "1.1.1",
   "canvas-latte": "1.1.1",
