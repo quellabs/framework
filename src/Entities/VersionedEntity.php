@@ -11,7 +11,7 @@
 	 * Fixture entity for integration coverage of @Orm\Version handling on
 	 * `append`/`replace` (see AppendVersionInitializationTest,
 	 * ReplaceVersionBumpTest) — no other entity in App\Entities carries a
-	 * @Orm\Version column.
+	 * Version column.
 	 * @Orm\Table(name="versioned_entities")
 	 */
 	#[Table(name: "versioned_entities")]

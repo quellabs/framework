@@ -149,9 +149,9 @@
 		 * @param TemplateEngineInterface $engine
 		 * @return Response
 		 */
-		#[Route("/")]
-		#[WithContext(parameter: "engine", context: "blade")]
 		#[InterceptWith(TranslationAspect::class)]
+		#[WithContext(parameter: "engine", context: "blade")]
+		#[Route("/")]
 		public function index(TemplateEngineInterface $engine): Response {
 			$definition = $this->buildDefinition();
 			$loom       = new Loom();
