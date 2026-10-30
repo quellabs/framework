@@ -53,6 +53,9 @@
         <testsuite name="DependencyInjection">
             <directory>tests/DependencyInjection</directory>
         </testsuite>
+        <testsuite name="CanvasEloquent">
+            <directory>tests/CanvasEloquent</directory>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>

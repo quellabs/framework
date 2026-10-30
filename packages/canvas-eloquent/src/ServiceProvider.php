@@ -42,7 +42,7 @@
 		/**
 		 * Determines if this provider can create instances of the given class
 		 * @param string $className The fully qualified class name to check
-		 * @param array $metadata Metadata for filtering
+		 * @param array<string, mixed> $metadata Metadata for filtering
 		 * @return bool True if this provider supports the Eloquent connection interface
 		 */
 		public function supports(string $className, array $metadata): bool {
@@ -52,8 +52,8 @@
 		/**
 		 * Resolves the default Eloquent connection, booting the Capsule manager on first use
 		 * @param string $className The class name to instantiate (ConnectionInterface)
-		 * @param array $dependencies Additional autowired dependencies (currently unused)
-		 * @param array $metadata Metadata as passed by Discover
+		 * @param array<int|string, mixed> $dependencies Additional autowired dependencies (currently unused)
+		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
 		 * @return object The configured default Eloquent connection instance
 		 */
