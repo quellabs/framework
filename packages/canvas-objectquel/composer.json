@@ -30,7 +30,6 @@
   },
   "require": {
     "quellabs/annotation-reader": "^1",
-    "quellabs/canvas": "^1.0",
     "quellabs/canvas-database": "1.*",
     "quellabs/contracts": "^1.0",
     "quellabs/dependency-injection": "^1.0",
