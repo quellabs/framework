@@ -3,6 +3,7 @@
 	namespace App\Controllers;
 
 	use App\Entities\PostEntity;
+	use App\Models\Post;
 	use Illuminate\Database\ConnectionInterface;
 	use Psr\Log\LoggerInterface;
 	use Quellabs\SignalHub\Slot;
@@ -71,6 +72,25 @@
 			$posts = $db
 				->table('posts')
 				->where('published', true)
+				->orderBy('id')
+				->get(['id', 'title', 'published'])
+				->toArray();
+
+			return $this->json(['posts' => $posts]);
+		}
+
+		/**
+		 * Queries a plain Eloquent model with no ConnectionInterface involved
+		 * anywhere in this method - not as a parameter, not resolved manually.
+		 * Only proves the eager-boot claim if this succeeds: canvas-eloquent's
+		 * ServiceProvider::setConfig() must have already booted the Capsule and
+		 * registered Eloquent's static connection resolver during Kernel/DI
+		 * container construction, before this controller was even instantiated.
+		 * @Route("/posts/eloquent-model-test")
+		 * @return Response
+		 */
+		public function eloquentModelTest(): Response {
+			$posts = Post::where('published', true)
 				->orderBy('id')
 				->get(['id', 'title', 'published'])
 				->toArray();
