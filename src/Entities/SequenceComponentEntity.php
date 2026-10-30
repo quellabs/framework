@@ -16,23 +16,29 @@
 	 * considers a single identifier column.
 	 * @Orm\Table(name="sequence_component_entities")
 	 */
+	#[Table(name: "sequence_component_entities")]
 	class SequenceComponentEntity {
 
 		/**
 		 * @Orm\Column(name="token", type="string", limit=36, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="uuid")
 		 */
+		#[Column(name: "token", type: "string", limit: 36, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "uuid")]
 		protected ?string $token = null;
 
 		/**
 		 * @Orm\Column(name="seq", type="integer", primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="sequence")
 		 */
+		#[Column(name: "seq", type: "integer", primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "sequence")]
 		protected ?int $seq = null;
 
 		/**
 		 * @Orm\Column(name="amount", type="integer")
 		 */
+		#[Column(name: "amount", type: "integer")]
 		protected ?int $amount = null;
 
 		public function getToken(): ?string {

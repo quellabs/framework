@@ -149,6 +149,9 @@
 		 * @param TemplateEngineInterface $engine
 		 * @return Response
 		 */
+		#[Route("/")]
+		#[WithContext(parameter: "engine", context: "blade")]
+		#[InterceptWith(TranslationAspect::class)]
 		public function index(TemplateEngineInterface $engine): Response {
 			$definition = $this->buildDefinition();
 			$loom       = new Loom();
@@ -168,6 +171,7 @@
 		/**
 		 * @Route("/upload", methods={"POST"})
 		 */
+		#[Route("/upload", methods: ["POST"])]
 		public function upload(Request $request): Response {
 			$file = $request->files->get('file');
 			
@@ -188,6 +192,7 @@
 		 * @param Request $request
 		 * @return Response
 		 */
+		#[Route("/save", methods: ["POST"])]
 		public function save(Request $request): Response {
 			$data       = $request->request->all();
 			$definition = $this->buildDefinition();

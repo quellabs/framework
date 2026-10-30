@@ -25,6 +25,7 @@
 		 * @param EntityBindingPostEntity $slug
 		 * @return Response
 		 */
+		#[Route("/entity-binding-posts/{slug}", methods: ["GET"])]
 		public function show(EntityBindingPostEntity $slug): Response {
 			return new Response($slug->getTitle());
 		}
@@ -36,6 +37,7 @@
 		 * @param EntityBindingPostEntity|null $slug
 		 * @return Response
 		 */
+		#[Route("/entity-binding-posts-optional/{slug}", methods: ["GET"])]
 		public function showOptional(?EntityBindingPostEntity $slug): Response {
 			return new Response($slug === null ? 'not-found' : $slug->getTitle());
 		}
@@ -49,6 +51,8 @@
 		 * @param EntityBindingPostEntity $post
 		 * @return Response
 		 */
+		#[Route("/entity-binding-posts-named/{postSlug}", methods: ["GET"])]
+		#[ResolveEntity(parameter: "post", routeParam: "postSlug")]
 		public function showByAnnotation(EntityBindingPostEntity $post): Response {
 			return new Response($post->getTitle());
 		}

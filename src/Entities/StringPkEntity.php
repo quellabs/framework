@@ -11,15 +11,18 @@
 	 * into a numeric AstNumber literal.
 	 * @Orm\Table(name="string_pk_entities")
 	 */
+	#[Table(name: "string_pk_entities")]
 	class StringPkEntity {
 		/**
 		 * @Orm\Column(name="code", type="string", limit=20, primary_key=true)
 		 */
+		#[Column(name: "code", type: "string", limit: 20, primary_key: true)]
 		protected ?string $code = null;
 
 		/**
 		 * @Orm\Column(name="position", type="integer")
 		 */
+		#[Column(name: "position", type: "integer")]
 		protected ?int $position = null;
 
 		public function getCode(): ?string {

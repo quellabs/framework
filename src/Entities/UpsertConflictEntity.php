@@ -18,22 +18,28 @@
 	 * @Orm\Table(name="upsert_conflict_test")
 	 * @Orm\UniqueIndex(name="uniq_email", columns={"email"})
 	 */
+	#[Table(name: "upsert_conflict_test")]
+	#[UniqueIndex(name: "uniq_email", columns: ["email"])]
 	class UpsertConflictEntity {
 
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="email", type="string", limit=100)
 		 */
+		#[Column(name: "email", type: "string", limit: 100)]
 		protected string $email;
 
 		/**
 		 * @Orm\Column(name="name", type="string", limit=255)
 		 */
+		#[Column(name: "name", type: "string", limit: 255)]
 		protected string $name;
 
 		public function getId(): ?int {
