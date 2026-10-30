@@ -2,7 +2,7 @@
 
 	namespace Quellabs\CanvasEloquent\Exceptions;
 
-	use Quellabs\Canvas\Exceptions\HttpException;
+	use Quellabs\Contracts\Http\HttpException;
 
 	/**
 	 * Thrown when a controller parameter is configured to bind to an Eloquent

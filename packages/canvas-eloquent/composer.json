@@ -6,7 +6,6 @@
   "require": {
     "php": "^8.1",
     "quellabs/annotation-reader": "^1",
-    "quellabs/canvas": "^1.0",
     "quellabs/contracts": "^1.0",
     "quellabs/dependency-injection": "^1.0",
     "quellabs/sculpt": "^1.",
