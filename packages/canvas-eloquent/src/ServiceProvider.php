@@ -10,8 +10,8 @@
 	/**
 	 * Registers a singleton Eloquent connection with the dependency injection
 	 * container, bootstrapped via Illuminate's standalone Capsule manager.
-	 * Reads named connections from config/eloquent.php and resolves the
-	 * connection named by the 'default' key.
+	 * Reads the single connection defined in config/eloquent.php. Only one
+	 * connection is supported for now.
 	 */
 	class ServiceProvider extends BaseServiceProvider {
 
@@ -22,7 +22,7 @@
 		private static ?Capsule $capsule = null;
 
 		/**
-		 * Returns the default per-connection configuration values
+		 * Returns the default connection configuration values
 		 * @return array<string, mixed> Array of default configuration values
 		 */
 		public static function getConnectionDefaults(): array {
@@ -40,6 +40,19 @@
 		}
 
 		/**
+		 * Applies the discovered configuration and boots the Capsule immediately,
+		 * since Discover calls this on every provider during container construction,
+		 * regardless of whether the provider is ever resolved. This is what lets
+		 * Eloquent models work without anything ever type-hinting ConnectionInterface.
+		 * @param array<string, mixed> $config Configuration array to apply to this provider
+		 * @return void
+		 */
+		public function setConfig(array $config): void {
+			parent::setConfig($config);
+			$this->getCapsule();
+		}
+
+		/**
 		 * Determines if this provider can create instances of the given class
 		 * @param string $className The fully qualified class name to check
 		 * @param array<string, mixed> $metadata Metadata for filtering
@@ -50,18 +63,15 @@
 		}
 
 		/**
-		 * Resolves the default Eloquent connection, booting the Capsule manager on first use
+		 * Resolves the Eloquent connection, booting the Capsule manager on first use
 		 * @param string $className The class name to instantiate (ConnectionInterface)
 		 * @param array<int|string, mixed> $dependencies Additional autowired dependencies (currently unused)
 		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
-		 * @return object The configured default Eloquent connection instance
+		 * @return object The configured Eloquent connection instance
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): object {
-			$config  = $this->getConfig();
-			$default = is_string($config['default'] ?? null) ? $config['default'] : 'default';
-
-			return $this->getCapsule()->getConnection($default);
+			return $this->getCapsule()->getConnection();
 		}
 
 		/**
@@ -75,37 +85,10 @@
 			}
 
 			$capsule = new Capsule();
-
-			foreach ($this->buildConnections() as $name => $connectionConfig) {
-				$capsule->addConnection($connectionConfig, $name);
-			}
-
+			$capsule->addConnection(array_merge(self::getConnectionDefaults(), $this->getConfig()));
 			$capsule->setAsGlobal();
 			$capsule->bootEloquent();
 
 			return self::$capsule = $capsule;
-		}
-
-		/**
-		 * Builds the full set of named connection configs from config/eloquent.php,
-		 * merging each connection's values over the driver defaults
-		 * @return array<string, array<string, mixed>> Connection configs keyed by connection name
-		 */
-		private function buildConnections(): array {
-			$defaults    = self::getConnectionDefaults();
-			$config      = $this->getConfig();
-			$connections = is_array($config['connections'] ?? null) ? $config['connections'] : [];
-
-			if ($connections === []) {
-				return ['default' => $defaults];
-			}
-
-			$result = [];
-
-			foreach ($connections as $name => $connectionConfig) {
-				$result[$name] = array_merge($defaults, is_array($connectionConfig) ? $connectionConfig : []);
-			}
-
-			return $result;
 		}
 	}

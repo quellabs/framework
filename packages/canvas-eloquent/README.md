@@ -29,7 +29,7 @@ class MyController {
 
 ### Configuration
 
-Add database configuration to `config/database.php`:
+Publish the config file with `sculpt eloquent:init`, then edit `config/eloquent.php`:
 
 ```php
 return [
