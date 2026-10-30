@@ -114,11 +114,10 @@
 				return null;
 			}
 
-			$annotationReader = $this->getAnnotationReader();
-			$arguments = $methodContext->getArguments();
-
 			// The autowirer sets this to the exact parameter currently being resolved
 			// before calling into this provider — no need to guess it via reflection
+			$annotationReader = $this->getAnnotationReader();
+			$arguments = $methodContext->getArguments();
 			$parameterName = $methodContext->getParameterName();
 
 			// Null here means the context isn't in the middle of resolving a parameter
@@ -135,9 +134,7 @@
 			);
 
 			$routeParamByParameter = [];
-
 			foreach ($annotations as $annotation) {
-				// AnnotationReader returns object[]; narrow to ResolveModel before use
 				if (!$annotation instanceof ResolveModel) {
 					continue;
 				}
@@ -195,6 +192,7 @@
 		 */
 		private function getAnnotationReader(): AnnotationReader {
 			if ($this->annotationReader === null) {
+				// Fetch the annotation reader
 				$annotationReader = $this->container->get(AnnotationReader::class);
 
 				// container->get() returns T|null; assert presence so PHPStan
