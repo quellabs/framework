@@ -5,9 +5,7 @@
 	use Illuminate\Database\Eloquent\Model;
 
 	/**
-	 * Plain Eloquent model over the 'posts' table, used to exercise
-	 * canvas-eloquent's eager Capsule boot: no constructor or method
-	 * injection of ConnectionInterface is involved anywhere in its use.
+	 * Plain Eloquent model over the 'posts' table, used to exercise canvas-eloquent's eager Capsule boot.
 	 */
 	class Post extends Model {
 

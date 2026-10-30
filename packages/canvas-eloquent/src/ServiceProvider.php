@@ -8,10 +8,7 @@
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
 
 	/**
-	 * Registers a singleton Eloquent connection with the dependency injection
-	 * container, bootstrapped via Illuminate's standalone Capsule manager.
-	 * Reads the single connection defined in config/eloquent.php. Only one
-	 * connection is supported for now.
+	 * Registers a singleton Eloquent connection, bootstrapped via Illuminate's standalone Capsule manager.
 	 */
 	class ServiceProvider extends BaseServiceProvider {
 
@@ -40,10 +37,7 @@
 		}
 
 		/**
-		 * Applies the discovered configuration and boots the Capsule immediately,
-		 * since Discover calls this on every provider during container construction,
-		 * regardless of whether the provider is ever resolved. This is what lets
-		 * Eloquent models work without anything ever type-hinting ConnectionInterface.
+		 * Applies the configuration and boots the Capsule immediately, so Eloquent models work without anything ever type-hinting ConnectionInterface.
 		 * @param array<string, mixed> $config Configuration array to apply to this provider
 		 * @return void
 		 */
@@ -75,8 +69,7 @@
 		}
 
 		/**
-		 * Returns the booted Capsule manager, creating and registering it globally on first use
-		 * so Eloquent models (which resolve connections statically) can find it
+		 * Returns the booted Capsule manager, creating and registering it globally on first use.
 		 * @return Capsule
 		 */
 		private function getCapsule(): Capsule {

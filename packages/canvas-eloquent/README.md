@@ -17,9 +17,11 @@ with Canvas's dependency injection container.
 use Illuminate\Database\ConnectionInterface;
 
 class MyController {
-    public function __construct(
-        private ConnectionInterface $db
-    ) {}
+    private ConnectionInterface $db;
+
+    public function __construct(ConnectionInterface $db) {
+        $this->db = $db;
+    }
 
     public function index() {
         $results = $this->db->table('users')->get();
