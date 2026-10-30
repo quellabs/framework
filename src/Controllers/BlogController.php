@@ -1,8 +1,9 @@
 <?php
 	
 	namespace App\Controllers;
-	
+
 	use App\Entities\PostEntity;
+	use Illuminate\Database\ConnectionInterface;
 	use Psr\Log\LoggerInterface;
 	use Quellabs\SignalHub\Slot;
 	use App\Entities\TestEntity;
@@ -56,5 +57,24 @@
 			return $this->render("blog/show.tpl", [
 				'post' => $id
 			]);
+		}
+
+		/**
+		 * Reads published posts straight through Eloquent's query builder,
+		 * bypassing ObjectQuel entirely, to verify the canvas-eloquent
+		 * integration against the same 'posts' table.
+		 * @Route("/posts/eloquent-test")
+		 * @param ConnectionInterface $db
+		 * @return Response
+		 */
+		public function eloquentTest(ConnectionInterface $db): Response {
+			$posts = $db
+				->table('posts')
+				->where('published', true)
+				->orderBy('id')
+				->get(['id', 'title', 'published'])
+				->toArray();
+
+			return $this->json(['posts' => $posts]);
 		}
 	}
