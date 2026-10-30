@@ -91,6 +91,7 @@
 			$provider = new ServiceProvider();
 
 			$this->assertTrue($provider->supports(ConnectionInterface::class, []));
+			$this->assertFalse($provider->supports(ServiceProviderTestModel::class, []));
 			$this->assertFalse($provider->supports(\stdClass::class, []));
 		}
 
