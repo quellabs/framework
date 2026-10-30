@@ -256,6 +256,13 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-eloquent",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -293,6 +300,7 @@
     "quellabs/canvas-handlebars": "dev-main as 1.999.999",
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/canvas-database": "dev-main as 1.999.999",
+    "quellabs/canvas-eloquent": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 2.999.999",
