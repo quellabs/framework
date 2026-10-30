@@ -12,11 +12,14 @@
 	 * ForeignKey/ForeignKeyAction all live on the owning side.
 	 * @Orm\Table(name="rel_users")
 	 */
+	#[Table(name: "rel_users")]
 	class RelUserEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		public function getId(): ?int {

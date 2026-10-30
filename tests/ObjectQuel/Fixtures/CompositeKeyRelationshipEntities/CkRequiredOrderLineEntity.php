@@ -17,11 +17,14 @@
 	 * CkOptionalOrderLineEntity, which carries no such annotation.
 	 * @Orm\Table(name="ck_required_order_lines")
 	 */
+	#[Table(name: "ck_required_order_lines")]
 	class CkRequiredOrderLineEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
@@ -33,20 +36,25 @@
 		 * )
 		 * @Orm\RequiredRelation
 		 */
+		#[ManyToOne(targetEntity: CkRequiredOrderEntity::class, localColumns: ["orderTenantId", "orderNumber"], referencedColumns: ["tenantId", "number"], fetch: "LAZY")]
+		#[RequiredRelation]
 		public ?CkRequiredOrderEntity $order = null;
 
 		/**
 		 * @Orm\Column(name="order_tenant_id", type="integer")
 		 */
+		#[Column(name: "order_tenant_id", type: "integer")]
 		protected ?int $orderTenantId = null;
 
 		/**
 		 * @Orm\Column(name="order_number", type="string", limit=20)
 		 */
+		#[Column(name: "order_number", type: "string", limit: 20)]
 		protected ?string $orderNumber = null;
 
 		/**
 		 * @Orm\Column(name="line_amount", type="integer")
 		 */
+		#[Column(name: "line_amount", type: "integer")]
 		protected ?int $lineAmount = null;
 	}

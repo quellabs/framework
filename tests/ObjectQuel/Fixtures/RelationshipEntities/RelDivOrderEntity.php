@@ -14,26 +14,32 @@
 	 * Intermediate range of the relational-division fixtures: a customer's order.
 	 * @Orm\Table(name="rel_div_orders")
 	 */
+	#[Table(name: "rel_div_orders")]
 	class RelDivOrderEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelDivCustomerEntity::class, localColumn="customerId")
 		 */
+		#[ManyToOne(targetEntity: RelDivCustomerEntity::class, localColumn: "customerId")]
 		public ?RelDivCustomerEntity $customer = null;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
 		 */
+		#[Column(name: "customer_id", type: "integer")]
 		protected ?int $customerId = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelDivOrderItemEntity::class, relation="order")
 		 */
+		#[InverseOf(targetEntity: RelDivOrderItemEntity::class, relation: "order")]
 		public CollectionInterface $items;
 
 		/**

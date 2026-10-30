@@ -10,21 +10,26 @@
 	 * Required-set range of the relational-division fixtures that may list a product more than once.
 	 * @Orm\Table(name="rel_div_bundle_items")
 	 */
+	#[Table(name: "rel_div_bundle_items")]
 	class RelDivBundleItemEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="bundle", type="string", limit=100)
 		 */
+		#[Column(name: "bundle", type: "string", limit: 100)]
 		protected ?string $bundle = null;
 
 		/**
 		 * @Orm\Column(name="product_id", type="integer")
 		 */
+		#[Column(name: "product_id", type: "integer")]
 		protected ?int $productId = null;
 
 		/**

@@ -18,11 +18,14 @@
 	 * composite (full-tuple) matching when the parent order is deleted.
 	 * @Orm\Table(name="cki_order_lines")
 	 */
+	#[Table(name: "cki_order_lines")]
 	class CkiOrderLineEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
@@ -34,21 +37,26 @@
 		 * )
 		 * @Orm\Cascade(operations={"remove"})
 		 */
+		#[ManyToOne(targetEntity: CkiOrderEntity::class, localColumns: ["orderTenantId", "orderNumber"], referencedColumns: ["tenantId", "number"], fetch: "EAGER")]
+		#[Cascade(operations: ["remove"])]
 		public ?CkiOrderEntity $order = null;
 
 		/**
 		 * @Orm\Column(name="order_tenant_id", type="integer")
 		 */
+		#[Column(name: "order_tenant_id", type: "integer")]
 		protected ?int $orderTenantId = null;
 
 		/**
 		 * @Orm\Column(name="order_number", type="string", limit=20)
 		 */
+		#[Column(name: "order_number", type: "string", limit: 20)]
 		protected ?string $orderNumber = null;
 
 		/**
 		 * @Orm\Column(name="line_amount", type="integer")
 		 */
+		#[Column(name: "line_amount", type: "integer")]
 		protected ?int $lineAmount = null;
 
 		public function getId(): ?int {

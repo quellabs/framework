@@ -13,11 +13,14 @@
 	 * an explicit `via` LEFT JOIN over this relation must remain a LEFT JOIN.
 	 * @Orm\Table(name="ck_optional_order_lines")
 	 */
+	#[Table(name: "ck_optional_order_lines")]
 	class CkOptionalOrderLineEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
@@ -28,20 +31,24 @@
 		 *     fetch="LAZY"
 		 * )
 		 */
+		#[ManyToOne(targetEntity: CkRequiredOrderEntity::class, localColumns: ["orderTenantId", "orderNumber"], referencedColumns: ["tenantId", "number"], fetch: "LAZY")]
 		public ?CkRequiredOrderEntity $order = null;
 
 		/**
 		 * @Orm\Column(name="order_tenant_id", type="integer")
 		 */
+		#[Column(name: "order_tenant_id", type: "integer")]
 		protected ?int $orderTenantId = null;
 
 		/**
 		 * @Orm\Column(name="order_number", type="string", limit=20)
 		 */
+		#[Column(name: "order_number", type: "string", limit: 20)]
 		protected ?string $orderNumber = null;
 
 		/**
 		 * @Orm\Column(name="line_amount", type="integer")
 		 */
+		#[Column(name: "line_amount", type: "integer")]
 		protected ?int $lineAmount = null;
 	}
