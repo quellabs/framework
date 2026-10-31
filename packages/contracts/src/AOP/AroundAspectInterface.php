@@ -1,9 +1,7 @@
 <?php
 	
-	namespace Quellabs\Canvas\AOP\Contracts;
-	
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
-	
+	namespace Quellabs\Contracts\AOP;
+
 	/**
 	 * Interface for aspect-oriented programming "around" advice.
 	 */
