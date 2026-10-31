@@ -2,16 +2,14 @@
 
 	namespace Quellabs\CanvasEloquent\Exceptions;
 
-	use Quellabs\Contracts\Http\HttpException;
-
 	/**
 	 * Thrown when a controller parameter is configured to bind to an Eloquent
 	 * model but the route has no value for the binding, or the value has a
 	 * shape the resolver does not support (e.g. a composite-key array). This
 	 * is a configuration/programming mistake, not a missing record, so it
-	 * carries HTTP code 500 via HttpException rather than being treated as a 404.
+	 * carries HTTP code 500 rather than being treated as a 404.
 	 */
-	class ModelBindingException extends HttpException {
+	class ModelBindingException extends \RuntimeException {
 
 		/**
 		 * @param string $className Controller class that declares the parameter

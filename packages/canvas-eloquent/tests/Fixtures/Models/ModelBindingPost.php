@@ -5,10 +5,7 @@
 	use Illuminate\Database\Eloquent\Model;
 
 	/**
-	 * Eloquent model fixture for ModelBindingRequestDispatchTest, backed by a
-	 * dedicated table on the project's real configured connection (the same
-	 * connection the package's auto-discovered ServiceProvider boots for any
-	 * real Kernel), truncated and reseeded before each test.
+	 * Eloquent model fixture backed by an in-memory SQLite table.
 	 */
 	class ModelBindingPost extends Model {
 

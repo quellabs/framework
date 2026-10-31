@@ -13,6 +13,7 @@
     "illuminate/database": "^10.0 || ^11.0"
   },
   "require-dev": {
+    "quellabs/canvas": "^1.25",
     "phpunit/phpunit": "^10.0"
   },
   "autoload": {

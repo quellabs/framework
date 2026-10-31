@@ -5,6 +5,7 @@
             <file>tests/ResolveModelAnnotationTest.php</file>
             <file>tests/ResolveModelServiceProviderTest.php</file>
             <file>tests/ServiceProviderTest.php</file>
+            <file>tests/ModelBindingRequestDispatchTest.php</file>
         </testsuite>
     </testsuites>
 </phpunit>

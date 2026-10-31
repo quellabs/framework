@@ -6,6 +6,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Routing\RequestHandler;
+	use Quellabs\CanvasEloquent\ModelBindingServiceProvider;
 	use Quellabs\CanvasEloquent\ServiceProvider;
 	use Quellabs\CanvasEloquent\Tests\Fixtures\Controllers\ModelBindingPostController;
 	use Quellabs\CanvasEloquent\Tests\Fixtures\Models\ModelBindingPost;
@@ -29,13 +30,8 @@
 	 * annotation path end to end, through the real AnnotationReader rather
 	 * than a mock.
 	 *
-	 * Unlike canvas-objectquel's equivalent test, Eloquent's Model::find() is
-	 * a static call on the model class itself — there is no injectable
-	 * manager to mock. A real Kernel's own construction auto-discovers
-	 * canvas-eloquent's ServiceProvider against the project's configured
-	 * connection (config/eloquent.php, the same MySQL database
-	 * tests/bootstrap.php uses), so this test seeds a dedicated table on
-	 * that real connection instead, truncated and reseeded before each case.
+	 * Boots an in-memory SQLite connection and registers model binding with
+	 * the real Kernel container so no application database is needed.
 	 */
 	class ModelBindingRequestDispatchTest extends TestCase {
 
@@ -70,22 +66,21 @@
 		}
 
 		/**
-		 * Builds a real Kernel, which auto-discovers canvas-eloquent's real
-		 * ServiceProvider against the project's configured connection, and
-		 * seeds a dedicated test table — truncated first for isolation —
-		 * with the given rows.
+		 * Builds a real Kernel and seeds an in-memory SQLite table.
 		 * @param array<int, array{id: int, title: string}> $rows
 		 * @return Kernel
 		 */
 		private function makeKernel(array $rows): Kernel {
 			$kernel = new Kernel();
+			$this->resetCapsule();
+			$connectionProvider = new ServiceProvider();
+			$connectionProvider->setConfig(['driver' => 'sqlite', 'database' => ':memory:']);
+			$kernel->getDependencyInjector()->register(new ModelBindingServiceProvider($kernel->getDependencyInjector()));
 
 			$connection = Model::getConnectionResolver()->connection();
 			$connection->statement(
-				'CREATE TABLE IF NOT EXISTS model_binding_test_posts (' .
-				'id INT UNSIGNED NOT NULL PRIMARY KEY, title VARCHAR(255) NOT NULL)'
+				'CREATE TABLE model_binding_test_posts (id INTEGER PRIMARY KEY, title TEXT NOT NULL)'
 			);
-			$connection->statement('TRUNCATE TABLE model_binding_test_posts');
 
 			foreach ($rows as $row) {
 				ModelBindingPost::create($row);
