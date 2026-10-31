@@ -40,5 +40,7 @@
 			$this->assertStringContainsString('protected function isAttributeWritable(object $entity, string $key, WriteOperation $operation): bool {', $code);
 			$this->assertStringContainsString('return true;', $code);
 			$this->assertStringContainsString('Non-identifier properties: name, role', $code);
+			$this->assertStringContainsString('@Route("/genpacproducts/{id}", methods={"GET"})', $code);
+			$this->assertStringNotContainsString('#[Route(', $code);
 		}
 	}

@@ -13,28 +13,36 @@
 	 * Soft-deletable Cascade(remove) child of RelPlainParentEntity (which has no soft-delete column).
 	 * @Orm\Table(name="rel_soft_child_of_plain_parent")
 	 */
+	#[Table(name: "rel_soft_child_of_plain_parent")]
 	class RelSoftChildOfPlainParentEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelPlainParentEntity::class, localColumn="parentId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove"})
 		 */
+		#[ManyToOne(targetEntity: RelPlainParentEntity::class, localColumn: "parentId", fetch: "EAGER")]
+		#[Cascade(operations: ["remove"])]
 		public ?RelPlainParentEntity $parent = null;
 
 		/**
 		 * @Orm\Column(name="parent_id", type="integer")
 		 */
+		#[Column(name: "parent_id", type: "integer")]
 		protected ?int $parentId = null;
 
 		/**
 		 * @Orm\Column(name="deleted_at", type="datetime", nullable=true)
 		 * @Orm\SoftDelete
 		 */
+		#[Column(name: "deleted_at", type: "datetime", nullable: true)]
+		#[SoftDelete]
 		protected ?\DateTime $deletedAt = null;
 
 		public function getId(): ?int {

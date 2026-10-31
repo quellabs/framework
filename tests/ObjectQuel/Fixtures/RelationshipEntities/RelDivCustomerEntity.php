@@ -13,21 +13,26 @@
 	 * Owner side of the relational-division fixtures (customer -> orders -> items).
 	 * @Orm\Table(name="rel_div_customers")
 	 */
+	#[Table(name: "rel_div_customers")]
 	class RelDivCustomerEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="name", type="string", limit=100)
 		 */
+		#[Column(name: "name", type: "string", limit: 100)]
 		protected ?string $name = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelDivOrderEntity::class, relation="customer")
 		 */
+		#[InverseOf(targetEntity: RelDivOrderEntity::class, relation: "customer")]
 		public CollectionInterface $orders;
 
 		/**

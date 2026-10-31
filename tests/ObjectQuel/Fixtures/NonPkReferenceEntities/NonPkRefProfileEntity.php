@@ -14,21 +14,26 @@
 	 * its value as a primary key lookup.
 	 * @Orm\Table(name="non_pk_ref_profiles")
 	 */
+	#[Table(name: "non_pk_ref_profiles")]
 	class NonPkRefProfileEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=NonPkRefUserEntity::class, referencedColumn="email", localColumn="userEmail", fetch="LAZY")
 		 */
+		#[ManyToOne(targetEntity: NonPkRefUserEntity::class, referencedColumn: "email", localColumn: "userEmail", fetch: "LAZY")]
 		public ?NonPkRefUserEntity $user = null;
 
 		/**
 		 * @Orm\Column(name="user_email", type="string", limit=255)
 		 */
+		#[Column(name: "user_email", type: "string", limit: 255)]
 		protected ?string $userEmail = null;
 
 		public function getId(): ?int {

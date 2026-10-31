@@ -14,25 +14,30 @@
 	 *
 	 * @Orm\Table(name="accounts")
 	 */
+	#[Table(name: "accounts")]
 	class AccountEntity {
-		
+
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
-		
+
 		/**
 		 * @Orm\Column(name="label", type="string", limit=255)
 		 */
+		#[Column(name: "label", type: "string", limit: 255)]
 		protected string $label;
-		
+
 		/**
 		 * Inverse side of CredentialEntity::$account (a OneToOne whose relation
 		 * parameter is "account"). Scalar, not a collection.
 		 *
 		 * @Orm\InverseOf(targetEntity=CredentialEntity::class, relation="account")
 		 */
+		#[InverseOf(targetEntity: CredentialEntity::class, relation: "account")]
 		public ?CredentialEntity $credential = null;
 		
 		/**

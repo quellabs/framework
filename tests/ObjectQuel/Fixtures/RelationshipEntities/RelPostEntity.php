@@ -15,16 +15,20 @@
 	 * collection of bridge rows; reaching a tag is $post->postTags[0]->tag.
 	 * @Orm\Table(name="rel_posts")
 	 */
+	#[Table(name: "rel_posts")]
 	class RelPostEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelPostTagEntity::class, relation="post")
 		 */
+		#[InverseOf(targetEntity: RelPostTagEntity::class, relation: "post")]
 		public CollectionInterface $postTags;
 
 		public function __construct() {

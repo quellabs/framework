@@ -20,62 +20,79 @@
 	 * @Orm\FullTextIndex(name="idx_content", columns={"content"})
 	 * @Orm\LifecycleAware
 	 */
+	#[Table(name: "posts")]
+	#[FullTextIndex(name: "idx_content", columns: ["content"])]
+	#[LifecycleAware]
 	class PostEntity {
-/**
+
+		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
-		
+
 		/**
 		 * @Orm\Column(name="title", type="string", limit=255)
 		 */
+		#[Column(name: "title", type: "string", limit: 255)]
 		protected string $title;
-		
+
 		/**
 		 * @Orm\Column(name="content", type="text")
 		 */
+		#[Column(name: "content", type: "text")]
 		protected string $content;
-		
+
 		/**
 		 * @Orm\Column(name="published", type="boolean")
 		 */
+		#[Column(name: "published", type: "boolean")]
 		protected bool $published;
-		
+
 		/**
 		 * @Orm\Column(name="created_at", type="datetime")
 		 */
+		#[Column(name: "created_at", type: "datetime")]
 		protected \DateTime $createdAt;
-		
+
 		/**
 		 * @Orm\SourceField(field="test")
 		 */
+		#[SourceField(field: "test")]
 		protected string $test;
-		
+
 		/**
 		 * @Orm\Column(name="test_enum", type="enum", enumType=App\Enums\TestEnum::class)
 		 */
+		#[Column(name: "test_enum", type: "enum", enumType: \App\Enums\TestEnum::class)]
 		protected \App\Enums\TestEnum $TestEnum;
-		
+
 		/**
 		 * @Orm\Column(name="test_json", type="json")
 		 */
+		#[Column(name: "test_json", type: "json")]
 		protected ?array $testJSON;
-		
+
 		/**
 		 * @Orm\ManyToOne(targetEntity=UserEntity::class, referencedColumn="id", localColumn="userId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: UserEntity::class, referencedColumn: "id", localColumn: "userId", fetch: "EAGER")]
 		public ?UserEntity $user;
-		
+
 		/**
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
+		#[Column(name: "user_id", type: "integer")]
 		protected ?int $userId = null;
 
 		/**
 		 * @Orm\Column(name="deleted_at", type="datetime", nullable=true)
 		 * @Orm\SoftDelete
 		 */
+		#[Column(name: "deleted_at", type: "datetime", nullable: true)]
+		#[SoftDelete]
 		protected ?\DateTime $deletedAt = null;
 
 		/**
@@ -177,10 +194,10 @@
 		}
 		
 		/**
-		 *
 		 * @Orm\PreUpdate
 		 * @return void
 		 */
+		#[PreUpdate]
 		public function test(): void {
 			$this->setCreatedAt(new \DateTime());
 		}

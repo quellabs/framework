@@ -11,16 +11,20 @@
 	 * non-primary-key 'email' property instead of the primary key 'id'.
 	 * @Orm\Table(name="non_pk_ref_users")
 	 */
+	#[Table(name: "non_pk_ref_users")]
 	class NonPkRefUserEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="email", type="string", limit=255)
 		 */
+		#[Column(name: "email", type: "string", limit: 255)]
 		protected ?string $email = null;
 
 		public function getId(): ?int {

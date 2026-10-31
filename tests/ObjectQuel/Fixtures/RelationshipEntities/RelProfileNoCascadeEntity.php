@@ -13,21 +13,26 @@
 	 * of the related user does NOT cascade when Cascade is absent.
 	 * @Orm\Table(name="rel_profiles_no_cascade")
 	 */
+	#[Table(name: "rel_profiles_no_cascade")]
 	class RelProfileNoCascadeEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, localColumn="userId", fetch="EAGER")
 		 */
+		#[OneToOne(targetEntity: RelUserEntity::class, localColumn: "userId", fetch: "EAGER")]
 		public ?RelUserEntity $user = null;
 
 		/**
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
+		#[Column(name: "user_id", type: "integer")]
 		protected ?int $userId = null;
 
 		public function getId(): ?int {

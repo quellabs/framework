@@ -20,23 +20,29 @@
 	 * parameter), hence this separate fixture.
 	 * @Orm\Table(name="uuid_versioned_entities")
 	 */
+	#[Table(name: "uuid_versioned_entities")]
 	class UuidVersionedEntity {
 
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="label", type="string", limit=255)
 		 */
+		#[Column(name: "label", type: "string", limit: 255)]
 		protected string $label;
 
 		/**
 		 * @Orm\Column(name="token", type="uuid")
 		 * @Orm\Version
 		 */
+		#[Column(name: "token", type: "uuid")]
+		#[Version]
 		protected string $token;
 
 		public function getId(): ?int {

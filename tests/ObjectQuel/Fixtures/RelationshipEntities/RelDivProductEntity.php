@@ -10,16 +10,20 @@
 	 * Required-set range of the relational-division fixtures.
 	 * @Orm\Table(name="rel_div_products")
 	 */
+	#[Table(name: "rel_div_products")]
 	class RelDivProductEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="category", type="string", limit=100)
 		 */
+		#[Column(name: "category", type: "string", limit: 100)]
 		protected ?string $category = null;
 
 		/**

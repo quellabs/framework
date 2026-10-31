@@ -14,32 +14,40 @@
 	 * @Orm\Index(name="idx_username", columns={"username"})
 	 * @Orm\Table(name="users")
 	 */
+	#[Index(name: "idx_username", columns: ["username"])]
+	#[Table(name: "users")]
 	class UserEntity {
-		
+
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
-		
+
 		/**
 		 * @Orm\Column(name="username", type="string", limit=255)
 		 */
+		#[Column(name: "username", type: "string", limit: 255)]
 		protected string $username;
-		
+
 		/**
 		 * @Orm\Column(name="password", type="string", limit=255)
 		 */
+		#[Column(name: "password", type: "string", limit: 255)]
 		protected string $password;
-		
+
 		/**
 		 * @Orm\Column(name="banned", type="boolean")
 		 */
+		#[Column(name: "banned", type: "boolean")]
 		protected bool $banned = false;
-		
+
 		/**
 		 * @Orm\InverseOf(targetEntity=PostEntity::class, relation="user")
 		 */
+		#[InverseOf(targetEntity: PostEntity::class, relation: "user")]
 		public CollectionInterface $posts;
 		
 		public function __construct() {

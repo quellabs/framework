@@ -26,16 +26,20 @@
 	 * cascade-remove test here.
 	 * @Orm\Table(name="rel_customers")
 	 */
+	#[Table(name: "rel_customers")]
 	class RelCustomerEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelOrderCascadeEntity::class, relation="customer")
 		 */
+		#[InverseOf(targetEntity: RelOrderCascadeEntity::class, relation: "customer")]
 		public CollectionInterface $orders;
 
 		public function __construct() {

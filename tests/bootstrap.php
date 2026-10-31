@@ -4,6 +4,7 @@
 	
 	use Cake\Database\Connection;
 	use Cake\Database\Driver\Mysql;
+	use Quellabs\AnnotationReader\Configuration as AnnotationReaderConfiguration;
 	use Quellabs\ObjectQuel\Configuration;
 	use Quellabs\ObjectQuel\EntityManager;
 	
@@ -32,6 +33,19 @@
 	$config->setEntityNamespace('App\\Entities');
 	$config->setEntityPath(__DIR__ . '/../src/Entities');
 	$config->setProxyDir($proxyDir);
+
+	// Mirrors the real app's own config/app.php setting rather than hardcoding
+	// one: src/Entities and the RelationshipEntities fixtures below carry
+	// #[...] attributes alongside their @Orm docblocks specifically so the
+	// suite stays safe under either source.
+	$appConfig = require __DIR__ . '/../config/app.php';
+	$annotationSource = $appConfig['annotation_source'] ?? AnnotationReaderConfiguration::SOURCE_DOCBLOCKS;
+
+	if (!is_string($annotationSource)) {
+		throw new \InvalidArgumentException('annotation_source must be a string');
+	}
+
+	$config->setAnnotationSource($annotationSource);
 
 	// ObjectQuel's FK/relationship integration suite needs a real EntityManager
 	// of its own, but UnitOfWork registers standalone signals (orm.prePersist

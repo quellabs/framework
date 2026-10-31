@@ -16,22 +16,28 @@
 	 * and has no bearing on cascade-remove eligibility.
 	 * @Orm\Table(name="rel_profiles_unidirectional")
 	 */
+	#[Table(name: "rel_profiles_unidirectional")]
 	class RelProfileUnidirectionalEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, localColumn="userId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove"})
 		 */
+		#[OneToOne(targetEntity: RelUserEntity::class, localColumn: "userId", fetch: "EAGER")]
+		#[Cascade(operations: ["remove"])]
 		public ?RelUserEntity $user = null;
 
 		/**
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
+		#[Column(name: "user_id", type: "integer")]
 		protected ?int $userId = null;
 
 		public function getId(): ?int {

@@ -11,26 +11,32 @@
 	 * Fixture entity for integration coverage of @Orm\Version handling on
 	 * `append`/`replace` (see AppendVersionInitializationTest,
 	 * ReplaceVersionBumpTest) — no other entity in App\Entities carries a
-	 * @Orm\Version column.
+	 * Version column.
 	 * @Orm\Table(name="versioned_entities")
 	 */
+	#[Table(name: "versioned_entities")]
 	class VersionedEntity {
 
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="label", type="string", limit=255)
 		 */
+		#[Column(name: "label", type: "string", limit: 255)]
 		protected string $label;
 
 		/**
 		 * @Orm\Column(name="version", type="integer")
 		 * @Orm\Version
 		 */
+		#[Column(name: "version", type: "integer")]
+		#[Version]
 		protected int $version;
 
 		public function getId(): ?int {

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use Cake\Database\Connection;
 use Cake\Database\Driver\Sqlite;
+use Quellabs\AnnotationReader\Configuration as AnnotationReaderConfiguration;
 use Quellabs\ObjectQuel\Configuration;
 use Quellabs\ObjectQuel\EntityManager;
 
@@ -83,6 +84,19 @@ $configuration = new Configuration();
 $configuration->setEntityNamespace('App\\Entities');
 $configuration->setEntityPath(__DIR__ . '/../src/Entities');
 $configuration->setProxyDir(sys_get_temp_dir() . '/objectquel-sqlite-phpunit-proxies');
+
+// Mirrors the real app's own config/app.php setting rather than hardcoding
+// one: src/Entities and the fixture directories below carry #[...]
+// attributes alongside their @Orm docblocks specifically so this is safe.
+$appConfig = require __DIR__ . '/../config/app.php';
+$annotationSource = $appConfig['annotation_source'] ?? AnnotationReaderConfiguration::SOURCE_DOCBLOCKS;
+
+if (!is_string($annotationSource)) {
+	throw new RuntimeException('annotation_source must be a string');
+}
+
+$configuration->setAnnotationSource($annotationSource);
+
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/RelationshipEntities');
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/CompositeKeyRelationshipEntities');
 $configuration->addAdditionalEntityPath(__DIR__ . '/ObjectQuel/Fixtures/NonPkReferenceEntities');

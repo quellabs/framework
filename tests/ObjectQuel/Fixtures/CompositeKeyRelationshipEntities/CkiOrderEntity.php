@@ -20,25 +20,30 @@
 	 * paths, so nothing here may be deliberately invalid.
 	 * @Orm\Table(name="cki_orders")
 	 */
+	#[Table(name: "cki_orders")]
 	class CkiOrderEntity {
 		/**
 		 * @Orm\Column(name="tenant_id", type="integer", primary_key=true)
 		 */
+		#[Column(name: "tenant_id", type: "integer", primary_key: true)]
 		protected ?int $tenantId = null;
 
 		/**
 		 * @Orm\Column(name="number", type="string", limit=20, primary_key=true)
 		 */
+		#[Column(name: "number", type: "string", limit: 20, primary_key: true)]
 		protected ?string $number = null;
 
 		/**
 		 * @Orm\Column(name="amount", type="integer")
 		 */
+		#[Column(name: "amount", type: "integer")]
 		protected ?int $amount = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=CkiOrderLineEntity::class, relation="order")
 		 */
+		#[InverseOf(targetEntity: CkiOrderLineEntity::class, relation: "order")]
 		public CollectionInterface $lines;
 
 		public function __construct() {
