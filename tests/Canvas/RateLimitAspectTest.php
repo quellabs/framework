@@ -5,7 +5,7 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RateLimitStoreUnavailableException;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\Canvas\Security\RateLimit\RateLimitResult;
 	use Quellabs\Canvas\Security\RateLimit\RateLimitStoreInterface;
 	use Quellabs\Canvas\Security\RateLimitAspect;
