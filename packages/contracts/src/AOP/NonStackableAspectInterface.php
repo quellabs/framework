@@ -1,6 +1,6 @@
 <?php
 
-	namespace Quellabs\Canvas\AOP\Contracts;
+	namespace Quellabs\Contracts\AOP;
 
 	/**
 	 * Marker interface for aspects where only one declaration should take effect

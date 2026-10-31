@@ -4,10 +4,10 @@
 	
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Exceptions\CsrfTokenException;
-	use Quellabs\Canvas\Exceptions\HttpException;
 	use Quellabs\Canvas\Exceptions\RateLimitException;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Exceptions\UploadException;
+	use Quellabs\Contracts\Http\HttpException;
 	
 	/**
 	 * Unit tests for Canvas HTTP exception types.

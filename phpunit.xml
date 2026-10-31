@@ -54,7 +54,8 @@
             <directory>tests/DependencyInjection</directory>
         </testsuite>
         <testsuite name="CanvasEloquent">
-            <directory>tests/CanvasEloquent</directory>
+            <directory>packages/canvas-eloquent/tests</directory>
+            <exclude>packages/canvas-eloquent/tests/Fixtures</exclude>
         </testsuite>
     </testsuites>
     <groups>

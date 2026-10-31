@@ -1,6 +1,6 @@
 <?php
 	
-	namespace Quellabs\Canvas\AOP\Contracts;
+	namespace Quellabs\Contracts\AOP;
 	
 	/**
 	 * Base marker interface for all aspect annotations in the Canvas framework.

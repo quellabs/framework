@@ -8,7 +8,7 @@
 	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Canvas\AOP\AspectResolver;
 	use Quellabs\Canvas\Kernel;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\Canvas\Security\Policies\BasicSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\Policies\StrictSecurityHeaderPolicy;
 	use Quellabs\Canvas\Security\SecurityHeadersAspect;
