@@ -9,6 +9,8 @@
 
 	/**
 	 * Registers a singleton Eloquent connection, bootstrapped via Illuminate's standalone Capsule manager.
+	 * Model parameter binding is handled separately by ModelBindingServiceProvider, which relies on the
+	 * Capsule booted here for Eloquent's static connection resolver.
 	 */
 	class ServiceProvider extends BaseServiceProvider {
 
