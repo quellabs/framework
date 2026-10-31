@@ -17,13 +17,7 @@
 		 * @return object The class being called
 		 */
 		public function getClass(): object;
-		
-		/**
-		 * Get all arguments passed to the method.
-		 * @return array<string, mixed> Array of method arguments in order
-		 */
-		public function getArguments(): array;
-		
+
 		/**
 		 * Returns the request object
 		 * @return Request
