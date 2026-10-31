@@ -105,6 +105,14 @@ return [
 ];
 ```
 
+## Testing
+
+Run the package unit tests from this directory with `composer test` after installing
+its development dependencies. In the framework monorepo, run
+`..\..\vendor\bin\phpunit.bat` from this directory on Windows, or
+`../../vendor/bin/phpunit` on Unix. The framework's general PHPUnit suite also
+runs these tests and the request dispatch integration tests.
+
 ## Status
 
 This package is under active development.

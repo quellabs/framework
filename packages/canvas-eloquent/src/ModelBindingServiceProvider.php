@@ -116,8 +116,6 @@
 
 			// The autowirer sets this to the exact parameter currently being resolved
 			// before calling into this provider — no need to guess it via reflection
-			$annotationReader = $this->getAnnotationReader();
-			$arguments = $methodContext->getArguments();
 			$parameterName = $methodContext->getParameterName();
 
 			// Null here means the context isn't in the middle of resolving a parameter
@@ -125,6 +123,9 @@
 			if ($parameterName === null) {
 				return null;
 			}
+
+			$annotationReader = $this->getAnnotationReader();
+			$arguments = $methodContext->getArguments();
 
 			// Build a map of parameter name -> routeParam from @ResolveModel annotations
 			$annotations = $annotationReader->getMethodAnnotations(
@@ -172,7 +173,9 @@
 				);
 			}
 
-			/** @var class-string<Model> $className */
+			/**
+			 * @var class-string<Model> $className
+			 */
 			$model = $className::query()->find($value);
 
 			if ($model === null) {

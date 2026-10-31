@@ -152,7 +152,9 @@
 		}
 
 		public function testReturnsNullWhenParameterNameCannotBeDetermined(): void {
-			$provider = $this->makeProvider();
+			$container = $this->createMock(ContainerInterface::class);
+			$container->expects($this->never())->method('get');
+			$provider = new ModelBindingServiceProvider($container);
 			$context = $this->makeContext(null, ['id' => 1]);
 
 			$this->assertNull($provider->createInstance(ResolveModelFixturePost::class, [], [], $context));
