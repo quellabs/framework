@@ -69,31 +69,103 @@
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object|null
+		 * @throws \RuntimeException
+		 * @throws \InvalidArgumentException
+		 * @throws ResolutionNotFoundException
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			if ($methodContext === null || $methodContext->getParameterName() === null) {
 				return null;
 			}
+
 			$parameter = $methodContext->getParameterName();
+			$reader = $this->resolveAnnotationReader();
+			$manager = $this->resolveEntityManager();
+			$routeKey = $this->resolveRouteKey($methodContext, $parameter, $reader);
+			$identifier = $this->resolveEntityIdentifier($methodContext->getArguments(), $routeKey);
+			return $this->findEntity($manager, $className, $identifier, $routeKey);
+		}
+
+		/**
+		 * Resolves the annotation reader from the container.
+		 * @return AnnotationReader
+		 * @throws \RuntimeException
+		 */
+		private function resolveAnnotationReader(): AnnotationReader {
 			$reader = $this->container->get(AnnotationReader::class);
-			$manager = $this->container->get(EntityManagerInterface::class);
-			if (!$reader instanceof AnnotationReader || !$manager instanceof EntityManagerInterface) {
-				throw new \RuntimeException('Doctrine binding requires an AnnotationReader and EntityManager');
+
+			if (!$reader instanceof AnnotationReader) {
+				throw new \RuntimeException('Doctrine binding requires an AnnotationReader');
 			}
-			$routeKey = $parameter;
-			foreach ($reader->getMethodAnnotations($methodContext->getClassName(), $methodContext->getMethodName(), ResolveEntity::class) as $annotation) {
+
+			return $reader;
+		}
+
+		/**
+		 * Resolves the entity manager from the container.
+		 * @return EntityManagerInterface
+		 * @throws \RuntimeException
+		 */
+		private function resolveEntityManager(): EntityManagerInterface {
+			$manager = $this->container->get(EntityManagerInterface::class);
+
+			if (!$manager instanceof EntityManagerInterface) {
+				throw new \RuntimeException('Doctrine binding requires an EntityManager');
+			}
+
+			return $manager;
+		}
+
+		/**
+		 * Returns the route key bound to the parameter via ResolveEntity, or the parameter name itself.
+		 * @param MethodContextInterface $methodContext
+		 * @param string $parameter
+		 * @param AnnotationReader $reader
+		 * @return string
+		 */
+		private function resolveRouteKey(MethodContextInterface $methodContext, string $parameter, AnnotationReader $reader): string {
+			$annotations = $reader->getMethodAnnotations($methodContext->getClassName(), $methodContext->getMethodName(), ResolveEntity::class);
+
+			foreach ($annotations as $annotation) {
 				if ($annotation instanceof ResolveEntity && $annotation->getParameter() === $parameter) {
-					$routeKey = $annotation->getRouteParam();
+					return $annotation->getRouteParam();
 				}
 			}
-			$arguments = $methodContext->getArguments();
+
+			return $parameter;
+		}
+
+		/**
+		 * Validates and returns the scalar entity identifier found under the route key.
+		 * @param array<string, mixed> $arguments
+		 * @param string $routeKey
+		 * @return string|int
+		 * @throws \InvalidArgumentException
+		 */
+		private function resolveEntityIdentifier(array $arguments, string $routeKey): string|int {
 			if (!array_key_exists($routeKey, $arguments) || (!is_string($arguments[$routeKey]) && !is_int($arguments[$routeKey]))) {
 				throw new \InvalidArgumentException("Route key '{$routeKey}' must contain a scalar entity identifier");
 			}
-			$entity = $manager->find($className, $arguments[$routeKey]);
+
+			return $arguments[$routeKey];
+		}
+
+		/**
+		 * Finds the entity by its identifier, or throws when no row matches.
+		 * @param EntityManagerInterface $manager
+		 * @param string $className
+		 * @param string|int $identifier
+		 * @param string $routeKey
+		 * @return object
+		 * @throws ResolutionNotFoundException
+		 */
+		private function findEntity(EntityManagerInterface $manager, string $className, string|int $identifier, string $routeKey): object {
+			$entity = $manager->find($className, $identifier);
+
 			if ($entity === null) {
 				throw new ResolutionNotFoundException("No {$className} found for '{$routeKey}'");
 			}
+
 			return $entity;
 		}
 	}

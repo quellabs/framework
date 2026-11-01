@@ -21,6 +21,7 @@
 		 * @param string $parameter
 		 * @param string $routeParam
 		 * @return void
+		 * @throws \InvalidArgumentException
 		 */
 		public function __construct(string $parameter, string $routeParam) {
 			if ($parameter === '' || $routeParam === '') {
