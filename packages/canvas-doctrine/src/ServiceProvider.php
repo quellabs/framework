@@ -4,6 +4,7 @@
 
 	use Doctrine\DBAL\Connection;
 	use Doctrine\DBAL\DriverManager;
+	use Doctrine\ORM\Configuration;
 	use Doctrine\ORM\EntityManager;
 	use Doctrine\ORM\EntityManagerInterface;
 	use Doctrine\ORM\ORMSetup;
@@ -55,8 +56,28 @@
 
 			$config = $this->getConfig();
 			$connection = DriverManager::getConnection($this->resolveConnectionConfig($config));
-			$ormConfig = ORMSetup::createAttributeMetadataConfiguration($this->resolveEntityPaths($config), $this->resolveDevelopmentMode($config));
+			$ormConfig = $this->createOrmConfiguration($this->resolveEntityPaths($config), $this->resolveDevelopmentMode($config));
 			return $this->entityManager = new EntityManager($connection, $ormConfig);
+		}
+
+		/**
+		 * Builds the attribute-driven ORM configuration. createAttributeMetadataConfig()
+		 * only exists on doctrine/orm 3.5+, so versions below that keep using the
+		 * deprecated createAttributeMetadataConfiguration() (harmless pre-PHP 8.4, where
+		 * it triggers no notice). On PHP 8.4+ with 3.5+ available, native lazy objects
+		 * replace proxy-class generation, so no proxy directory needs configuring.
+		 * @param string[] $paths
+		 * @param bool $developmentMode
+		 * @return Configuration
+		 */
+		private function createOrmConfiguration(array $paths, bool $developmentMode): Configuration {
+			if (PHP_VERSION_ID < 80400 || !method_exists(ORMSetup::class, 'createAttributeMetadataConfig')) {
+				return ORMSetup::createAttributeMetadataConfiguration($paths, $developmentMode);
+			}
+
+			$config = ORMSetup::createAttributeMetadataConfig($paths, $developmentMode);
+			$config->enableNativeLazyObjects(true);
+			return $config;
 		}
 
 		/**
