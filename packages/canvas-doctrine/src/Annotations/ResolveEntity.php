@@ -13,6 +13,7 @@
 	#[\Attribute(\Attribute::TARGET_METHOD)]
 	class ResolveEntity implements AnnotationInterface {
 		use ReflectsAnnotationParameters;
+		
 		private string $parameter;
 		private string $routeParam;
 
@@ -27,6 +28,7 @@
 			if ($parameter === '' || $routeParam === '') {
 				throw new \InvalidArgumentException('Binding names must be non-empty');
 			}
+			
 			$this->parameter = $parameter;
 			$this->routeParam = $routeParam;
 		}

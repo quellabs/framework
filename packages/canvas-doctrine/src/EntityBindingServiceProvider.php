@@ -3,10 +3,13 @@
 	namespace Quellabs\CanvasDoctrine;
 
 	use Doctrine\ORM\EntityManagerInterface;
+	use Doctrine\ORM\Exception\ORMException;
+	use Doctrine\ORM\OptimisticLockException;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\CanvasDoctrine\Annotations\ResolveEntity;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
+	use Quellabs\AnnotationReader\Exception\AnnotationReaderException;
 	use Quellabs\Contracts\DependencyInjection\ResolutionNotFoundException;
 	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 
@@ -16,6 +19,8 @@
 	 * canvas-objectquel with an overlapping namespace.
 	 */
 	class EntityBindingServiceProvider implements ServiceProviderInterface {
+		
+		/** @var ContainerInterface AnnotationReader */
 		private ContainerInterface $container;
 
 		/** @var array<string, mixed> */
@@ -65,7 +70,7 @@
 			$namespace = $this->config['entity_namespace'] ?? 'App\\Entities';
 			return is_string($namespace) && str_starts_with($className, rtrim($namespace, '\\') . '\\');
 		}
-
+		
 		/**
 		 * Finds an entity using its scalar route identifier.
 		 * @param class-string $className
@@ -73,9 +78,9 @@
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object|null
-		 * @throws \RuntimeException
-		 * @throws \InvalidArgumentException
-		 * @throws ResolutionNotFoundException
+		 * @throws AnnotationReaderException
+		 * @throws ORMException
+		 * @throws OptimisticLockException
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
 			if ($methodContext === null || $methodContext->getParameterName() === null) {
@@ -119,13 +124,14 @@
 
 			return $manager;
 		}
-
+		
 		/**
 		 * Returns the route key bound to the parameter via ResolveEntity, or the parameter name itself.
 		 * @param MethodContextInterface $methodContext
 		 * @param string $parameter
 		 * @param AnnotationReader $reader
 		 * @return string
+		 * @throws AnnotationReaderException
 		 */
 		private function resolveRouteKey(MethodContextInterface $methodContext, string $parameter, AnnotationReader $reader): string {
 			$annotations = $reader->getMethodAnnotations($methodContext->getClassName(), $methodContext->getMethodName(), ResolveEntity::class);
@@ -153,7 +159,7 @@
 
 			return $arguments[$routeKey];
 		}
-
+		
 		/**
 		 * Finds the entity by its identifier, or throws when no row matches.
 		 * @param EntityManagerInterface $manager
@@ -161,7 +167,8 @@
 		 * @param string|int $identifier
 		 * @param string $routeKey
 		 * @return object
-		 * @throws ResolutionNotFoundException
+		 * @throws ORMException
+		 * @throws OptimisticLockException
 		 */
 		private function findEntity(EntityManagerInterface $manager, string $className, string|int $identifier, string $routeKey): object {
 			$entity = $manager->find($className, $identifier);

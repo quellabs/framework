@@ -9,6 +9,7 @@
 	 * Registers Doctrine Sculpt commands.
 	 */
 	class DoctrineProvider extends ServiceProvider {
+		
 		/**
 		 * Registers the config publisher.
 		 * @param Application $application
