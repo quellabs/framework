@@ -193,6 +193,8 @@ Do not use array destructuring (`[$a, $b] = expr()`, including the skip-slot for
 
 Do not nest ternary operators (a ternary whose branch is itself a ternary). Use an if/elseif/else chain instead. A single, non-nested ternary is fine.
 
+Separate distinct logical sections of code with a blank line — e.g. between a guard clause and the logic that follows, between setup and the main body, or between unrelated statements within a method. Never write a method or block as one unbroken run of lines with no blank-line separation between its logical steps.
+
 # Code Documentation Instructions
 
 Keep code comments and documentation concise and focused on the present
