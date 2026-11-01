@@ -49,6 +49,8 @@ The following are forbidden when they could materially affect the answer:
 
 ### Codebase Changes
 
+Never push a subtree to its remote repository. This prohibition applies even when a task asks to create, update, or publish a subtree. Keep subtree changes local.
+
 When fixing bugs or type errors, assume the full codebase may be modified unless the user specifies otherwise. Prefer fixing the root cause over patching call sites.
 
 Use a localized fix instead when a root-cause change would introduce disproportionate risk, unnecessary scope, or incompatible behavior. Explain the tradeoff when relevant.
@@ -190,6 +192,8 @@ Constructors: declare properties explicitly and assign them in the constructor b
 Do not use array destructuring (`[$a, $b] = expr()`, including the skip-slot form `[, $b] = expr()`, or `list($a, $b) = expr()`). When a function would naturally return multiple values, return a small value object with named getters and access the values by name at the call site instead.
 
 Do not nest ternary operators (a ternary whose branch is itself a ternary). Use an if/elseif/else chain instead. A single, non-nested ternary is fine.
+
+Separate distinct logical sections of code with a blank line — e.g. between a guard clause and the logic that follows, between setup and the main body, or between unrelated statements within a method. Never write a method or block as one unbroken run of lines with no blank-line separation between its logical steps.
 
 # Code Documentation Instructions
 

@@ -36,6 +36,9 @@
 	 * return for its own, unrelated reason — only the former is routed through
 	 * handleNotFound(), which Canvas overrides to produce a required-parameter
 	 * 404.
+	 *
+	 * Matches by entity_namespace only; do not register this alongside
+	 * canvas-doctrine with an overlapping namespace.
 	 */
 	class ServiceProvider implements ServiceProviderInterface {
 		
