@@ -2,6 +2,7 @@
 
 	namespace Quellabs\CanvasDoctrine\Tests;
 	require_once __DIR__ . '/Fixtures/DoctrineTestEntity.php';
+	require_once __DIR__ . '/Fixtures/NonDoctrineEntity.php';
 
 	use Doctrine\ORM\EntityManagerInterface;
 	use PHPUnit\Framework\TestCase;
@@ -63,6 +64,27 @@
 			$provider = $this->makeProvider($manager, []);
 			$this->expectException(\InvalidArgumentException::class);
 			$provider->createInstance(DoctrineTestEntity::class, [], [], $this->context(['post' => ['id' => 4]]));
+		}
+
+		/**
+		 * Accepts a class under the configured namespace that carries Doctrine's #[Entity] attribute.
+		 * @return void
+		 */
+		public function testSupportsDoctrineEntity(): void {
+			$provider = new EntityBindingServiceProvider($this->createMock(ContainerInterface::class));
+			$provider->setConfig(['entity_namespace' => __NAMESPACE__]);
+			$this->assertTrue($provider->supports(DoctrineTestEntity::class, []));
+		}
+
+		/**
+		 * Rejects a class in the same namespace that Doctrine does not map, so another
+		 * ORM's entity sharing the namespace is never misrouted to this binder.
+		 * @return void
+		 */
+		public function testRejectsNonDoctrineClassInSameNamespace(): void {
+			$provider = new EntityBindingServiceProvider($this->createMock(ContainerInterface::class));
+			$provider->setConfig(['entity_namespace' => __NAMESPACE__]);
+			$this->assertFalse($provider->supports(NonDoctrineEntity::class, []));
 		}
 
 		/**

@@ -3,6 +3,7 @@
 	namespace Quellabs\CanvasDoctrine;
 
 	use Doctrine\ORM\EntityManagerInterface;
+	use Doctrine\ORM\Mapping\Entity;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\CanvasDoctrine\Annotations\ResolveEntity;
 	use Quellabs\Contracts\Context\MethodContextInterface;
@@ -52,14 +53,33 @@
 		}
 
 		/**
-		 * Checks the configured entity namespace without resolving services.
+		 * Checks the configured entity namespace and that the class is actually mapped as a
+		 * Doctrine entity, so a class another ORM maps under the same namespace is never claimed.
 		 * @param string $className
 		 * @param array<string, mixed> $metadata
 		 * @return bool
 		 */
 		public function supports(string $className, array $metadata): bool {
 			$namespace = $this->config['entity_namespace'] ?? 'App\\Entities';
-			return is_string($namespace) && str_starts_with($className, rtrim($namespace, '\\') . '\\');
+
+			if (!is_string($namespace) || !str_starts_with($className, rtrim($namespace, '\\') . '\\')) {
+				return false;
+			}
+
+			return $this->isDoctrineEntity($className);
+		}
+
+		/**
+		 * Checks whether the class carries Doctrine's #[Entity] attribute.
+		 * @param string $className
+		 * @return bool
+		 */
+		private function isDoctrineEntity(string $className): bool {
+			if (!class_exists($className)) {
+				return false;
+			}
+
+			return (new \ReflectionClass($className))->getAttributes(Entity::class) !== [];
 		}
 
 		/**
