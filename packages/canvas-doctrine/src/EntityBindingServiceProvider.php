@@ -12,6 +12,8 @@
 
 	/**
 	 * Resolves mapped controller entities from route values.
+	 * Matches by entity_namespace only; do not register this alongside
+	 * canvas-objectquel with an overlapping namespace.
 	 */
 	class EntityBindingServiceProvider implements ServiceProviderInterface {
 		private ContainerInterface $container;
