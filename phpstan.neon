@@ -39,6 +39,7 @@ parameters:
         - packages/canvas-scheduler-redis
         - packages/canvas-scheduler-rabbitmq
         - packages/canvas-eloquent/src
+        - packages/canvas-doctrine/src
         - packages/recommender
     bootstrapFiles:
         - vendor/autoload.php

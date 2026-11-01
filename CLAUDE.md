@@ -191,6 +191,21 @@ Do not nest ternary operators (a ternary whose branch is itself a ternary). Use 
 
 Separate distinct logical sections of code with a blank line — e.g. between a guard clause and the logic that follows, between setup and the main body, or between unrelated statements within a method. Never write a method or block as one unbroken run of lines with no blank-line separation between its logical steps.
 
+Declare all properties and constants together at the top of the class, before any method. Never place one in the middle of the class, between methods.
+
+Write a multi-line array literal (including a `return`ed one) with one `key => value` pair per line, each pair's `=>` aligned to the same column by padding shorter keys with spaces, and no trailing comma after the last pair:
+```php
+return [
+    'driver'   => $driver,
+    'host'     => $host,
+    'port'     => $port,
+    'dbname'   => $dbname,
+    'user'     => $user,
+    'password' => $password,
+    'charset'  => $charset
+];
+```
+
 # Code Documentation Instructions
 
 Keep code comments and documentation concise and focused on the present

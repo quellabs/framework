@@ -17,6 +17,8 @@
 	 */
 	class EntityBindingServiceProvider implements ServiceProviderInterface {
 		private ContainerInterface $container;
+
+		/** @var array<string, mixed> */
 		private array $config = [];
 
 		/**
@@ -66,7 +68,7 @@
 
 		/**
 		 * Finds an entity using its scalar route identifier.
-		 * @param string $className
+		 * @param class-string $className
 		 * @param array<int|string, mixed> $dependencies
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
@@ -155,7 +157,7 @@
 		/**
 		 * Finds the entity by its identifier, or throws when no row matches.
 		 * @param EntityManagerInterface $manager
-		 * @param string $className
+		 * @param class-string $className
 		 * @param string|int $identifier
 		 * @param string $routeKey
 		 * @return object
