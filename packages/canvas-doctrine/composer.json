@@ -1,0 +1,26 @@
+{
+  "name": "quellabs/canvas-doctrine",
+  "description": "Doctrine ORM integration for Canvas framework",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3",
+    "doctrine/orm": "^3.0",
+    "symfony/cache": "^6.4 || ^7.0 || ^8.0",
+    "quellabs/annotation-reader": "^1.0",
+    "quellabs/contracts": "^1.0",
+    "quellabs/dependency-injection": "^1.0",
+    "quellabs/sculpt": "^1.0",
+    "quellabs/support": "^1.0"
+  },
+  "require-dev": {"phpunit/phpunit": "^10.0"},
+  "autoload": {"psr-4": {"Quellabs\\CanvasDoctrine\\": "src/"}},
+  "autoload-dev": {"psr-4": {"Quellabs\\CanvasDoctrine\\Tests\\": "tests/"}},
+  "extra": {"discover": {
+    "di": {"providers": [
+      {"class": "Quellabs\\CanvasDoctrine\\ServiceProvider", "config": "config/doctrine.php"},
+      {"class": "Quellabs\\CanvasDoctrine\\EntityBindingServiceProvider", "config": "config/doctrine.php"}
+    ]},
+    "sculpt": {"provider": "Quellabs\\CanvasDoctrine\\Sculpt\\DoctrineProvider", "config": ["config/doctrine.php"]}
+  }}
+}
