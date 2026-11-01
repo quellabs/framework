@@ -116,6 +116,20 @@
 				return self::resolveSqliteConnectionConfig($driver, $connection, $user, $password);
 			}
 
+			return self::resolveDsnConnectionConfig($driver, $connection, $user, $password);
+		}
+
+		/**
+		 * Builds host/port/dbname-style connection params shared by the
+		 * non-sqlite drivers.
+		 * @param 'ibm_db2'|'mysqli'|'oci8'|'pdo_mysql'|'pdo_oci'|'pdo_pgsql'|'pdo_sqlsrv'|'pgsql'|'sqlsrv' $driver
+		 * @param array<string, mixed> $connection
+		 * @param string $user
+		 * @param string $password
+		 * @return array{driver: 'ibm_db2'|'mysqli'|'oci8'|'pdo_mysql'|'pdo_oci'|'pdo_pgsql'|'pdo_sqlsrv'|'pgsql'|'sqlsrv', host: string, port: int, dbname: string, user: string, password: string, charset: string}
+		 * @throws \InvalidArgumentException
+		 */
+		private static function resolveDsnConnectionConfig(string $driver, array $connection, string $user, string $password): array {
 			// Narrow each value explicitly so the returned array matches DBAL's expected param shape.
 			$host = $connection['host'] ?? 'localhost';
 			$port = $connection['port'] ?? 3306;
