@@ -263,6 +263,13 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-doctrine",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -301,6 +308,7 @@
     "quellabs/canvas-skeleton": "dev-main as 1.999.999",
     "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/canvas-eloquent": "dev-main as 1.999.999",
+    "quellabs/canvas-doctrine": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 2.999.999",
@@ -386,7 +394,8 @@
       "Quellabs\\Recommender\\Tests\\": "tests/Recommender/",
       "Quellabs\\AnnotationReader\\Tests\\": "tests/AnnotationReader/",
       "Quellabs\\DependencyInjection\\Tests\\": "tests/DependencyInjection/",
-      "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/"
+      "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/",
+      "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/"
     }
   },
   "scripts": {
