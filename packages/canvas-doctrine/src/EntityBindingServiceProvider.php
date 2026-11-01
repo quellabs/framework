@@ -22,26 +22,34 @@
 		 * @param ContainerInterface $container
 		 * @return void
 		 */
-		public function __construct(ContainerInterface $container) { $this->container = $container; }
+		public function __construct(ContainerInterface $container) {
+			$this->container = $container;
+		}
 
 		/**
 		 * Returns provider metadata.
 		 * @return array<string, mixed>
 		 */
-		public static function getMetadata(): array { return []; }
+		public static function getMetadata(): array {
+			return [];
+		}
 
 		/**
 		 * Returns provider configuration.
 		 * @return array<string, mixed>
 		 */
-		public function getConfig(): array { return $this->config; }
+		public function getConfig(): array {
+			return $this->config;
+		}
 
 		/**
 		 * Sets provider configuration.
 		 * @param array<string, mixed> $config
 		 * @return void
 		 */
-		public function setConfig(array $config): void { $this->config = $config; }
+		public function setConfig(array $config): void {
+			$this->config = $config;
+		}
 
 		/**
 		 * Checks the configured entity namespace without resolving services.
@@ -63,7 +71,9 @@
 		 * @return object|null
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata, ?MethodContextInterface $methodContext = null): ?object {
-			if ($methodContext === null || $methodContext->getParameterName() === null) { return null; }
+			if ($methodContext === null || $methodContext->getParameterName() === null) {
+				return null;
+			}
 			$parameter = $methodContext->getParameterName();
 			$reader = $this->container->get(AnnotationReader::class);
 			$manager = $this->container->get(EntityManagerInterface::class);
@@ -72,14 +82,18 @@
 			}
 			$routeKey = $parameter;
 			foreach ($reader->getMethodAnnotations($methodContext->getClassName(), $methodContext->getMethodName(), ResolveEntity::class) as $annotation) {
-				if ($annotation instanceof ResolveEntity && $annotation->getParameter() === $parameter) { $routeKey = $annotation->getRouteParam(); }
+				if ($annotation instanceof ResolveEntity && $annotation->getParameter() === $parameter) {
+					$routeKey = $annotation->getRouteParam();
+				}
 			}
 			$arguments = $methodContext->getArguments();
 			if (!array_key_exists($routeKey, $arguments) || (!is_string($arguments[$routeKey]) && !is_int($arguments[$routeKey]))) {
 				throw new \InvalidArgumentException("Route key '{$routeKey}' must contain a scalar entity identifier");
 			}
 			$entity = $manager->find($className, $arguments[$routeKey]);
-			if ($entity === null) { throw new ResolutionNotFoundException("No {$className} found for '{$routeKey}'"); }
+			if ($entity === null) {
+				throw new ResolutionNotFoundException("No {$className} found for '{$routeKey}'");
+			}
 			return $entity;
 		}
 	}

@@ -40,4 +40,26 @@
 			$this->expectException(\InvalidArgumentException::class);
 			$provider->createInstance(EntityManagerInterface::class, [], []);
 		}
+
+		/**
+		 * Rejects configuration values that would silently change behavior.
+		 * @return void
+		 */
+		public function testRejectsStringDevelopmentMode(): void {
+			$provider = new ServiceProvider();
+			$provider->setConfig(['development_mode' => 'false']);
+			$this->expectException(\InvalidArgumentException::class);
+			$provider->createInstance(EntityManagerInterface::class, [], []);
+		}
+
+		/**
+		 * Rejects a list of named connection definitions.
+		 * @return void
+		 */
+		public function testRejectsConnectionList(): void {
+			$provider = new ServiceProvider();
+			$provider->setConfig(['connection' => [['driver' => 'pdo_sqlite'], ['driver' => 'pdo_mysql']]]);
+			$this->expectException(\InvalidArgumentException::class);
+			$provider->createInstance(EntityManagerInterface::class, [], []);
+		}
 	}

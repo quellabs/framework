@@ -49,6 +49,8 @@ The following are forbidden when they could materially affect the answer:
 
 ### Codebase Changes
 
+Never push a subtree to its remote repository. This prohibition applies even when a task asks to create, update, or publish a subtree. Keep subtree changes local.
+
 When fixing bugs or type errors, assume the full codebase may be modified unless the user specifies otherwise. Prefer fixing the root cause over patching call sites.
 
 Use a localized fix instead when a root-cause change would introduce disproportionate risk, unnecessary scope, or incompatible behavior. Explain the tradeoff when relevant.

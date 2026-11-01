@@ -51,15 +51,19 @@
 
 			$config = $this->getConfig();
 			$paths = $config['entity_paths'] ?? [ComposerUtils::getProjectRoot() . '/src/Entities'];
-			if (!is_array($paths) || $paths === [] || array_filter($paths, fn ($path) => !is_string($path) || $path === '') !== []) {
+			if (!is_array($paths) || $paths === [] || !array_is_list($paths) || array_filter($paths, fn ($path) => !is_string($path) || $path === '') !== []) {
 				throw new \InvalidArgumentException('doctrine.entity_paths must be a non-empty array of paths');
 			}
 			$connection = $config['connection'] ?? [];
-			if (!is_array($connection) || isset($connection['connections']) || isset($config['connections'])) {
+			if (!is_array($connection) || ($connection !== [] && array_is_list($connection)) || array_key_exists('connections', $connection) || array_key_exists('connections', $config)) {
 				throw new \InvalidArgumentException('Doctrine supports one connection; configure doctrine.connection directly');
 			}
+			$developmentMode = $config['development_mode'] ?? false;
+			if (!is_bool($developmentMode)) {
+				throw new \InvalidArgumentException('doctrine.development_mode must be a boolean');
+			}
 			$defaults = ['driver' => 'pdo_mysql', 'host' => 'localhost', 'port' => 3306, 'dbname' => '', 'user' => '', 'password' => '', 'charset' => 'utf8mb4'];
-			$ormConfig = ORMSetup::createAttributeMetadataConfiguration($paths, (bool)($config['development_mode'] ?? false));
+			$ormConfig = ORMSetup::createAttributeMetadataConfiguration($paths, $developmentMode);
 			$this->entityManager = new EntityManager(DriverManager::getConnection(array_merge($defaults, $connection)), $ormConfig);
 			return $this->entityManager;
 		}

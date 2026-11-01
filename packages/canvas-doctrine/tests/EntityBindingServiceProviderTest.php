@@ -54,6 +54,18 @@
 		}
 
 		/**
+		 * Rejects composite route identifiers before querying.
+		 * @return void
+		 */
+		public function testRejectsCompositeIdentifier(): void {
+			$manager = $this->createMock(EntityManagerInterface::class);
+			$manager->expects($this->never())->method('find');
+			$provider = $this->makeProvider($manager, []);
+			$this->expectException(\InvalidArgumentException::class);
+			$provider->createInstance(DoctrineTestEntity::class, [], [], $this->context(['post' => ['id' => 4]]));
+		}
+
+		/**
 		 * Creates the provider with its two lazy services.
 		 * @param EntityManagerInterface $manager
 		 * @param array<int, ResolveEntity> $annotations

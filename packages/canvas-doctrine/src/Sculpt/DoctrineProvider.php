@@ -14,5 +14,7 @@
 		 * @param Application $application
 		 * @return void
 		 */
-		public function register(Application $application): void { $this->registerCommands($application, [PublishConfigCommand::class]); }
+		public function register(Application $application): void {
+			$this->registerCommands($application, [PublishConfigCommand::class]);
+		}
 	}

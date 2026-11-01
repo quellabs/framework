@@ -34,11 +34,15 @@
 		 * Returns the controller parameter name.
 		 * @return string
 		 */
-		public function getParameter(): string { return $this->parameter; }
+		public function getParameter(): string {
+			return $this->parameter;
+		}
 
 		/**
 		 * Returns the route key.
 		 * @return string
 		 */
-		public function getRouteParam(): string { return $this->routeParam; }
+		public function getRouteParam(): string {
+			return $this->routeParam;
+		}
 	}
