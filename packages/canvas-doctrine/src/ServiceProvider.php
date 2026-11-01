@@ -21,8 +21,9 @@
 		/**
 		 * DBAL driver identifiers accepted by DriverManager::getConnection()'s 'driver' key.
 		 */
-		private const VALID_DRIVERS = ['pdo_mysql', 'pdo_sqlite', 'pdo_pgsql', 'pdo_oci', 'oci8', 'ibm_db2', 'pdo_sqlsrv', 'mysqli', 'pgsql', 'sqlsrv', 'sqlite3'];
+		private const array VALID_DRIVERS = ['pdo_mysql', 'pdo_sqlite', 'pdo_pgsql', 'pdo_oci', 'oci8', 'ibm_db2', 'pdo_sqlsrv', 'mysqli', 'pgsql', 'sqlsrv', 'sqlite3'];
 		
+		/** @var EntityManager|null Doctrine's EntityManager */
 		private ?EntityManager $entityManager = null;
 		
 		/**
@@ -122,13 +123,14 @@
 				throw new \InvalidArgumentException('Doctrine supports one connection; configure doctrine.connection directly');
 			}
 			
-			$driver = $connection['driver'] ?? 'pdo_mysql';
-
 			// Catch an unsupported driver here, not as a less clear failure inside DriverManager.
+			$driver = $connection['driver'] ?? 'pdo_mysql';
+			
 			if (!is_string($driver) || !in_array($driver, self::VALID_DRIVERS, true)) {
 				throw new \InvalidArgumentException('doctrine.connection.driver must be one of: ' . implode(', ', self::VALID_DRIVERS));
 			}
-
+			
+			// Narrow each value explicitly so the returned array matches DBAL's expected param shape.
 			$host = $connection['host'] ?? 'localhost';
 			$port = $connection['port'] ?? 3306;
 			$dbname = $connection['dbname'] ?? '';
@@ -136,7 +138,6 @@
 			$password = $connection['password'] ?? '';
 			$charset = $connection['charset'] ?? 'utf8mb4';
 
-			// Narrow each value explicitly so the returned array matches DBAL's expected param shape.
 			if (!is_string($host) || !is_int($port) || !is_string($dbname) || !is_string($user) || !is_string($password) || !is_string($charset)) {
 				throw new \InvalidArgumentException('doctrine.connection host, port, dbname, user, password, and charset must be string/int as shown in the defaults');
 			}
