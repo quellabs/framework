@@ -3,6 +3,8 @@
 	return [
 		'entity_paths' => [__DIR__ . '/../src/Entities'],
 		'entity_namespace' => 'App\\Entities',
+		'migrations_path' => __DIR__ . '/../migrations',
+		'migrations_namespace' => 'App\\Migrations',
 		'development_mode' => false,
 		'connection' => [
 			'driver' => 'pdo_mysql',
