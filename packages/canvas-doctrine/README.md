@@ -15,7 +15,7 @@ Do not register `canvas-doctrine` and `canvas-objectquel` together with overlapp
 Migrations wrap [doctrine/migrations](https://www.doctrine-project.org/projects/migrations.html) rather than reimplementing it. Set `migrations_path` (default `migrations/`, a project-root-relative directory committed to the repo, unlike `storage/`) and `migrations_namespace` (default `App\Migrations`) in `config/doctrine.php`.
 
 - `sculpt doctrine:make:migrations` — generates a migration from the difference between the mapped entities and the current schema
-- `sculpt doctrine:make:migration` — generates a blank migration for hand-written changes
+- `sculpt doctrine:make:blank-migration` — generates a blank migration for hand-written changes
 - `sculpt doctrine:migrate [version] [--dry-run] [--force]` — runs pending migrations up to `version` (default `latest`); pass a version below the current one to roll back. Prompts for confirmation unless `--force` is passed
 - `sculpt doctrine:migrate:status` — shows applied and pending migrations
 

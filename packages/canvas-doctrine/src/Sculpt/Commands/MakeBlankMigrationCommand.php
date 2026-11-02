@@ -9,16 +9,17 @@
 	/**
 	 * Generates a blank migration class in the configured migrations directory.
 	 */
-	class MakeMigrationCommand extends AbstractMigrationsCommand {
+	class MakeBlankMigrationCommand extends AbstractMigrationsCommand {
 		/**
-		 * Returns the command name: the short 'make:migration' when Doctrine is
-		 * the only ORM installed, or the 'doctrine:' prefixed form when another
-		 * ORM's own make:migration command would otherwise collide with it.
+		 * Returns the command name: the short 'make:blank-migration' when
+		 * Doctrine is the only ORM installed, or the 'doctrine:' prefixed form
+		 * when another ORM's own make:blank-migration command would otherwise
+		 * collide with it.
 		 * @return string
 		 */
 		public function getSignature(): string {
 			$prefix = OrmEngineResolver::count() > 1 ? 'doctrine:' : '';
-			return $prefix . 'make:migration';
+			return $prefix . 'make:blank-migration';
 		}
 
 		/**

@@ -2,7 +2,7 @@
 
 	namespace Quellabs\CanvasDoctrine\Sculpt;
 
-	use Quellabs\CanvasDoctrine\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\CanvasDoctrine\Sculpt\Commands\MakeBlankMigrationCommand;
 	use Quellabs\CanvasDoctrine\Sculpt\Commands\MakeMigrationsCommand;
 	use Quellabs\CanvasDoctrine\Sculpt\Commands\MigrateCommand;
 	use Quellabs\CanvasDoctrine\Sculpt\Commands\StatusCommand;
@@ -24,7 +24,7 @@
 				PublishConfigCommand::class,
 				MigrateCommand::class,
 				StatusCommand::class,
-				MakeMigrationCommand::class,
+				MakeBlankMigrationCommand::class,
 				MakeMigrationsCommand::class,
 			]);
 		}

@@ -2,7 +2,7 @@
 
 	namespace Quellabs\CanvasEloquent\Sculpt;
 
-	use Quellabs\CanvasEloquent\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\CanvasEloquent\Sculpt\Commands\MakeBlankMigrationCommand;
 	use Quellabs\CanvasEloquent\Sculpt\Commands\MigrateCommand;
 	use Quellabs\CanvasEloquent\Sculpt\Commands\RollbackCommand;
 	use Quellabs\CanvasEloquent\Sculpt\Commands\StatusCommand;
@@ -27,7 +27,7 @@
 				MigrateCommand::class,
 				RollbackCommand::class,
 				StatusCommand::class,
-				MakeMigrationCommand::class,
+				MakeBlankMigrationCommand::class,
 			]);
 		}
 	}

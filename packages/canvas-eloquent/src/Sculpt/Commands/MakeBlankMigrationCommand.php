@@ -11,16 +11,17 @@
 	 * Generates a blank migration class in the configured migrations directory,
 	 * from illuminate/database's own stubs.
 	 */
-	class MakeMigrationCommand extends AbstractMigrationsCommand {
+	class MakeBlankMigrationCommand extends AbstractMigrationsCommand {
 		/**
-		 * Returns the command name: the short 'make:migration' when Eloquent is
-		 * the only ORM installed, or the 'eloquent:' prefixed form when another
-		 * ORM's own make:migration command would otherwise collide with it.
+		 * Returns the command name: the short 'make:blank-migration' when
+		 * Eloquent is the only ORM installed, or the 'eloquent:' prefixed form
+		 * when another ORM's own make:blank-migration command would otherwise
+		 * collide with it.
 		 * @return string
 		 */
 		public function getSignature(): string {
 			$prefix = OrmEngineResolver::count() > 1 ? 'eloquent:' : '';
-			return $prefix . 'make:migration';
+			return $prefix . 'make:blank-migration';
 		}
 
 		/**
