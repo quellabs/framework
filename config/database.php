@@ -26,7 +26,7 @@
 		'migrations_path'      => dirname(__FILE__) . '/../migrations',
 
 		// Table quel:migrate tracks applied migrations in (default: 'quel_migrations')
-		'migration_table'      => 'quel_migrations',
+		'migrations_table'     => 'quel_migrations',
 
 		// Slow query log
 		'slow_query_log'       => null, // null to disable

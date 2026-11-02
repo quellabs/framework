@@ -26,9 +26,12 @@
 		public static function create(array $config): DependencyFactory {
 			$entityManager = EntityManagerFactory::create($config);
 
+			$tableStorageConfiguration = new TableMetadataStorageConfiguration();
+			$tableStorageConfiguration->setTableName(self::resolveMigrationsTable($config));
+
 			$configuration = new Configuration();
 			$configuration->addMigrationsDirectory(self::resolveMigrationsNamespace($config), self::resolveMigrationsPath($config));
-			$configuration->setMetadataStorageConfiguration(new TableMetadataStorageConfiguration());
+			$configuration->setMetadataStorageConfiguration($tableStorageConfiguration);
 
 			return DependencyFactory::fromEntityManager(
 				new ExistingConfiguration($configuration),
@@ -66,5 +69,22 @@
 			}
 
 			return $namespace;
+		}
+
+		/**
+		 * Validates and returns the configured migrations tracking table
+		 * name, defaulting to doctrine/migrations' own table name.
+		 * @param array<string, mixed> $config
+		 * @return non-empty-string
+		 * @throws \InvalidArgumentException
+		 */
+		private static function resolveMigrationsTable(array $config): string {
+			$table = $config['migrations_table'] ?? 'doctrine_migration_versions';
+
+			if (!is_string($table) || $table === '') {
+				throw new \InvalidArgumentException('doctrine.migrations_table must be a non-empty string');
+			}
+
+			return $table;
 		}
 	}
