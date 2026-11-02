@@ -16,6 +16,7 @@
 	 * components already handle task/list formatting correctly on their own.
 	 */
 	abstract class AbstractMigrationsCommand extends CommandBase {
+		
 		/**
 		 * Builds the Migrator from the application's eloquent config, wired to
 		 * write directly to the real terminal.

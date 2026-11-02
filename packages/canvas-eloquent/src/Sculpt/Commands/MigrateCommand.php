@@ -8,6 +8,7 @@
 	 * Runs pending migrations.
 	 */
 	class MigrateCommand extends AbstractMigrationsCommand {
+		
 		/**
 		 * Returns the command name.
 		 * @return string

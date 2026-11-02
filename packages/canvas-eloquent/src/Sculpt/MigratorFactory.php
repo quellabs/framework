@@ -18,6 +18,7 @@
 	 * migration files written against the standard stubs call it directly.
 	 */
 	final class MigratorFactory {
+		
 		/**
 		 * Builds the Migrator from the canvas-eloquent config array.
 		 * @param array<string, mixed> $config

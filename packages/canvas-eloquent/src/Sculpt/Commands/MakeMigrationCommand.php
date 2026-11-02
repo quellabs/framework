@@ -11,6 +11,7 @@
 	 * from illuminate/database's own stubs.
 	 */
 	class MakeMigrationCommand extends AbstractMigrationsCommand {
+		
 		/**
 		 * Returns the command name.
 		 * @return string

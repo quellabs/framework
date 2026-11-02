@@ -8,6 +8,7 @@
 	 * Shows which migrations have been applied and which are pending.
 	 */
 	class StatusCommand extends AbstractMigrationsCommand {
+		
 		/**
 		 * Returns the command name.
 		 * @return string

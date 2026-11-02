@@ -8,6 +8,7 @@
 	 * Rolls back the last batch of migrations, or a specific number of steps or batch.
 	 */
 	class RollbackCommand extends AbstractMigrationsCommand {
+		
 		/**
 		 * Returns the command name.
 		 * @return string
