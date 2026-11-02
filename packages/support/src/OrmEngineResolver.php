@@ -29,6 +29,17 @@
 		];
 
 		/**
+		 * Parsed discovery mapping, cached per lookup. Every registered Sculpt
+		 * command's own getSignature() calls count() independently within the
+		 * same CLI process, so without this each one would re-require() the
+		 * same generated mapping file. Keyed by the resolved mapping path, or
+		 * by the raw $startDirectory when no mapping file was found for it
+		 * (there's no path to key on in that case).
+		 * @var array<string, array<string, mixed>|null>
+		 */
+		private static array $mappingCache = [];
+
+		/**
 		 * Resolve the single "best" ORM identifier ('doctrine', 'eloquent', or
 		 * 'objectquel') for the current project. When more than one is
 		 * installed, ORM_PACKAGES order is the tie-break. ObjectQuel is the
@@ -78,14 +89,39 @@
 		}
 
 		/**
+		 * Clears the cached discovery mapping. Only needed when the mapping
+		 * file itself can change within the same process (e.g. tests pointing
+		 * at freshly-rewritten fixtures) -- a Sculpt CLI run is a one-shot
+		 * process that never needs to see a later regeneration.
+		 * @return void
+		 */
+		public static function clearCache(): void {
+			self::$mappingCache = [];
+		}
+
+		/**
 		 * Loads the project's discovery mapping array, or null when there is
 		 * none to read (no mapping file yet, or its contents are malformed).
 		 * @param string|null $startDirectory
-		 * @return array<mixed, mixed>|null
+		 * @return array<string, mixed>|null
 		 */
 		private static function readMapping(?string $startDirectory): ?array {
 			$mappingPath = ComposerUtils::getDiscoveryMappingPath($startDirectory);
+			$cacheKey = $mappingPath ?? ('startDirectory:' . ($startDirectory ?? ''));
 
+			if (array_key_exists($cacheKey, self::$mappingCache)) {
+				return self::$mappingCache[$cacheKey];
+			}
+
+			return self::$mappingCache[$cacheKey] = self::loadMapping($mappingPath);
+		}
+
+		/**
+		 * Requires and validates the mapping file at the given path.
+		 * @param string|null $mappingPath
+		 * @return array<string, mixed>|null
+		 */
+		private static function loadMapping(?string $mappingPath): ?array {
 			if ($mappingPath === null || !file_exists($mappingPath)) {
 				return null;
 			}
@@ -96,6 +132,16 @@
 				return null;
 			}
 
-			return $mapping;
+			$validated = [];
+
+			foreach ($mapping as $package => $extra) {
+				if (!is_string($package)) {
+					return null;
+				}
+
+				$validated[$package] = $extra;
+			}
+
+			return $validated;
 		}
 	}
