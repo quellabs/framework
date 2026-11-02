@@ -26,10 +26,9 @@
 		protected function setUp(): void {
 			$this->migrationsPath = sys_get_temp_dir() . '/canvas-eloquent-migrations-test-' . uniqid();
 			mkdir($this->migrationsPath);
-			$this->databasePath = $this->migrationsPath . '/test.sqlite';
 
-			// SQLite's connector requires the file to already exist; it never creates one.
-			touch($this->databasePath);
+			// Deliberately not created here: MigratorFactory must create it itself.
+			$this->databasePath = $this->migrationsPath . '/test.sqlite';
 		}
 
 		/**
@@ -67,6 +66,20 @@
 		public function testCreatesMigrationsTableAutomatically(): void {
 			$migrator = MigratorFactory::create($this->config());
 			$this->assertTrue($migrator->repositoryExists());
+		}
+
+		/**
+		 * Verifies the sqlite database file itself is created when missing,
+		 * since Illuminate's SQLiteConnector otherwise falls back to a
+		 * base_path() helper that doesn't exist outside full Laravel.
+		 * @return void
+		 */
+		public function testCreatesSqliteDatabaseFileWhenMissing(): void {
+			$this->assertFileDoesNotExist($this->databasePath);
+
+			MigratorFactory::create($this->config());
+
+			$this->assertFileExists($this->databasePath);
 		}
 
 		/**

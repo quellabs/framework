@@ -6,6 +6,7 @@
 	use Illuminate\Database\ConnectionInterface;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\DependencyInjection\Provider\ServiceProvider as BaseServiceProvider;
+	use Quellabs\Support\ComposerUtils;
 
 	/**
 	 * Registers a singleton Eloquent connection, bootstrapped via Illuminate's standalone Capsule manager.
@@ -36,6 +37,63 @@
 				'collation' => 'utf8mb4_unicode_ci',    // Collation
 				'prefix'    => '',                      // Table prefix
 			];
+		}
+
+		/**
+		 * Merges the given config over the driver defaults and, for sqlite,
+		 * resolves the database file to an absolute path and creates it if
+		 * missing. Illuminate's own SQLiteConnector falls back to a base_path()
+		 * helper for a relative or missing path, which only exists under the
+		 * full Laravel framework and isn't available to this standalone Capsule.
+		 * @param array<string, mixed> $config
+		 * @return array<string, mixed>
+		 */
+		public static function prepareConnectionConfig(array $config): array {
+			$connection = array_merge(self::getConnectionDefaults(), $config);
+
+			if ($connection['driver'] === 'sqlite' && is_string($connection['database'])) {
+				$connection['database'] = self::resolveSqliteDatabasePath($connection['database']);
+			}
+
+			return $connection;
+		}
+
+		/**
+		 * Resolves a sqlite database path to an absolute path relative to the
+		 * project root, creating the file (and its directory) if it doesn't
+		 * exist yet. Leaves in-memory markers untouched.
+		 * @param string $database
+		 * @return string
+		 */
+		private static function resolveSqliteDatabasePath(string $database): string {
+			if ($database === '' || $database === ':memory:' || str_contains($database, 'mode=memory')) {
+				return $database;
+			}
+
+			if (!self::isAbsolutePath($database)) {
+				$database = ComposerUtils::getProjectRoot() . '/' . $database;
+			}
+
+			if (!file_exists($database)) {
+				$directory = dirname($database);
+
+				if (!is_dir($directory)) {
+					mkdir($directory, 0777, true);
+				}
+
+				touch($database);
+			}
+
+			return $database;
+		}
+
+		/**
+		 * Determines whether a path is already absolute, on both Unix and Windows.
+		 * @param string $path
+		 * @return bool
+		 */
+		private static function isAbsolutePath(string $path): bool {
+			return $path !== '' && ($path[0] === '/' || $path[0] === '\\' || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1);
 		}
 
 		/**
@@ -80,7 +138,7 @@
 			}
 
 			$capsule = new Capsule();
-			$capsule->addConnection(array_merge(self::getConnectionDefaults(), $this->getConfig()));
+			$capsule->addConnection(self::prepareConnectionConfig($this->getConfig()));
 			$capsule->setAsGlobal();
 			$capsule->bootEloquent();
 

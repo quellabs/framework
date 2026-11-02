@@ -26,7 +26,7 @@
 		 */
 		public static function create(array $config): Migrator {
 			$capsule = new Capsule();
-			$capsule->addConnection(array_merge(ServiceProvider::getConnectionDefaults(), $config));
+			$capsule->addConnection(ServiceProvider::prepareConnectionConfig($config));
 
 			$container = $capsule->getContainer();
 			$container->instance('db', $capsule->getDatabaseManager());
