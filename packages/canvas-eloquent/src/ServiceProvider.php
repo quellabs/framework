@@ -35,7 +35,7 @@
 				'port'      => 3306,                   // Database port (3306 for MySQL)
 				'charset'   => 'utf8mb4',               // Character set
 				'collation' => 'utf8mb4_unicode_ci',    // Collation
-				'prefix'    => '',                      // Table prefix
+				'prefix'    => ''                       // Table prefix
 			];
 		}
 

@@ -13,10 +13,14 @@
 	 * to mirror the separate CLI process each Sculpt command actually runs in.
 	 */
 	class MigratorFactoryTest extends TestCase {
-		/** @var string */
+		/**
+		 * @var string
+		 */
 		private string $migrationsPath;
 
-		/** @var string */
+		/**
+		 * @var string
+		 */
 		private string $databasePath;
 
 		/**
@@ -55,7 +59,7 @@
 			return [
 				'driver'          => 'sqlite',
 				'database'        => $this->databasePath,
-				'migrations_path' => $this->migrationsPath,
+				'migrations_path' => $this->migrationsPath
 			];
 		}
 
