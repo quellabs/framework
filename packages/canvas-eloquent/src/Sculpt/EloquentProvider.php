@@ -2,6 +2,10 @@
 
 	namespace Quellabs\CanvasEloquent\Sculpt;
 
+	use Quellabs\CanvasEloquent\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\CanvasEloquent\Sculpt\Commands\MigrateCommand;
+	use Quellabs\CanvasEloquent\Sculpt\Commands\RollbackCommand;
+	use Quellabs\CanvasEloquent\Sculpt\Commands\StatusCommand;
 	use Quellabs\Sculpt\Application;
 	use Quellabs\Sculpt\ServiceProvider;
 
@@ -20,6 +24,10 @@
 		public function register(Application $application): void {
 			$this->registerCommands($application, [
 				PublishConfigCommand::class,
+				MigrateCommand::class,
+				RollbackCommand::class,
+				StatusCommand::class,
+				MakeMigrationCommand::class,
 			]);
 		}
 	}

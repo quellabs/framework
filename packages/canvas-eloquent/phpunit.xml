@@ -6,6 +6,7 @@
             <file>tests/ResolveModelServiceProviderTest.php</file>
             <file>tests/ServiceProviderTest.php</file>
             <file>tests/ModelBindingRequestDispatchTest.php</file>
+            <file>tests/Sculpt/MigratorFactoryTest.php</file>
         </testsuite>
     </testsuites>
 </phpunit>
