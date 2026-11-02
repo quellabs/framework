@@ -2,8 +2,8 @@
 
 	namespace Quellabs\CanvasDoctrine\Sculpt;
 
-	use Quellabs\CanvasDoctrine\Sculpt\Commands\DiffCommand;
-	use Quellabs\CanvasDoctrine\Sculpt\Commands\GenerateCommand;
+	use Quellabs\CanvasDoctrine\Sculpt\Commands\MakeMigrationCommand;
+	use Quellabs\CanvasDoctrine\Sculpt\Commands\MakeMigrationsCommand;
 	use Quellabs\CanvasDoctrine\Sculpt\Commands\MigrateCommand;
 	use Quellabs\CanvasDoctrine\Sculpt\Commands\StatusCommand;
 	use Quellabs\Sculpt\Application;
@@ -24,8 +24,8 @@
 				PublishConfigCommand::class,
 				MigrateCommand::class,
 				StatusCommand::class,
-				GenerateCommand::class,
-				DiffCommand::class,
+				MakeMigrationCommand::class,
+				MakeMigrationsCommand::class,
 			]);
 		}
 	}

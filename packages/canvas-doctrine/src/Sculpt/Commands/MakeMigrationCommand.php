@@ -8,13 +8,13 @@
 	/**
 	 * Generates a blank migration class in the configured migrations directory.
 	 */
-	class GenerateCommand extends AbstractMigrationsCommand {
+	class MakeMigrationCommand extends AbstractMigrationsCommand {
 		/**
 		 * Returns the command name.
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'doctrine:migrations:generate';
+			return 'doctrine:make:migration';
 		}
 
 		/**

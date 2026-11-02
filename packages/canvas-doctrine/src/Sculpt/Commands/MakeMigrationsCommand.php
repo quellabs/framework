@@ -8,13 +8,13 @@
 	/**
 	 * Generates a migration by comparing the current database schema to the mapped entities.
 	 */
-	class DiffCommand extends AbstractMigrationsCommand {
+	class MakeMigrationsCommand extends AbstractMigrationsCommand {
 		/**
 		 * Returns the command name.
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'doctrine:migrations:diff';
+			return 'doctrine:make:migrations';
 		}
 
 		/**
@@ -36,7 +36,7 @@ DESCRIPTION:
     a migration class containing the SQL needed to bring the database in line.
 
 USAGE:
-    php sculpt doctrine:migrations:diff [options]
+    php sculpt doctrine:make:migrations [options]
 
 OPTIONS:
     --allow-empty-diff      Do not fail when no schema changes are detected
