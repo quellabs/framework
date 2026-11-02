@@ -4,17 +4,21 @@
 
 	use Doctrine\Migrations\Tools\Console\Command\DiffCommand as DoctrineDiffCommand;
 	use Quellabs\Sculpt\ConfigurationManager;
+	use Quellabs\Support\OrmEngineResolver;
 
 	/**
 	 * Generates a migration by comparing the current database schema to the mapped entities.
 	 */
 	class MakeMigrationsCommand extends AbstractMigrationsCommand {
 		/**
-		 * Returns the command name.
+		 * Returns the command name: the short 'make:migrations' when Doctrine is
+		 * the only ORM installed, or the 'doctrine:' prefixed form when another
+		 * ORM's own make:migrations command would otherwise collide with it.
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'doctrine:make:migrations';
+			$prefix = OrmEngineResolver::count() > 1 ? 'doctrine:' : '';
+			return $prefix . 'make:migrations';
 		}
 
 		/**
@@ -36,7 +40,7 @@ DESCRIPTION:
     a migration class containing the SQL needed to bring the database in line.
 
 USAGE:
-    php sculpt doctrine:make:migrations [options]
+    php sculpt {$this->getSignature()} [options]
 
 OPTIONS:
     --allow-empty-diff      Do not fail when no schema changes are detected

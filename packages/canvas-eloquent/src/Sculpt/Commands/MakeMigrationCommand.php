@@ -5,19 +5,22 @@
 	use Illuminate\Database\Migrations\MigrationCreator;
 	use Illuminate\Filesystem\Filesystem;
 	use Quellabs\Sculpt\ConfigurationManager;
+	use Quellabs\Support\OrmEngineResolver;
 
 	/**
 	 * Generates a blank migration class in the configured migrations directory,
 	 * from illuminate/database's own stubs.
 	 */
 	class MakeMigrationCommand extends AbstractMigrationsCommand {
-		
 		/**
-		 * Returns the command name.
+		 * Returns the command name: the short 'make:migration' when Eloquent is
+		 * the only ORM installed, or the 'eloquent:' prefixed form when another
+		 * ORM's own make:migration command would otherwise collide with it.
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'eloquent:make:migration';
+			$prefix = OrmEngineResolver::count() > 1 ? 'eloquent:' : '';
+			return $prefix . 'make:migration';
 		}
 
 		/**
@@ -40,7 +43,7 @@ DESCRIPTION:
     Schema::create()/Schema::table() boilerplate for the given table.
 
 USAGE:
-    php sculpt eloquent:make:migration <name> [options]
+    php sculpt {$this->getSignature()} <name> [options]
 
 ARGUMENTS:
     name                    Migration name, e.g. create_posts_table

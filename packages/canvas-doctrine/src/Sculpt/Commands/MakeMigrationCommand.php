@@ -4,17 +4,21 @@
 
 	use Doctrine\Migrations\Tools\Console\Command\GenerateCommand as DoctrineGenerateCommand;
 	use Quellabs\Sculpt\ConfigurationManager;
+	use Quellabs\Support\OrmEngineResolver;
 
 	/**
 	 * Generates a blank migration class in the configured migrations directory.
 	 */
 	class MakeMigrationCommand extends AbstractMigrationsCommand {
 		/**
-		 * Returns the command name.
+		 * Returns the command name: the short 'make:migration' when Doctrine is
+		 * the only ORM installed, or the 'doctrine:' prefixed form when another
+		 * ORM's own make:migration command would otherwise collide with it.
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'doctrine:make:migration';
+			$prefix = OrmEngineResolver::count() > 1 ? 'doctrine:' : '';
+			return $prefix . 'make:migration';
 		}
 
 		/**
