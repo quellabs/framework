@@ -14,5 +14,5 @@
 		'collation'        => 'utf8mb4_unicode_ci',
 		'prefix'           => '',
 		'migrations_path'  => __DIR__ . '/../migrations',
-		'migrations_table' => 'migrations'
+		'migrations_table' => 'eloquent_migrations'
 	];

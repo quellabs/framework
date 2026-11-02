@@ -97,7 +97,7 @@
 			$migrator = MigratorFactory::create($config);
 
 			$this->assertTrue($migrator->getRepository()->getConnection()->getSchemaBuilder()->hasTable('custom_migrations'));
-			$this->assertFalse($migrator->getRepository()->getConnection()->getSchemaBuilder()->hasTable('migrations'));
+			$this->assertFalse($migrator->getRepository()->getConnection()->getSchemaBuilder()->hasTable('eloquent_migrations'));
 		}
 
 		/**

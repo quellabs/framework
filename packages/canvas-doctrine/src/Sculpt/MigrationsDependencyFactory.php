@@ -73,13 +73,16 @@
 
 		/**
 		 * Validates and returns the configured migrations tracking table
-		 * name, defaulting to doctrine/migrations' own table name.
+		 * name, defaulting to 'doctrine_migrations' rather than
+		 * doctrine/migrations' own 'doctrine_migration_versions' default,
+		 * to match the <engine>_migrations convention eloquent and
+		 * objectquel's own default tracking tables use.
 		 * @param array<string, mixed> $config
 		 * @return non-empty-string
 		 * @throws \InvalidArgumentException
 		 */
 		private static function resolveMigrationsTable(array $config): string {
-			$table = $config['migrations_table'] ?? 'doctrine_migration_versions';
+			$table = $config['migrations_table'] ?? 'doctrine_migrations';
 
 			if (!is_string($table) || $table === '') {
 				throw new \InvalidArgumentException('doctrine.migrations_table must be a non-empty string');

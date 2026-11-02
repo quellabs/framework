@@ -66,7 +66,7 @@
 		 * @throws \InvalidArgumentException
 		 */
 		private static function resolveMigrationsTable(array $config): string {
-			$table = $config['migrations_table'] ?? 'migrations';
+			$table = $config['migrations_table'] ?? 'eloquent_migrations';
 
 			if (!is_string($table) || $table === '') {
 				throw new \InvalidArgumentException('eloquent.migrations_table must be a non-empty string');

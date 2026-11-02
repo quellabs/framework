@@ -104,8 +104,8 @@
 		}
 
 		/**
-		 * Honors a custom migrations_table, instead of doctrine/migrations'
-		 * own default 'doctrine_migration_versions'.
+		 * Honors a custom migrations_table, instead of the default
+		 * 'doctrine_migrations'.
 		 * @return void
 		 */
 		public function testHonorsCustomMigrationsTableName(): void {
@@ -162,6 +162,6 @@
 
 			$tables = $statusDependencyFactory->getConnection()->createSchemaManager()->listTableNames();
 			$this->assertContains('DoctrineTestEntity', $tables);
-			$this->assertContains('doctrine_migration_versions', $tables);
+			$this->assertContains('doctrine_migrations', $tables);
 		}
 	}

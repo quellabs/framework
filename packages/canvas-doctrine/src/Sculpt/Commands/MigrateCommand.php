@@ -33,9 +33,9 @@
 			return <<<HELP
 DESCRIPTION:
     Runs migrations tracked in the configured migrations_table (default
-    doctrine_migration_versions), up to the given version (or the latest
-    one, by default). Pass a version below the current one to roll back
-    to it. Prompts for confirmation unless --force is passed.
+    doctrine_migrations), up to the given version (or the latest one, by
+    default). Pass a version below the current one to roll back to it.
+    Prompts for confirmation unless --force is passed.
 
 USAGE:
     php sculpt doctrine:migrate [version] [options]
