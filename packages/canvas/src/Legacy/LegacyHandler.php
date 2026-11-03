@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Canvas\Legacy;
 	
+	use Quellabs\Contracts\DependencyInjection\ContainerInterface;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Legacy\Resolvers\DefaultFileResolver;
@@ -32,50 +33,82 @@
 		 * @var string
 		 */
 		private string $cacheDir;
-		
+
+		/**
+		 * DI container used to autowire configured resolver classes; null falls
+		 * back to constructing them with only $legacyPath
+		 * @var ContainerInterface|null
+		 */
+		private ?ContainerInterface $container;
+
 		/**
 		 * Initialize the handler with a base legacy path.
 		 * @param string $legacyPath Base directory path for legacy files
 		 * @param bool $preprocessingEnabled
-		 * @param array<string> $excludedPaths
+		 * @param array<string> $excludedPaths Additional path segments to exclude from preprocessing; a 'vendor' segment is always excluded
+		 * @param array<class-string<FileResolverInterface>> $resolverClasses Resolver classes to instantiate with $legacyPath, tried in the given order
+		 * @param ContainerInterface|null $container Autowires each resolver's other constructor dependencies, if given
 		 */
 		public function __construct(
 			string $legacyPath = 'legacy/',
 			bool $preprocessingEnabled = true,
-			array $excludedPaths=[]
+			array $excludedPaths = [],
+			array $resolverClasses = [DefaultFileResolver::class],
+			?ContainerInterface $container = null
 		) {
 			// Store the legacy path
 			$this->legacyPath = $legacyPath;
-			
+
+			// Store the container used to autowire resolver dependencies
+			$this->container = $container;
+
 			// Store preprocessing setting
 			$this->preprocessingEnabled = $preprocessingEnabled;
-			
+
 			// Set cache directory using kernel's project root
 			$this->cacheDir = ComposerUtils::getProjectRoot() . '/storage/cache/legacy';
-			
+
 			// Create cache directory if preprocessing is enabled
 			if ($this->preprocessingEnabled && !is_dir($this->cacheDir)) {
 				mkdir($this->cacheDir, 0755, true);
 			}
-			
+
 			// Initialize the recursive legacy preprocessor
 			if ($this->preprocessingEnabled) {
 				$this->preprocessor = new RecursiveLegacyPreprocessor($this->cacheDir, $this->legacyPath, $excludedPaths);
 			}
-			
-			// Add default resolver for standard file resolution
-			$this->addResolver(new DefaultFileResolver($this->legacyPath));
+
+			// Instantiate and register each configured resolver, in order
+			foreach ($resolverClasses as $resolverClass) {
+				$this->resolvers[] = $this->instantiateResolver($resolverClass);
+			}
 		}
-		
+
 		/**
-		 * Add a file resolver to the chain of resolvers.
-		 * Resolvers are tried in the order they were added.
-		 * @param FileResolverInterface $resolver The resolver to add
-		 * @return self Fluent interface
+		 * Instantiate a resolver class, passing $legacyPath as the 'legacyPath'
+		 * constructor argument. When a container is available, any other
+		 * constructor parameter is autowired the same way Canvas autowires
+		 * controllers and aspects; without one, $legacyPath must be the only
+		 * constructor argument.
+		 * @param string $resolverClass Fully qualified class name of a FileResolverInterface implementation
+		 * @return FileResolverInterface The instantiated resolver
 		 */
-		public function addResolver(FileResolverInterface $resolver): self {
-			$this->resolvers[] = $resolver;
-			return $this;
+		private function instantiateResolver(string $resolverClass): FileResolverInterface {
+			if (!class_exists($resolverClass)) {
+				throw new \InvalidArgumentException("Legacy resolver class '{$resolverClass}' does not exist.");
+			}
+
+			if ($this->container !== null) {
+				$resolver = $this->container->make($resolverClass, ['legacyPath' => $this->legacyPath]);
+			} else {
+				$resolver = new $resolverClass($this->legacyPath);
+			}
+
+			if (!$resolver instanceof FileResolverInterface) {
+				throw new \InvalidArgumentException("Legacy resolver class '{$resolverClass}' must implement " . FileResolverInterface::class . ".");
+			}
+
+			return $resolver;
 		}
 		
 		/**

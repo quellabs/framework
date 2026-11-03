@@ -41,6 +41,14 @@ parameters:
         - packages/canvas-eloquent/src
         - packages/canvas-doctrine/src
         - packages/recommender
+    excludePaths:
+        # bind_param()'s override is flagged against mysqli_stmt's bundled
+        # signature, which wrongly omits by-ref for that parameter (verified
+        # via ReflectionMethod on PHP 8.1-8.4); PHPStan refuses to let this
+        # error category be ignored inline or via baseline. analyse-only (not
+        # analyseAndScan) keeps the class visible to the rest of the codebase.
+        analyse:
+            - packages/canvas/src/Legacy/Helpers/CanvasMysqliStatement.php
     bootstrapFiles:
         - vendor/autoload.php
     stubFiles:
