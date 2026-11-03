@@ -25,6 +25,7 @@
 		 * @param ModelBindingPost $post
 		 * @return Response
 		 */
+		#[Route("/model-binding-posts/{post}", methods: ["GET"])]
 		public function show(ModelBindingPost $post): Response {
 			return new Response($post->title);
 		}
@@ -36,6 +37,7 @@
 		 * @param ModelBindingPost|null $post
 		 * @return Response
 		 */
+		#[Route("/model-binding-posts-optional/{post}", methods: ["GET"])]
 		public function showOptional(?ModelBindingPost $post): Response {
 			return new Response($post === null ? 'not-found' : $post->title);
 		}
@@ -49,6 +51,8 @@
 		 * @param ModelBindingPost $post
 		 * @return Response
 		 */
+		#[Route("/model-binding-posts-named/{postId}", methods: ["GET"])]
+		#[ResolveModel(parameter: "post", routeParam: "postId")]
 		public function showByAnnotation(ModelBindingPost $post): Response {
 			return new Response($post->title);
 		}
