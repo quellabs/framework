@@ -22,14 +22,20 @@
 		 * @return void
 		 */
 		protected function tearDown(): void {
-			foreach (glob($this->directory . '/cache/*') ?: [] as $file) {
-				unlink($file);
+			$this->removeDirectory($this->directory);
+		}
+
+		/**
+		 * Recursively removes a directory and its contents.
+		 * @param string $directory Directory to remove
+		 * @return void
+		 */
+		private function removeDirectory(string $directory): void {
+			foreach (glob($directory . '/*') ?: [] as $path) {
+				is_dir($path) ? $this->removeDirectory($path) : unlink($path);
 			}
-			foreach (glob($this->directory . '/*.php') ?: [] as $file) {
-				unlink($file);
-			}
-			rmdir($this->directory . '/cache');
-			rmdir($this->directory);
+
+			rmdir($directory);
 		}
 
 		/**
@@ -60,5 +66,56 @@
 			$this->assertStringContainsString('second', file_get_contents($processor->processFileRecursively($child)));
 			$this->assertGreaterThan(0, $processor->clearCache());
 			$this->assertFileDoesNotExist($cachedParent . '.json');
+		}
+
+		/**
+		 * A file under a vendor/ segment is returned unmodified, with nothing written to cache.
+		 * @return void
+		 */
+		public function testVendorPathIsExcludedByDefault(): void {
+			mkdir($this->directory . '/vendor/phpmailer', 0777, true);
+			$vendorFile = $this->directory . '/vendor/phpmailer/class.phpmailer.php';
+			file_put_contents($vendorFile, '<?php exit(1);');
+
+			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache');
+			$result = $processor->processFileRecursively($vendorFile);
+
+			$this->assertSame(realpath($vendorFile), $result);
+			$this->assertSame([], glob($this->directory . '/cache/*.php'));
+		}
+
+		/**
+		 * An include that resolves into vendor/ is left untouched even though its parent is preprocessed.
+		 * @return void
+		 */
+		public function testIncludedVendorFileIsExcludedWhileParentIsProcessed(): void {
+			mkdir($this->directory . '/vendor/phpmailer', 0777, true);
+			$vendorFile = $this->directory . '/vendor/phpmailer/class.phpmailer.php';
+			$parent = $this->directory . '/parent.php';
+			file_put_contents($vendorFile, '<?php echo "mailer";');
+			file_put_contents($parent, "<?php require '" . $vendorFile . "';");
+
+			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache');
+			$cachedParent = $processor->processFileRecursively($parent);
+
+			// The rewritten include still points at the original vendor file (its
+			// basename, now relative), never at a preprocessed copy in the cache dir
+			$this->assertStringContainsString('phpmailer/class.phpmailer.php', str_replace('\\', '/', file_get_contents($cachedParent)));
+			$this->assertSame([], glob($this->directory . '/cache/*phpmailer*'));
+		}
+
+		/**
+		 * Excluding 'lib' must not also match an unrelated file whose name merely contains "lib".
+		 * @return void
+		 */
+		public function testExclusionMatchesWholePathSegmentsOnly(): void {
+			$file = $this->directory . '/calibrate.php';
+			file_put_contents($file, '<?php echo "calibrate";');
+
+			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache', 'legacy/', ['lib']);
+			$result = $processor->processFileRecursively($file);
+
+			$this->assertNotSame(realpath($file), $result);
+			$this->assertFileExists($result);
 		}
 	}
