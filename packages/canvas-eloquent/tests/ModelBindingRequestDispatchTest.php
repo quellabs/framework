@@ -104,7 +104,7 @@
 			$urlData = [
 				'controller' => ModelBindingPostController::class,
 				'method'     => $method,
-				'variables'  => $variables,
+				'variables'  => $variables
 			];
 
 			$handler = new RequestHandler($kernel);
@@ -118,6 +118,10 @@
 			}
 		}
 
+		/**
+		 * A required model parameter resolves to the matching row when one exists.
+		 * @return void
+		 */
 		public function testRequiredParameterResolvesTheModelWhenARowExists(): void {
 			$kernel = $this->makeKernel([['id' => 1, 'title' => 'Hello World']]);
 
@@ -127,6 +131,10 @@
 			$this->assertSame('Hello World', $response->getContent());
 		}
 
+		/**
+		 * A required model parameter produces a 404 Response when no row matches.
+		 * @return void
+		 */
 		public function testRequiredParameterProducesA404WhenNoRowExists(): void {
 			$kernel = $this->makeKernel([]);
 
@@ -135,6 +143,11 @@
 			$this->assertSame(404, $response->getStatusCode());
 		}
 
+		/**
+		 * A missing route key is a binding/configuration mistake, not a
+		 * missing row, so it must produce a 500 rather than a 404.
+		 * @return void
+		 */
 		public function testMissingRouteKeyProducesA500NotA404(): void {
 			$kernel = $this->makeKernel([['id' => 1, 'title' => 'Hello World']]);
 
@@ -146,6 +159,10 @@
 			$this->assertSame(500, $response->getStatusCode());
 		}
 
+		/**
+		 * A nullable model parameter resolves to the matching row when one exists.
+		 * @return void
+		 */
 		public function testNullableParameterResolvesTheModelWhenARowExists(): void {
 			$kernel = $this->makeKernel([['id' => 1, 'title' => 'Hello World']]);
 
@@ -155,6 +172,11 @@
 			$this->assertSame('Hello World', $response->getContent());
 		}
 
+		/**
+		 * A nullable model parameter receives null, with a normal 200
+		 * response, when no row matches.
+		 * @return void
+		 */
 		public function testNullableParameterReceivesNullWhenNoRowExists(): void {
 			$kernel = $this->makeKernel([]);
 
@@ -164,6 +186,11 @@
 			$this->assertSame('not-found', $response->getContent());
 		}
 
+		/**
+		 * An explicit @ResolveModel annotation binds a route parameter
+		 * whose name differs from the controller parameter's own name.
+		 * @return void
+		 */
 		public function testResolveModelAnnotationBindsARouteParameterWithADifferentName(): void {
 			$kernel = $this->makeKernel([['id' => 1, 'title' => 'Hello World']]);
 

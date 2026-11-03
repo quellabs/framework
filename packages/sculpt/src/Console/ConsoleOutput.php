@@ -220,22 +220,22 @@
 		}
 		
 		/**
-		 * Format a string by replacing style tags with ANSI codes
+		 * Format a string by replacing recognized style tags with ANSI codes,
+		 * or stripping them when colors aren't supported. Only tag names
+		 * matching $styles are touched, so a command's own unrelated
+		 * <placeholder> text (e.g. help/usage strings) is left untouched.
 		 * @param string $text Text with style tags
-		 * @return string Formatted text with ANSI codes
+		 * @return string Formatted text
 		 */
 		protected function format(string $text): string {
-			// Skip formatting if colors are not supported
-			if (!$this->supportsColors()) {
-				return (string)preg_replace('/<[^>]+>/', '', $text);
-			}
-			
-			// Replace opening style tags with ANSI codes
+			$supportsColors = $this->supportsColors();
+
+			// Replace opening style tags with their ANSI code, or remove them
 			foreach ($this->styles as $style => $code) {
-				$text = str_replace("<{$style}>", $code, $text);
+				$text = str_replace("<{$style}>", $supportsColors ? $code : '', $text);
 			}
-			
-			// Replace all closing tags with reset code
-			return (string)preg_replace('/<\/[^>]+>/', $this->styles['reset'], $text);
+
+			// Replace closing style tags with the reset code, or remove them
+			return (string)preg_replace('/<\/[^>]+>/', $supportsColors ? $this->styles['reset'] : '', $text);
 		}
 	}

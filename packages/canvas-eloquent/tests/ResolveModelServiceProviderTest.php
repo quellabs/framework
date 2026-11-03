@@ -23,13 +23,19 @@
 	 */
 	class ResolveModelFixturePost extends Model {
 
-		/** @var string */
+		/**
+		 * @var string
+		 */
 		protected $table = 'resolve_model_fixture_posts';
 
-		/** @var array<int, string> */
+		/**
+		 * @var array<int, string>
+		 */
 		protected $fillable = ['id', 'title'];
 
-		/** @var bool */
+		/**
+		 * @var bool
+		 */
 		public $timestamps = false;
 	}
 
@@ -130,6 +136,10 @@
 		// No method context
 		// =========================================================================
 
+		/**
+		 * Returns null when there is no method context to resolve against.
+		 * @return void
+		 */
 		public function testReturnsNullWhenMethodContextIsNull(): void {
 			$provider = $this->makeProvider();
 
@@ -140,6 +150,11 @@
 		// Implicit binding by parameter name
 		// =========================================================================
 
+		/**
+		 * Binds implicitly by the parameter's own name when no @ResolveModel
+		 * annotation targets it.
+		 * @return void
+		 */
 		public function testResolvesByParameterNameWhenNoAnnotationPresent(): void {
 			$provider = $this->makeProvider();
 			ResolveModelFixturePost::create(['id' => 1, 'title' => 'Hello World']);
@@ -151,6 +166,11 @@
 			$this->assertSame('Hello World', $model->title);
 		}
 
+		/**
+		 * Returns null, without touching the container, when the method
+		 * context has no parameter name to resolve.
+		 * @return void
+		 */
 		public function testReturnsNullWhenParameterNameCannotBeDetermined(): void {
 			$container = $this->createMock(ContainerInterface::class);
 			$container->expects($this->never())->method('get');
@@ -160,6 +180,11 @@
 			$this->assertNull($provider->createInstance(ResolveModelFixturePost::class, [], [], $context));
 		}
 
+		/**
+		 * Throws ModelBindingException when the route has no value for the
+		 * bound key.
+		 * @return void
+		 */
 		public function testThrowsBindingExceptionWhenRouteArgumentIsMissing(): void {
 			$provider = $this->makeProvider();
 			$context = $this->makeContext('post', ['id' => 1]);
@@ -169,6 +194,11 @@
 			$provider->createInstance(ResolveModelFixturePost::class, [], [], $context);
 		}
 
+		/**
+		 * Throws ModelBindingException for a route value shape this provider
+		 * doesn't support, such as a composite-key array.
+		 * @return void
+		 */
 		public function testThrowsBindingExceptionWhenRouteArgumentIsNotStringOrInt(): void {
 			$provider = $this->makeProvider();
 			$context = $this->makeContext('post', ['post' => ['not' => 'scalar']]);
@@ -182,6 +212,10 @@
 		// Valid lookup, no row — the only case that throws ResolutionNotFoundException
 		// =========================================================================
 
+		/**
+		 * Throws ResolutionNotFoundException for a valid lookup that matches no row.
+		 * @return void
+		 */
 		public function testThrowsResolutionNotFoundWhenLookupFindsNoRow(): void {
 			$provider = $this->makeProvider();
 			$context = $this->makeContext('post', ['post' => 999]);
@@ -194,6 +228,11 @@
 		// @ResolveModel override
 		// =========================================================================
 
+		/**
+		 * A @ResolveModel annotation targeting the parameter overrides
+		 * implicit binding by the parameter's own name.
+		 * @return void
+		 */
 		public function testAnnotationOverridesImplicitParameterNameBinding(): void {
 			$annotation = new ResolveModel(parameter: 'post', routeParam: 'postId');
 			$provider = $this->makeProvider([$annotation]);
@@ -205,6 +244,11 @@
 			$this->assertSame('Hello World', $model->title);
 		}
 
+		/**
+		 * A @ResolveModel annotation targeting a different parameter is
+		 * ignored, leaving implicit binding in effect.
+		 * @return void
+		 */
 		public function testAnnotationTargetingADifferentParameterIsIgnored(): void {
 			$annotation = new ResolveModel(parameter: 'category', routeParam: 'categoryId');
 			$provider = $this->makeProvider([$annotation]);
@@ -216,6 +260,11 @@
 			$this->assertSame('Hello World', $model->title);
 		}
 
+		/**
+		 * Multiple @ResolveModel annotations each map their own parameter
+		 * to its own route key without interfering with one another.
+		 * @return void
+		 */
 		public function testMultipleAnnotationsDisambiguateMultipleParameters(): void {
 			$annotations = [
 				new ResolveModel(parameter: 'post', routeParam: 'postId'),

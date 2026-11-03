@@ -9,12 +9,18 @@
 	 */
 	class ModelBindingPost extends Model {
 
-		/** @var string */
+		/**
+		 * @var string
+		 */
 		protected $table = 'model_binding_test_posts';
 
-		/** @var array<int, string> */
+		/**
+		 * @var array<int, string>
+		 */
 		protected $fillable = ['id', 'title'];
 
-		/** @var bool */
+		/**
+		 * @var bool
+		 */
 		public $timestamps = false;
 	}

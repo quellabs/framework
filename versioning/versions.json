@@ -3,9 +3,9 @@
   "cache": "1.0.5",
   "canvas": "1.27.1",
   "canvas-blade": "1.1.1",
-  "canvas-eloquent": "1.1.0",
   "canvas-database": "1.0.2",
-  "canvas-doctrine": "1.1.0",
+  "canvas-doctrine": "1.2.0",
+  "canvas-eloquent": "1.2.0",
   "canvas-handlebars": "1.1.1",
   "canvas-latte": "1.1.1",
   "canvas-loom": "1.0.3",
@@ -39,9 +39,9 @@
   "contracts": "1.5.0",
   "dependency-injection": "1.5.0",
   "discover": "1.1.1",
-  "objectquel": "2.19.0",
+  "objectquel": "2.20.0",
   "recommender": "1.1.0",
-  "sculpt": "1.0.31",
+  "sculpt": "1.1.0",
   "signal-hub": "1.1.1",
-  "support": "1.3.0"
+  "support": "1.4.0"
 }
