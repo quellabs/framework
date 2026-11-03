@@ -62,96 +62,10 @@
 		}
 	}
 	
-	if (!class_exists('CanvasMysqliStatement')) {
-		/**
-		 * Wrapper class for mysqli_stmt that monitors execute() calls
-		 */
-		class CanvasMysqliStatement {
-			/** @var mysqli_stmt MySQL statement */
-			private mysqli_stmt $statement;
-			
-			/** @var string The query to execute */
-			private string $query;
-			
-			/** @var array<int, mixed> */
-			private array $boundParams = [];
-			
-			/**
-			 * Constructor
-			 * @param mysqli_stmt $statement
-			 * @param string $query
-			 */
-			public function __construct(mysqli_stmt $statement, string $query) {
-				$this->statement = $statement;
-				$this->query = $query;
-			}
-			
-			/**
-			 * Monitored bind_param method - captures parameters for logging
-			 * @param string $types Parameter types
-			 * @param mixed ...$vars Variables to bind
-			 * @return bool Success status
-			 */
-			public function bind_param(string $types, &...$vars): bool {
-				// Store bound parameters for logging (by value to avoid reference issues)
-				$this->boundParams = [];
-				foreach ($vars as $var) {
-					$this->boundParams[] = $var;
-				}
-				
-				// Call original bind_param
-				return $this->statement->bind_param($types, ...$vars);
-			}
-			
-			/**
-			 * Monitored execute method
-			 * @return bool Success status
-			 */
-			public function execute(): bool {
-				// Fetch Signal
-				$signal = canvas_fetch_debug_signal();
-				
-				// Record query start time for performance monitoring
-				$startTime = microtime(true);
-				
-				// Execute the actual query
-				$result = $this->statement->execute();
-				
-				// Calculate execution time
-				$executionTime = round((microtime(true) - $startTime) * 1000);
-				
-				// Log query information for inspector
-				$signal->emit([
-					'driver'            => 'mysqli_prepared',
-					'query'             => $this->query,
-					'bound_parameters'  => $this->boundParams,
-					'execution_time_ms' => $executionTime,
-					'timestamp'         => date('Y-m-d H:i:s'),
-					'memory_usage_kb'   => memory_get_usage(true) / 1024,
-					'peak_memory_kb'    => memory_get_peak_usage(true) / 1024,
-				]);
-				
-				return $result;
-			}
-			
-			/**
-			 * Forward all other mysqli methods
-			 * @param array<int, mixed> $args
-			 * @return mixed
-			 */
-			public function __call(string $method, array $args): mixed {
-				return $this->statement->$method(...$args);
-			}
-			
-			public function __get(string $name): mixed {
-				return $this->statement->$name;
-			}
-			
-			public function __set(string $name, mixed $value): void {
-				$this->statement->$name = $value;
-			}
-		}
-	}
+	// Its own file so phpstan.neon's excludePaths can scope around
+	// bind_param()'s unavoidable, PHPStan-unignorable false positive
+	// (see that class's docblock) without losing analysis of this file.
+	require_once __DIR__ . '/CanvasMysqliStatement.php';
 	
 	if (!function_exists('canvas_mysqli_query')) {
 		/**
@@ -192,182 +106,28 @@
 	
 	if (!function_exists('canvas_mysqli_prepare')) {
 		/**
-		 * Monitored version of mysqli_prepare that returns a wrapped statement
+		 * Monitored version of mysqli_prepare that returns a real mysqli_stmt subclass
 		 * @param mysqli $connection The MySQL connection
 		 * @param string $query The SQL query to prepare
-		 * @return CanvasMysqliStatement|false Wrapped statement or false on failure
+		 * @return CanvasMysqliStatement|false Prepared statement or false on failure
 		 */
 		function canvas_mysqli_prepare(mysqli $connection, string $query): CanvasMysqliStatement|false {
-			$statement = mysqli_prepare($connection, $query);
-			
-			if ($statement === false) {
+			// Constructed without a query, same as mysqli_stmt_init() - preparing
+			// happens in the prepare() call below so failure can return false,
+			// which the constructor itself is not able to do
+			$statement = new CanvasMysqliStatement($connection);
+
+			if (!$statement->prepare($query)) {
 				return false;
 			}
-			
-			return new CanvasMysqliStatement($statement, $query);
+
+			return $statement;
 		}
 	}
 	
-	if (!class_exists('CanvasPDOStatement')) {
-		/**
-		 * Wrapper class for PDOStatement that monitors execute() calls
-		 */
-		class CanvasPDOStatement {
-			private PDOStatement $statement;
-			private string $query;
-			
-			public function __construct(PDOStatement $statement, string $query) {
-				$this->statement = $statement;
-				$this->query = $query;
-			}
-			
-			/**
-			 * Monitored execute method
-			 * @param array<int|string, mixed>|null $params Parameters to bind
-			 * @return bool Success status
-			 */
-			public function execute(?array $params = null): bool {
-				// Fetch Signal
-				$signal = canvas_fetch_debug_signal();
-				
-				// Record query start time for performance monitoring
-				$startTime = microtime(true);
-				
-				// Execute the actual query
-				$result = $this->statement->execute($params);
-				
-				// Calculate execution time
-				$executionTime = round((microtime(true) - $startTime) * 1000);
-				
-				// Log query information for inspector
-				$signal->emit([
-					'driver'            => 'pdo_prepared',
-					'query'             => $this->query,
-					'bound_parameters'  => $params ?? [],
-					'execution_time_ms' => $executionTime,
-					'timestamp'         => date('Y-m-d H:i:s'),
-					'memory_usage_kb'   => memory_get_usage(true) / 1024,
-					'peak_memory_kb'    => memory_get_peak_usage(true) / 1024,
-				]);
-				
-				return $result;
-			}
-			
-			/**
-			 * @param array<int, mixed> $args
-			 * @return mixed
-			 */
-			public function __call(string $method, array $args): mixed {
-				return $this->statement->$method(...$args);
-			}
-			
-			public function __get(string $name): mixed {
-				return $this->statement->$name;
-			}
-			
-			public function __set(string $name, mixed $value): void {
-				$this->statement->$name = $value;
-			}
-		}
-	}
-	
-	if (!class_exists('CanvasPDO')) {
-		/**
-		 * Wrapper class for PDO that monitors all query operations
-		 * Uses composition instead of inheritance because PDO requires constructor params
-		 */
-		class CanvasPDO {
-			private PDO $pdo;
-			
-			public function __construct(PDO $pdo) {
-				$this->pdo = $pdo;
-			}
-			
-			/**
-			 * Monitored query method
-			 */
-			public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false {
-				$signal = canvas_fetch_debug_signal();
-				$startTime = microtime(true);
-				
-				if ($fetchMode === null) {
-					$result = $this->pdo->query($query);
-				} else {
-					$result = $this->pdo->query($query, $fetchMode, ...$fetchModeArgs);
-				}
-				
-				$executionTime = round((microtime(true) - $startTime) * 1000);
-				
-				$signal->emit([
-					'driver'            => 'pdo',
-					'query'             => $query,
-					'bound_parameters'  => [],
-					'execution_time_ms' => $executionTime,
-					'timestamp'         => date('Y-m-d H:i:s'),
-					'memory_usage_kb'   => memory_get_usage(true) / 1024,
-					'peak_memory_kb'    => memory_get_peak_usage(true) / 1024,
-				]);
-				
-				return $result;
-			}
-			
-			/**
-			 * Monitored prepare method
-			 * @param array<int|string, mixed> $options
-			 */
-			public function prepare(string $query, array $options = []): CanvasPDOStatement|false {
-				$statement = $this->pdo->prepare($query, $options);
-				
-				if ($statement === false) {
-					return false;
-				}
-				
-				return new CanvasPDOStatement($statement, $query);
-			}
-			
-			/**
-			 * Monitored exec method
-			 */
-			public function exec(string $statement): int|false {
-				$signal = canvas_fetch_debug_signal();
-				$startTime = microtime(true);
-				
-				$result = $this->pdo->exec($statement);
-				
-				$executionTime = round((microtime(true) - $startTime) * 1000);
-				
-				$signal->emit([
-					'driver'            => 'pdo',
-					'query'             => $statement,
-					'bound_parameters'  => [],
-					'execution_time_ms' => $executionTime,
-					'timestamp'         => date('Y-m-d H:i:s'),
-					'memory_usage_kb'   => memory_get_usage(true) / 1024,
-					'peak_memory_kb'    => memory_get_peak_usage(true) / 1024,
-				]);
-				
-				return $result;
-			}
-			
-			/**
-			 * Forward all other PDO methods
-			 * @param array<int, mixed> $args
-			 * @return mixed
-			 */
-			public function __call(string $method, array $args): mixed {
-				return $this->pdo->$method(...$args);
-			}
-			
-			public function __get(string $name): mixed {
-				return $this->pdo->$name;
-			}
-			
-			public function __set(string $name, mixed $value): void {
-				$this->pdo->$name = $value;
-			}
-		}
-	}
-	
+	require_once __DIR__ . '/CanvasPDOStatement.php';
+	require_once __DIR__ . '/CanvasPDO.php';
+
 	if (!function_exists('canvas_create_pdo')) {
 		/**
 		 * Creates a monitored PDO instance that automatically logs all queries
@@ -383,7 +143,6 @@
 			?string $password = null,
 			?array  $options = null
 		): CanvasPDO {
-			$pdo = new PDO($dsn, $username, $password, $options);
-			return new CanvasPDO($pdo);
+			return new CanvasPDO($dsn, $username, $password, $options);
 		}
 	}
