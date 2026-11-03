@@ -73,8 +73,8 @@
 		 * @return void
 		 */
 		public function testVendorPathIsExcludedByDefault(): void {
-			mkdir($this->directory . '/vendor/phpmailer', 0777, true);
-			$vendorFile = $this->directory . '/vendor/phpmailer/class.phpmailer.php';
+			mkdir($this->directory . '/vendor/acme-lib', 0777, true);
+			$vendorFile = $this->directory . '/vendor/acme-lib/library.php';
 			file_put_contents($vendorFile, '<?php exit(1);');
 
 			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache');
@@ -89,10 +89,10 @@
 		 * @return void
 		 */
 		public function testIncludedVendorFileIsExcludedWhileParentIsProcessed(): void {
-			mkdir($this->directory . '/vendor/phpmailer', 0777, true);
-			$vendorFile = $this->directory . '/vendor/phpmailer/class.phpmailer.php';
+			mkdir($this->directory . '/vendor/acme-lib', 0777, true);
+			$vendorFile = $this->directory . '/vendor/acme-lib/library.php';
 			$parent = $this->directory . '/parent.php';
-			file_put_contents($vendorFile, '<?php echo "mailer";');
+			file_put_contents($vendorFile, '<?php echo "library";');
 			file_put_contents($parent, "<?php require '" . $vendorFile . "';");
 
 			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache');
@@ -100,8 +100,8 @@
 
 			// The rewritten include still points at the original vendor file (its
 			// basename, now relative), never at a preprocessed copy in the cache dir
-			$this->assertStringContainsString('phpmailer/class.phpmailer.php', str_replace('\\', '/', file_get_contents($cachedParent)));
-			$this->assertSame([], glob($this->directory . '/cache/*phpmailer*'));
+			$this->assertStringContainsString('acme-lib/library.php', str_replace('\\', '/', file_get_contents($cachedParent)));
+			$this->assertSame([], glob($this->directory . '/cache/*library*'));
 		}
 
 		/**
