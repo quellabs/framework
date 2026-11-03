@@ -13,15 +13,15 @@
 	use RuntimeException;
 
 	/**
-	 * Isolates a real-world failure of `sculpt make:migrations`: it crashed
+	 * Covers a real-world failure of `sculpt make:migrations`: it crashed
 	 * outright against a SQLite table containing a `DATETIME_TEXT` column —
 	 * a declared type never produced by this ORM's own DDL layer, meaning
 	 * the table predates (or was never created through) sculpt's migration
 	 * tooling, which is common for a project whose schema was set up by hand
 	 * before adopting it.
 	 *
-	 * Three layers, narrowest first, to separate what's working as designed
-	 * from what's an actual gap:
+	 * Three layers, narrowest first, separating what was already working as
+	 * designed from what needed fixing:
 	 *
 	 *  1. TypeMapper::sqliteType() rejects the type — and is DOCUMENTED to:
 	 *     "Only needs to reverse the fixed set DDLTypeMapper::
@@ -29,21 +29,21 @@
 	 *     general-purpose type-affinity system." Confirmed against the
 	 *     forward mapper (sqliteSqlColumnType(), tested indirectly via
 	 *     TypeMapperTest) that 'DATETIME_TEXT' is never emitted for any
-	 *     abstract type — this isn't a logic bug, it's correctly scoped.
+	 *     abstract type — this isn't a logic bug, it's correctly scoped,
+	 *     and was left unchanged.
 	 *
-	 *  2. SqliteSchemaIntrospector::getColumns() surfaces that same
-	 *     rejection while reading a real table — expected, given (1).
+	 *  2. SqliteSchemaIntrospector::getColumns() now wraps that rejection
+	 *     with which column it came from before letting it propagate — it
+	 *     has $row['name'] in scope right at the point TypeMapper rejects
+	 *     $row['type'], which the original exception alone can't carry.
 	 *
 	 *  3. EntitySchemaAnalyzer::analyzeEntityChanges() is the actual
 	 *     user-facing entry point (what `sculpt make:migrations` calls).
-	 *     ITS catch block wraps every exception from the per-entity loop
-	 *     into one generic "Schema analysis failed: ..." message — even
-	 *     though $tableName/$className are in scope at the point the
-	 *     original exception was thrown, that context never reaches the
-	 *     final message. This is the actual gap worth fixing: a developer
-	 *     hunting this down in a schema with more than a couple of tables
-	 *     gets a type name and nothing telling them which table or column
-	 *     it came from, and the whole batch aborts with no partial result.
+	 *     Its per-entity loop now wraps a failure with which entity/table
+	 *     it came from, rather than letting one outer catch around the
+	 *     whole loop fold every failure into a single generic "Schema
+	 *     analysis failed: ..." message with no indication of which
+	 *     table triggered it.
 	 */
 	class EntitySchemaAnalyzerUnrecognizedColumnTypeTest extends TestCase {
 		use FkTestSupport;
@@ -73,9 +73,9 @@
 		 * SQL, never through this ORM's DDL layer, which is why `migrations/`
 		 * is empty for that project: the schema predates adopting sculpt's
 		 * migration tooling). Confirms the rejection surfaces during a real
-		 * introspection call, not just the isolated mapper call above.
+		 * introspection call, and now names the column it came from.
 		 */
-		public function testIntrospectorThrowsOnRealTableWithUnrecognizedColumnType(): void {
+		public function testIntrospectorNamesTheColumnWithTheUnrecognizedType(): void {
 			$this->adapter->execute(
 				'CREATE TABLE unrecognized_column_type_fixture (' .
 				'id INTEGER PRIMARY KEY, ' .
@@ -84,20 +84,19 @@
 			);
 
 			$this->expectException(RuntimeException::class);
-			$this->expectExceptionMessage("Unrecognized SQLite column type 'DATETIME_TEXT'");
+			$this->expectExceptionMessage("Column 'unrecognized_column_type_fixture.created_at': Unrecognized SQLite column type 'DATETIME_TEXT'");
 
 			(new SqliteSchemaIntrospector($this->adapter))->getColumns('unrecognized_column_type_fixture');
 		}
 
 		/**
-		 * Layer 3 — the actual `sculpt make:migrations` entry point. Proves
-		 * the gap: the final exception message names the unrecognized type
-		 * but neither the table nor the column it came from, even though
-		 * EntitySchemaAnalyzer::compareSchemas() has both in scope at the
-		 * point the original exception is thrown — analyzeEntityChanges()'s
-		 * catch-all just discards that context on the way out.
+		 * Layer 3 — the actual `sculpt make:migrations` entry point. The
+		 * final exception now names the entity/table it came from, since
+		 * analyzeEntityChanges()'s per-entity loop wraps a failure with
+		 * that context before it propagates, rather than one outer catch
+		 * around the whole loop discarding which iteration failed.
 		 */
-		public function testAnalyzerErrorDropsWhichTableAndColumnFailed(): void {
+		public function testAnalyzerErrorNamesTheEntityAndTableThatFailed(): void {
 			$this->adapter->execute(
 				'CREATE TABLE unrecognized_column_type_fixture (' .
 				'id INTEGER PRIMARY KEY, ' .
@@ -114,9 +113,10 @@
 				]);
 				self::fail('Expected a RuntimeException to be thrown.');
 			} catch (RuntimeException $e) {
+				self::assertStringContainsString(UnrecognizedColumnTypeEntity::class, $e->getMessage());
+				self::assertStringContainsString('unrecognized_column_type_fixture', $e->getMessage());
+				self::assertStringContainsString('created_at', $e->getMessage());
 				self::assertStringContainsString("Unrecognized SQLite column type 'DATETIME_TEXT'", $e->getMessage());
-				self::assertStringNotContainsString('unrecognized_column_type_fixture', $e->getMessage());
-				self::assertStringNotContainsString('created_at', $e->getMessage());
 			}
 		}
 	}
