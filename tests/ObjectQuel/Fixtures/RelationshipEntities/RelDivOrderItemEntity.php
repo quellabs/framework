@@ -11,26 +11,32 @@
 	 * Matching row of the relational-division fixtures: one product on an order.
 	 * @Orm\Table(name="rel_div_order_items")
 	 */
+	#[Table(name: "rel_div_order_items")]
 	class RelDivOrderItemEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelDivOrderEntity::class, localColumn="orderId")
 		 */
+		#[ManyToOne(targetEntity: RelDivOrderEntity::class, localColumn: "orderId")]
 		public ?RelDivOrderEntity $order = null;
 
 		/**
 		 * @Orm\Column(name="order_id", type="integer")
 		 */
+		#[Column(name: "order_id", type: "integer")]
 		protected ?int $orderId = null;
 
 		/**
 		 * @Orm\Column(name="product_id", type="integer")
 		 */
+		#[Column(name: "product_id", type: "integer")]
 		protected ?int $productId = null;
 
 		/**

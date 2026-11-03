@@ -1,8 +1,10 @@
 <?php
 	
 	namespace App\Controllers;
-	
+
 	use App\Entities\PostEntity;
+	use App\Models\Post;
+	use Illuminate\Database\ConnectionInterface;
 	use Psr\Log\LoggerInterface;
 	use Quellabs\SignalHub\Slot;
 	use App\Entities\TestEntity;
@@ -32,6 +34,9 @@
 		 * @throws TemplateRenderException
 		 * @throws OrmException
 		 */
+		#[Route("/posts/")]
+		#[WithContext(parameter: "engine", context: "blade")]
+		#[InterceptWith(TrackingParamsAspect::class)]
 		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 
@@ -48,6 +53,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
+		#[Route("/posts/{id:int}")]
 		public function show(?PostEntity $id): Response {
 			if (!$id) {
 				return $this->notFound('Post does not exist.');
@@ -56,5 +62,40 @@
 			return $this->render("blog/show.tpl", [
 				'post' => $id
 			]);
+		}
+
+		/**
+		 * Reads published posts straight through Eloquent's query builder,
+		 * bypassing ObjectQuel entirely, to verify the canvas-eloquent
+		 * integration against the same 'posts' table.
+		 * @Route("/posts/eloquent-test")
+		 * @param ConnectionInterface $db
+		 * @return Response
+		 */
+		#[Route("/posts/eloquent-test")]
+		public function eloquentTest(ConnectionInterface $db): Response {
+			$posts = $db
+				->table('posts')
+				->where('published', true)
+				->orderBy('id')
+				->get(['id', 'title', 'published'])
+				->toArray();
+
+			return $this->json(['posts' => $posts]);
+		}
+
+		/**
+		 * Queries a plain Eloquent model with no ConnectionInterface involved, to prove canvas-eloquent's eager boot.
+		 * @Route("/posts/eloquent-model-test")
+		 * @return Response
+		 */
+		#[Route("/posts/eloquent-model-test")]
+		public function eloquentModelTest(): Response {
+			$posts = Post::where('published', true)
+				->orderBy('id')
+				->get(['id', 'title', 'published'])
+				->toArray();
+
+			return $this->json(['posts' => $posts]);
 		}
 	}

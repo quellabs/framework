@@ -18,5 +18,7 @@
 	 * @Orm\Table(name="sti_vehicles")
 	 * @Orm\DiscriminatorValue(value="car")
 	 */
+	#[Table(name: "sti_vehicles")]
+	#[DiscriminatorValue(value: "car")]
 	class CarEntity extends VehicleEntity {
 	}

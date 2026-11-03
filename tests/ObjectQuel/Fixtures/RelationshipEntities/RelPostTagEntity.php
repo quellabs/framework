@@ -12,37 +12,46 @@
 	 * A many-to-many between RelPostEntity and RelTagEntity, modeled as a real
 	 * entity holding two ordinary ManyToOne relations, one to each side.
 	 *
-	 * @Orm\EntityBridge lets QueryBuilder eager-join one hop further through this
-	 * entity's own relations when it's joined in as a dependent (see
-	 * RelPostEntity::$postTags) — without it, $tag resolves lazily per row.
+	 * The EntityBridge annotation below lets QueryBuilder eager-join one hop
+	 * further through this entity's own relations when it's joined in as a
+	 * dependent (see RelPostEntity::$postTags) — without it, $tag resolves
+	 * lazily per row.
 	 * @Orm\Table(name="rel_post_tags")
 	 * @Orm\EntityBridge
 	 */
+	#[Table(name: "rel_post_tags")]
+	#[EntityBridge]
 	class RelPostTagEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelPostEntity::class, localColumn="postId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelPostEntity::class, localColumn: "postId", fetch: "EAGER")]
 		public ?RelPostEntity $post = null;
 
 		/**
 		 * @Orm\Column(name="post_id", type="integer")
 		 */
+		#[Column(name: "post_id", type: "integer")]
 		protected ?int $postId = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelTagEntity::class, localColumn="tagId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelTagEntity::class, localColumn: "tagId", fetch: "EAGER")]
 		public ?RelTagEntity $tag = null;
 
 		/**
 		 * @Orm\Column(name="tag_id", type="integer")
 		 */
+		#[Column(name: "tag_id", type: "integer")]
 		protected ?int $tagId = null;
 
 		/**
@@ -50,11 +59,13 @@
 		 * bridge relation that isn't eager, leaving it to resolve via the normal proxy.
 		 * @Orm\ManyToOne(targetEntity=RelCategoryEntity::class, localColumn="categoryId", fetch="LAZY")
 		 */
+		#[ManyToOne(targetEntity: RelCategoryEntity::class, localColumn: "categoryId", fetch: "LAZY")]
 		public ?RelCategoryEntity $category = null;
 
 		/**
 		 * @Orm\Column(name="category_id", type="integer", nullable=true)
 		 */
+		#[Column(name: "category_id", type: "integer", nullable: true)]
 		protected ?int $categoryId = null;
 
 		public function getId(): ?int {

@@ -10,11 +10,14 @@
 	 * A plain (non-soft-deletable) "one" side, paired with RelSoftChildOfPlainParentEntity.
 	 * @Orm\Table(name="rel_plain_parents")
 	 */
+	#[Table(name: "rel_plain_parents")]
 	class RelPlainParentEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		public function getId(): ?int {

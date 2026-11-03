@@ -22,6 +22,10 @@
 			$this->assertSame('\d+', TypeConstraintResolver::resolveTypeToRegex('integer'));
 		}
 
+		public function testResolveTypeToRegexForString(): void {
+			$this->assertSame('[^\/]+', TypeConstraintResolver::resolveTypeToRegex('string'));
+		}
+
 		public function testResolveTypeToRegexForAlpha(): void {
 			$this->assertSame('[a-zA-Z]+', TypeConstraintResolver::resolveTypeToRegex('alpha'));
 		}

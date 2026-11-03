@@ -12,11 +12,14 @@
 	 * the bridge — reaching it is entirely QueryBuilder's job.
 	 * @Orm\Table(name="rel_tags")
 	 */
+	#[Table(name: "rel_tags")]
 	class RelTagEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		public function getId(): ?int {

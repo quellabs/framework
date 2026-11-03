@@ -54,19 +54,31 @@
 		 * @param string $familyName The key to look for in composer.json (default: 'di')
 		 */
 		public function __construct(string $familyName = 'di') {
-			// Create the service discoverer
-			$this->discovery = new Discover();
-			$this->discovery->addScanner(new ComposerScanner($familyName));
-			$this->discovery->discover();
-			
+			// Hook so a subclass can substitute a different Discover implementation
+			$this->discovery = $this->createDiscovery($familyName);
+
 			// Create the default provider
 			$this->defaultProvider = new DefaultServiceProvider($this->discovery);
-			
-			// Create autowirer AFTER default provider
+
+			// Autowirer must exist before discover() runs: a discovery
+			// implementation may use it to instantiate providers
 			$this->autowire = $this->createAutowirer();
-			
+			$this->discovery->discover();
+
 			// Automatically discover and register service providers
 			$this->registerProviders();
+		}
+
+		/**
+		 * Creates the discovery instance with its scanner attached. discover()
+		 * itself runs later in the constructor, once the autowirer exists.
+		 * @param string $familyName The key to look for in composer.json
+		 * @return Discover
+		 */
+		protected function createDiscovery(string $familyName): Discover {
+			$discovery = new Discover();
+			$discovery->addScanner(new ComposerScanner($familyName));
+			return $discovery;
 		}
 		
 		/**

@@ -3,8 +3,8 @@
 	namespace Quellabs\Canvas\Tests\Exceptions;
 
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\Canvas\Exceptions\HttpException;
 	use Quellabs\Canvas\Exceptions\MethodNotAllowedException;
+	use Quellabs\Contracts\Http\HttpException;
 
 	/**
 	 * Unit tests for MethodNotAllowedException.

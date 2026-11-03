@@ -20,12 +20,14 @@
 	 * column lives here only, never redeclared on the subclass.
 	 * @Orm\DiscriminatorColumn(name="kind")
 	 */
+	#[DiscriminatorColumn(name: "kind")]
 	class DiscriminatorInfoResolverBaseFixture {
 	}
 
 	/**
 	 * @Orm\DiscriminatorValue(value="sub")
 	 */
+	#[DiscriminatorValue(value: "sub")]
 	class DiscriminatorInfoResolverSubFixture extends DiscriminatorInfoResolverBaseFixture {
 	}
 
@@ -34,6 +36,7 @@
 	 * hierarchy — half of STI's contract, a misconfiguration.
 	 * @Orm\DiscriminatorValue(value="sub")
 	 */
+	#[DiscriminatorValue(value: "sub")]
 	class DiscriminatorInfoResolverValueOnlyFixture {
 	}
 
@@ -41,12 +44,14 @@
 	 * Base of a hierarchy.
 	 * @Orm\DiscriminatorColumn(name="")
 	 */
+	#[DiscriminatorColumn(name: "")]
 	class DiscriminatorInfoResolverEmptyColumnBaseFixture {
 	}
 
 	/**
 	 * @Orm\DiscriminatorValue(value="sub")
 	 */
+	#[DiscriminatorValue(value: "sub")]
 	class DiscriminatorInfoResolverEmptyColumnSubFixture extends DiscriminatorInfoResolverEmptyColumnBaseFixture {
 	}
 

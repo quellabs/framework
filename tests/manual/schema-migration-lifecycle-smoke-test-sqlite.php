@@ -263,7 +263,7 @@
 		'entity_namespace'    => $namespace,
 		'entity_path'         => $entityPath,
 		'migrations_path'     => $migrationsDir,
-		'migration_table'     => $trackingTable,
+		'migrations_table'    => $trackingTable,
 		'metadata_cache_path' => '',
 	]);
 

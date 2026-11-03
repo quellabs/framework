@@ -12,17 +12,22 @@
 	 * via a nullable FK (optional / LEFT JOIN relation).
 	 * @Orm\Table(name="rel_bool_soft_parents")
 	 */
+	#[Table(name: "rel_bool_soft_parents")]
 	class RelBoolSoftParentEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="is_deleted", type="boolean", nullable=false, default=false)
 		 * @Orm\SoftDelete
 		 */
+		#[Column(name: "is_deleted", type: "boolean", nullable: false, default: false)]
+		#[SoftDelete]
 		protected bool $isDeleted = false;
 
 		public function getId(): ?int {

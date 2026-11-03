@@ -81,7 +81,8 @@
 				'api',        // API documentation
 				'version',    // Version information
 				'category',   // Category classification
-				'phpstan'     // PHPStan pseudo-tags such as @phpstan-type or @phpstan-var; static analysis only
+				'phpstan',    // PHPStan pseudo-tags such as @phpstan-type or @phpstan-var; static analysis only
+				'psalm'       // Psalm pseudo-tags such as @psalm-param or @psalm-suppress; static analysis only
 			];
 			
 			// Create a fast lookup set from ignored annotations (O(1) instead of O(n) lookups)

@@ -4,7 +4,7 @@
 	
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Exceptions\JwtAuthenticationException;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\Canvas\Security\JwtAuthenticationAspect;
 	use Quellabs\Contracts\Configuration\ConfigProviderInterface;
 	use Quellabs\Contracts\Configuration\ConfigurationInterface;

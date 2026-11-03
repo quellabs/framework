@@ -15,21 +15,26 @@
 	 * through the bridge's own relations.
 	 * @Orm\Table(name="rel_audit_logs")
 	 */
+	#[Table(name: "rel_audit_logs")]
 	class RelAuditLogEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelPostTagEntity::class, localColumn="postTagId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelPostTagEntity::class, localColumn: "postTagId", fetch: "EAGER")]
 		public ?RelPostTagEntity $postTag = null;
 
 		/**
 		 * @Orm\Column(name="post_tag_id", type="integer")
 		 */
+		#[Column(name: "post_tag_id", type: "integer")]
 		protected ?int $postTagId = null;
 
 		/**
@@ -38,11 +43,13 @@
 		 * the normal proxy — same convention as the child-side LAZY-skip case.
 		 * @Orm\ManyToOne(targetEntity=RelPostTagEntity::class, localColumn="lazyPostTagId", fetch="LAZY")
 		 */
+		#[ManyToOne(targetEntity: RelPostTagEntity::class, localColumn: "lazyPostTagId", fetch: "LAZY")]
 		public ?RelPostTagEntity $lazyPostTag = null;
 
 		/**
 		 * @Orm\Column(name="lazy_post_tag_id", type="integer", nullable=true)
 		 */
+		#[Column(name: "lazy_post_tag_id", type: "integer", nullable: true)]
 		protected ?int $lazyPostTagId = null;
 
 		public function getId(): ?int {

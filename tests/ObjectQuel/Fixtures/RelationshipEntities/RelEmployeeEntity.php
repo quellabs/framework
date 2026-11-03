@@ -12,21 +12,26 @@
 	 * collection. Carries no Cascade of its own.
 	 * @Orm\Table(name="rel_employees")
 	 */
+	#[Table(name: "rel_employees")]
 	class RelEmployeeEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelDepartmentEntity::class, localColumn="departmentId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelDepartmentEntity::class, localColumn: "departmentId", fetch: "EAGER")]
 		public ?RelDepartmentEntity $department = null;
 
 		/**
 		 * @Orm\Column(name="department_id", type="integer")
 		 */
+		#[Column(name: "department_id", type: "integer")]
 		protected ?int $departmentId = null;
 
 		public function getId(): ?int {

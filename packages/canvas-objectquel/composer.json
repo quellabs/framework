@@ -29,7 +29,10 @@
     }
   },
   "require": {
+    "quellabs/annotation-reader": "^1",
     "quellabs/canvas-database": "1.*",
+    "quellabs/contracts": "^1.0",
+    "quellabs/dependency-injection": "^1.0",
     "quellabs/objectquel": "2.*",
     "quellabs/support": "*"
   },
@@ -37,11 +40,6 @@
     "psr-4": {
       "Quellabs\\CanvasObjectQuel\\": "src/"
     }
-  },
-  "scripts": {
-    "post-autoload-dump": [
-      "php -r \"if(!file_exists('config/database.php')) copy('vendor/quellabs/canvas-objectquel/config/database.php', 'config/database.php');\""
-    ]
   },
   "extra": {
     "discover": {

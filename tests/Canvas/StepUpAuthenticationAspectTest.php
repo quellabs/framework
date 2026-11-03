@@ -4,7 +4,7 @@
 
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Canvas\Exceptions\StepUpAuthenticationException;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\Canvas\Security\StepUpAuthenticationAspect;
 	use Symfony\Component\HttpFoundation\Request;
 

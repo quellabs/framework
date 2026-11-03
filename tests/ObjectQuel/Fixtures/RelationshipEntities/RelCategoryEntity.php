@@ -11,11 +11,14 @@
 	 * relation only gets the extra eager hop when it's not marked LAZY.
 	 * @Orm\Table(name="rel_categories")
 	 */
+	#[Table(name: "rel_categories")]
 	class RelCategoryEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		public function getId(): ?int {

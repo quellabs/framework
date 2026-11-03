@@ -53,6 +53,14 @@
         <testsuite name="DependencyInjection">
             <directory>tests/DependencyInjection</directory>
         </testsuite>
+        <testsuite name="CanvasEloquent">
+            <directory>packages/canvas-eloquent/tests</directory>
+            <exclude>packages/canvas-eloquent/tests/Fixtures</exclude>
+        </testsuite>
+        <testsuite name="CanvasDoctrine">
+            <directory>packages/canvas-doctrine/tests</directory>
+            <exclude>packages/canvas-doctrine/tests/Fixtures</exclude>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>

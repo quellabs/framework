@@ -5,7 +5,6 @@
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\AnnotationReader\AnnotationReader;
 	use Quellabs\AnnotationReader\Collection\AnnotationCollection;
-	use Quellabs\Canvas\Kernel;
 	use Quellabs\CanvasObjectQuel\Annotations\ResolveEntity;
 	use Quellabs\CanvasObjectQuel\Exceptions\EntityBindingException;
 	use Quellabs\CanvasObjectQuel\ServiceProvider;
@@ -31,22 +30,19 @@
 
 		/**
 		 * Builds a ServiceProvider wired to a container that serves the given
-		 * EntityManager and a Kernel whose AnnotationReader returns $annotations
-		 * for any getMethodAnnotations() call.
+		 * EntityManager and an AnnotationReader that returns $annotations for
+		 * any getMethodAnnotations() call.
 		 * @param array<int, ResolveEntity> $annotations
 		 */
 		private function makeProvider(EntityManager $entityManager, array $annotations = []): ServiceProvider {
 			$annotationReader = $this->createMock(AnnotationReader::class);
 			$annotationReader->method('getMethodAnnotations')->willReturn(new AnnotationCollection($annotations));
 
-			$kernel = $this->createMock(Kernel::class);
-			$kernel->method('getAnnotationsReader')->willReturn($annotationReader);
-
 			$container = $this->createMock(ContainerInterface::class);
 			$container->method('get')->willReturnCallback(
-				function (string $className) use ($kernel, $entityManager): ?object {
+				function (string $className) use ($annotationReader, $entityManager): ?object {
 					return match ($className) {
-						Kernel::class => $kernel,
+						AnnotationReader::class => $annotationReader,
 						EntityManager::class => $entityManager,
 						default => null,
 					};

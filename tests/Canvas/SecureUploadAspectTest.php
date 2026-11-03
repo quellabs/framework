@@ -3,7 +3,7 @@
 	namespace Quellabs\Canvas\Tests\Security;
 
 	use PHPUnit\Framework\TestCase;
-	use Quellabs\Canvas\Routing\Contracts\MethodContextInterface;
+	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\Canvas\Security\SecureUploadAspect;
 	use Quellabs\Support\ComposerUtils;
 	use Symfony\Component\HttpFoundation\File\Exception\FileException;

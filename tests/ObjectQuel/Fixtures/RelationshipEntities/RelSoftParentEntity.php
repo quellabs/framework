@@ -12,17 +12,22 @@
 	 * RelSoftChildOfSoftParentEntity, exercising cascade-remove propagation.
 	 * @Orm\Table(name="rel_soft_parents")
 	 */
+	#[Table(name: "rel_soft_parents")]
 	class RelSoftParentEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="deleted_at", type="datetime", nullable=true)
 		 * @Orm\SoftDelete
 		 */
+		#[Column(name: "deleted_at", type: "datetime", nullable: true)]
+		#[SoftDelete]
 		protected ?\DateTime $deletedAt = null;
 
 		public function getId(): ?int {

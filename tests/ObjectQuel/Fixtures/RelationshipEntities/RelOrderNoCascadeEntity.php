@@ -13,21 +13,26 @@
 	 * all, proving removal of the parent does NOT cascade when Cascade is absent.
 	 * @Orm\Table(name="rel_orders_no_cascade")
 	 */
+	#[Table(name: "rel_orders_no_cascade")]
 	class RelOrderNoCascadeEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelCustomerEntity::class, localColumn="customerId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelCustomerEntity::class, localColumn: "customerId", fetch: "EAGER")]
 		public ?RelCustomerEntity $customer = null;
 
 		/**
 		 * @Orm\Column(name="customer_id", type="integer")
 		 */
+		#[Column(name: "customer_id", type: "integer")]
 		protected ?int $customerId = null;
 
 		public function getId(): ?int {
