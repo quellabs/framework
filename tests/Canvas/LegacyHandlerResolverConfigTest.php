@@ -7,7 +7,50 @@
 	use Quellabs\Canvas\Legacy\LegacyHandler;
 	use Quellabs\Canvas\Legacy\Resolvers\DefaultFileResolver;
 	use Quellabs\Canvas\Legacy\Resolvers\WordPressStyleResolver;
+	use Quellabs\DependencyInjection\Container;
+	use Quellabs\DependencyInjection\Provider\SimpleBinding;
+	use Quellabs\Discover\Discover;
 	use Symfony\Component\HttpFoundation\Request;
+
+	/**
+	 * Test-only dependency a resolver can have autowired alongside $legacyPath.
+	 */
+	class LegacyHandlerResolverConfigTestGreeter {
+		/**
+		 * @return string
+		 */
+		public function greet(): string {
+			return 'injected';
+		}
+	}
+
+	/**
+	 * Test-only resolver whose constructor takes $legacyPath plus a service
+	 * that only a DI container (not a plain `new`) can supply.
+	 */
+	class LegacyHandlerResolverConfigTestResolver implements FileResolverInterface {
+		private string $legacyPath;
+		private LegacyHandlerResolverConfigTestGreeter $greeter;
+
+		/**
+		 * @param string $legacyPath
+		 * @param LegacyHandlerResolverConfigTestGreeter $greeter
+		 */
+		public function __construct(string $legacyPath, LegacyHandlerResolverConfigTestGreeter $greeter) {
+			$this->legacyPath = $legacyPath;
+			$this->greeter = $greeter;
+		}
+
+		/**
+		 * @param string $path
+		 * @param Request $request
+		 * @return string|null
+		 */
+		public function resolve(string $path, Request $request): ?string {
+			$file = rtrim($this->legacyPath, '/') . '/' . $this->greeter->greet() . '.php';
+			return is_file($file) ? $file : null;
+		}
+	}
 
 	/**
 	 * LegacyHandler's resolver chain is configurable via its constructor so that
@@ -102,5 +145,37 @@
 			$this->expectExceptionMessage(FileResolverInterface::class);
 
 			new LegacyHandler($this->legacyPath, false, [], [\stdClass::class]);
+		}
+
+		/**
+		 * Without a container, a resolver needing more than $legacyPath can't be constructed.
+		 * @return void
+		 */
+		public function testResolverNeedingExtraDependencyFailsWithoutContainer(): void {
+			$this->expectException(\ArgumentCountError::class);
+
+			new LegacyHandler($this->legacyPath, false, [], [LegacyHandlerResolverConfigTestResolver::class]);
+		}
+
+		/**
+		 * With a container, a resolver's constructor dependencies beyond $legacyPath are autowired.
+		 * @return void
+		 */
+		public function testResolverDependencyIsAutowiredWhenContainerIsGiven(): void {
+			file_put_contents($this->legacyPath . '/injected.php', '<?php echo "autowired resolver";');
+
+			// Bypasses composer-based provider discovery, which is unrelated to
+			// this test and not safe to run inside this unit test (see LegacyHelperTest)
+			$container = new class extends Container {
+				protected function createDiscovery(string $familyName): Discover {
+					return new Discover();
+				}
+			};
+			$container->register(new SimpleBinding(LegacyHandlerResolverConfigTestGreeter::class, new LegacyHandlerResolverConfigTestGreeter()));
+
+			$handler = new LegacyHandler($this->legacyPath, false, [], [LegacyHandlerResolverConfigTestResolver::class], $container);
+			$response = $handler->handle(Request::create('/anything'));
+
+			$this->assertSame('autowired resolver', $response->getContent());
 		}
 	}
