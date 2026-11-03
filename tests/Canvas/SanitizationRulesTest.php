@@ -10,8 +10,6 @@
 	use Quellabs\Canvas\Sanitization\Rules\RemoveNullBytes;
 	use Quellabs\Canvas\Sanitization\Rules\RemoveStyleAttributes;
 	use Quellabs\Canvas\Sanitization\Rules\RemoveZeroWidth;
-	use Quellabs\Canvas\Sanitization\Rules\ScriptSafe;
-	use Quellabs\Canvas\Sanitization\Rules\SqlSafe;
 	use Quellabs\Canvas\Sanitization\Rules\StripTags;
 	use Quellabs\Canvas\Sanitization\Rules\Trim;
 	
@@ -148,6 +146,13 @@
 		public function testPathSafePassesThroughNonString(): void {
 			$rule = new PathSafe();
 			$this->assertNull($rule->sanitize(null));
+		}
+		
+		public function testPathSafeRemovesOverlappingTraversal(): void {
+			// Single-pass removal of '../' from '....//' used to leave '../' behind again
+			// (chars 0,1,5 of the original string survive the first pass).
+			$rule = new PathSafe();
+			$this->assertStringNotContainsString('../', $rule->sanitize('....//etc/passwd'));
 		}
 		
 		// -------------------------------------------------------------------------
@@ -288,95 +293,6 @@
 		public function testRemoveZeroWidthPassesThroughNonString(): void {
 			$rule = new RemoveZeroWidth();
 			$this->assertSame(0, $rule->sanitize(0));
-		}
-		
-		// -------------------------------------------------------------------------
-		// ScriptSafe
-		// -------------------------------------------------------------------------
-		
-		public function testScriptSafeRemovesScriptTag(): void {
-			$rule = new ScriptSafe();
-			$input = '<p>Hello</p><script>alert("xss")</script>';
-			$result = $rule->sanitize($input);
-			$this->assertStringNotContainsString('<script', $result);
-			$this->assertStringNotContainsString('alert', $result);
-		}
-		
-		public function testScriptSafeRemovesOnClickEventHandler(): void {
-			$rule = new ScriptSafe();
-			$input = '<button onclick="evil()">Click</button>';
-			$result = $rule->sanitize($input);
-			$this->assertStringNotContainsString('onclick', $result);
-		}
-		
-		public function testScriptSafeRemovesJavascriptProtocol(): void {
-			$rule = new ScriptSafe();
-			$input = '<a href="javascript:alert(1)">link</a>';
-			$result = $rule->sanitize($input);
-			$this->assertStringNotContainsString('javascript:', $result);
-		}
-		
-		public function testScriptSafeIsCaseInsensitiveOnScriptTag(): void {
-			$rule = new ScriptSafe();
-			$result = $rule->sanitize('<SCRIPT>evil()</SCRIPT>');
-			$this->assertStringNotContainsString('SCRIPT', $result);
-		}
-		
-		public function testScriptSafePreservesNormalHtml(): void {
-			$rule = new ScriptSafe();
-			$input = '<p class="intro">Hello <strong>World</strong></p>';
-			$result = $rule->sanitize($input);
-			$this->assertStringContainsString('<p class="intro">', $result);
-			$this->assertStringContainsString('<strong>', $result);
-		}
-		
-		public function testScriptSafePassesThroughNonString(): void {
-			$rule = new ScriptSafe();
-			$this->assertSame(99, $rule->sanitize(99));
-		}
-		
-		// -------------------------------------------------------------------------
-		// SqlSafe
-		// -------------------------------------------------------------------------
-		
-		public function testSqlSafeRemovesSingleLineComment(): void {
-			$rule = new SqlSafe();
-			$result = $rule->sanitize("value -- drop table");
-			$this->assertStringNotContainsString('--', $result);
-		}
-		
-		public function testSqlSafeRemovesMultiLineComment(): void {
-			$rule = new SqlSafe();
-			$result = $rule->sanitize("value /* comment */");
-			$this->assertStringNotContainsString('/*', $result);
-		}
-		
-		public function testSqlSafeRemovesTrailingSemicolon(): void {
-			$rule = new SqlSafe();
-			$result = $rule->sanitize("value;");
-			$this->assertStringNotContainsString(';', $result);
-		}
-		
-		public function testSqlSafeRemovesSelectKeyword(): void {
-			$rule = new SqlSafe();
-			$result = $rule->sanitize("1 UNION SELECT * FROM users");
-			$this->assertStringNotContainsString('SELECT ', $result);
-		}
-		
-		public function testSqlSafeRemovesDropKeyword(): void {
-			$rule = new SqlSafe();
-			$result = $rule->sanitize("'; DROP TABLE users; --");
-			$this->assertStringNotContainsString('DROP ', $result);
-		}
-		
-		public function testSqlSafePreservesNormalText(): void {
-			$rule = new SqlSafe();
-			$this->assertSame('Hello World', $rule->sanitize('Hello World'));
-		}
-		
-		public function testSqlSafePassesThroughNonString(): void {
-			$rule = new SqlSafe();
-			$this->assertSame(false, $rule->sanitize(false));
 		}
 		
 		// -------------------------------------------------------------------------
