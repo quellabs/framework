@@ -11,19 +11,23 @@
 	 * required-relation handling for a composite ManyToOne.
 	 * @Orm\Table(name="ck_required_orders")
 	 */
+	#[Table(name: "ck_required_orders")]
 	class CkRequiredOrderEntity {
 		/**
 		 * @Orm\Column(name="tenant_id", type="integer", primary_key=true)
 		 */
+		#[Column(name: "tenant_id", type: "integer", primary_key: true)]
 		protected ?int $tenantId = null;
 
 		/**
 		 * @Orm\Column(name="number", type="string", limit=20, primary_key=true)
 		 */
+		#[Column(name: "number", type: "string", limit: 20, primary_key: true)]
 		protected ?string $number = null;
 
 		/**
 		 * @Orm\Column(name="amount", type="integer")
 		 */
+		#[Column(name: "amount", type: "integer")]
 		protected ?int $amount = null;
 	}

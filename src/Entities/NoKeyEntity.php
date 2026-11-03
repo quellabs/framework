@@ -10,10 +10,12 @@
 	 * (e.g. SqlServerEventBindingLowering's UPDATE row-pairing check).
 	 * @Orm\Table(name="no_key_entities")
 	 */
+	#[Table(name: "no_key_entities")]
 	class NoKeyEntity {
 
 		/**
 		 * @Orm\Column(name="label", type="string", limit=255)
 		 */
+		#[Column(name: "label", type: "string", limit: 255)]
 		protected string $label;
 	}

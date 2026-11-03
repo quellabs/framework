@@ -17,17 +17,21 @@
 	 * different value, to prove the annotation — not the DDL — wins).
 	 * @Orm\Table(name="default_column_test")
 	 */
+	#[Table(name: "default_column_test")]
 	class DefaultColumnEntity {
 
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="name", type="string", limit=100)
 		 */
+		#[Column(name: "name", type: "string", limit: 100)]
 		protected string $name;
 
 		/**
@@ -35,6 +39,7 @@
 		 * value Column::hasDefault()'s old `!empty()` check got wrong.
 		 * @Orm\Column(name="priority", type="integer", default=0)
 		 */
+		#[Column(name: "priority", type: "integer", default: 0)]
 		protected int $priority = 0;
 
 		public function getId(): ?int {

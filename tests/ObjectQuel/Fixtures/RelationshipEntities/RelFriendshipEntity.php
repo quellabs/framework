@@ -17,31 +17,39 @@
 	 * @Orm\Table(name="rel_friendships")
 	 * @Orm\EntityBridge
 	 */
+	#[Table(name: "rel_friendships")]
+	#[EntityBridge]
 	class RelFriendshipEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelFriendUserEntity::class, localColumn="userAId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelFriendUserEntity::class, localColumn: "userAId", fetch: "EAGER")]
 		public ?RelFriendUserEntity $userA = null;
 
 		/**
 		 * @Orm\Column(name="user_a_id", type="integer")
 		 */
+		#[Column(name: "user_a_id", type: "integer")]
 		protected ?int $userAId = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelFriendUserEntity::class, localColumn="userBId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelFriendUserEntity::class, localColumn: "userBId", fetch: "EAGER")]
 		public ?RelFriendUserEntity $userB = null;
 
 		/**
 		 * @Orm\Column(name="user_b_id", type="integer")
 		 */
+		#[Column(name: "user_b_id", type: "integer")]
 		protected ?int $userBId = null;
 
 		public function getId(): ?int {

@@ -19,22 +19,28 @@
 	 * cascade-remove eligibility.
 	 * @Orm\Table(name="rel_profiles_unidirectional_persist")
 	 */
+	#[Table(name: "rel_profiles_unidirectional_persist")]
 	class RelProfileUnidirectionalPersistEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, localColumn="userId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"persist"})
 		 */
+		#[OneToOne(targetEntity: RelUserEntity::class, localColumn: "userId", fetch: "EAGER")]
+		#[Cascade(operations: ["persist"])]
 		public ?RelUserEntity $user = null;
 
 		/**
 		 * @Orm\Column(name="user_id", type="integer")
 		 */
+		#[Column(name: "user_id", type: "integer")]
 		protected ?int $userId = null;
 
 		public function getId(): ?int {

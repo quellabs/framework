@@ -34,6 +34,9 @@
 		 * @throws TemplateRenderException
 		 * @throws OrmException
 		 */
+		#[Route("/posts/")]
+		#[WithContext(parameter: "engine", context: "blade")]
+		#[InterceptWith(TrackingParamsAspect::class)]
 		public function index(): Response {
 			$posts = $this->em()->findBy(PostEntity::class, ['published' => true]);
 
@@ -50,6 +53,7 @@
 		 * @throws EntityResolutionException
 		 * @throws QuelException
 		 */
+		#[Route("/posts/{id:int}")]
 		public function show(?PostEntity $id): Response {
 			if (!$id) {
 				return $this->notFound('Post does not exist.');
@@ -68,6 +72,7 @@
 		 * @param ConnectionInterface $db
 		 * @return Response
 		 */
+		#[Route("/posts/eloquent-test")]
 		public function eloquentTest(ConnectionInterface $db): Response {
 			$posts = $db
 				->table('posts')
@@ -84,6 +89,7 @@
 		 * @Route("/posts/eloquent-model-test")
 		 * @return Response
 		 */
+		#[Route("/posts/eloquent-model-test")]
 		public function eloquentModelTest(): Response {
 			$posts = Post::where('published', true)
 				->orderBy('id')

@@ -17,17 +17,22 @@
 	 * (a real ON DELETE CASCADE constraint) together.
 	 * @Orm\Table(name="rel_orders_cascade")
 	 */
+	#[Table(name: "rel_orders_cascade")]
 	class RelOrderCascadeEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelCustomerEntity::class, localColumn="customerId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
+		#[ManyToOne(targetEntity: RelCustomerEntity::class, localColumn: "customerId", fetch: "EAGER")]
+		#[Cascade(operations: ["remove", "persist"])]
 		public ?RelCustomerEntity $customer = null;
 
 		/**
@@ -35,6 +40,9 @@
 		 * @Orm\ForeignKey(target=RelCustomerEntity::class, referencedColumn="id")
 		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
+		#[Column(name: "customer_id", type: "integer")]
+		#[ForeignKey(target: RelCustomerEntity::class, referencedColumn: "id")]
+		#[ForeignKeyAction(onDelete: "CASCADE")]
 		protected ?int $customerId = null;
 
 		public function getId(): ?int {

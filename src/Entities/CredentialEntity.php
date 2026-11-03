@@ -19,31 +19,37 @@
 	 *
 	 * @Orm\Table(name="credentials")
 	 */
+	#[Table(name: "credentials")]
 	class CredentialEntity {
-		
+
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
-		
+
 		/**
 		 * @Orm\Column(name="secret", type="string", limit=255)
 		 */
+		#[Column(name: "secret", type: "string", limit: 255)]
 		protected string $secret;
-		
+
 		/**
 		 * Owning OneToOne. No localColumn -> defaults to "accountId".
 		 *
 		 * @Orm\OneToOne(targetEntity=AccountEntity::class, referencedColumn="id", fetch="EAGER")
 		 */
+		#[OneToOne(targetEntity: AccountEntity::class, referencedColumn: "id", fetch: "EAGER")]
 		public ?AccountEntity $account = null;
-		
+
 		/**
 		 * Backing FK column for the OneToOne above (property "accountId" -> column "account_id").
 		 *
 		 * @Orm\Column(name="account_id", type="integer", nullable=true)
 		 */
+		#[Column(name: "account_id", type: "integer", nullable: true)]
 		protected ?int $accountId = null;
 		
 		/**

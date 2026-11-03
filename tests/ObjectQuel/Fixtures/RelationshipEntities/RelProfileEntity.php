@@ -20,17 +20,22 @@
 	 * FkOrderEntity, but for OneToOne rather than ManyToOne.
 	 * @Orm\Table(name="rel_profiles")
 	 */
+	#[Table(name: "rel_profiles")]
 	class RelProfileEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\OneToOne(targetEntity=RelUserEntity::class, referencedColumn="id", localColumn="userId", fetch="EAGER")
 		 * @Orm\Cascade(operations={"remove", "persist"})
 		 */
+		#[OneToOne(targetEntity: RelUserEntity::class, referencedColumn: "id", localColumn: "userId", fetch: "EAGER")]
+		#[Cascade(operations: ["remove", "persist"])]
 		public ?RelUserEntity $user = null;
 
 		/**
@@ -38,6 +43,9 @@
 		 * @Orm\ForeignKey(target=RelUserEntity::class, referencedColumn="id")
 		 * @Orm\ForeignKeyAction(onDelete="CASCADE")
 		 */
+		#[Column(name: "user_id", type: "integer")]
+		#[ForeignKey(target: RelUserEntity::class, referencedColumn: "id")]
+		#[ForeignKeyAction(onDelete: "CASCADE")]
 		protected ?int $userId = null;
 
 		public function getId(): ?int {

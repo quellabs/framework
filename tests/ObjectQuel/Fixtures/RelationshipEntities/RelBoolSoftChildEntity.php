@@ -11,21 +11,26 @@
 	 * The "many" side of an optional (nullable FK) relation to RelBoolSoftParentEntity.
 	 * @Orm\Table(name="rel_bool_soft_children")
 	 */
+	#[Table(name: "rel_bool_soft_children")]
 	class RelBoolSoftChildEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\ManyToOne(targetEntity=RelBoolSoftParentEntity::class, localColumn="parentId", fetch="EAGER")
 		 */
+		#[ManyToOne(targetEntity: RelBoolSoftParentEntity::class, localColumn: "parentId", fetch: "EAGER")]
 		public ?RelBoolSoftParentEntity $parent = null;
 
 		/**
 		 * @Orm\Column(name="parent_id", type="integer", nullable=true)
 		 */
+		#[Column(name: "parent_id", type: "integer", nullable: true)]
 		protected ?int $parentId = null;
 
 		public function getId(): ?int {

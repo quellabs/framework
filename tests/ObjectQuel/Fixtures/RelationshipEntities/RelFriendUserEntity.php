@@ -17,16 +17,20 @@
 	 * $userB, since both relations share this type.
 	 * @Orm\Table(name="rel_friend_users")
 	 */
+	#[Table(name: "rel_friend_users")]
 	class RelFriendUserEntity {
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\InverseOf(targetEntity=RelFriendshipEntity::class, relation="userA")
 		 */
+		#[InverseOf(targetEntity: RelFriendshipEntity::class, relation: "userA")]
 		public CollectionInterface $friendshipsAsA;
 
 		public function __construct() {

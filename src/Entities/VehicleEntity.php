@@ -15,17 +15,22 @@
 	 * @Orm\Table(name="sti_vehicles")
 	 * @Orm\DiscriminatorColumn(name="vehicle_type")
 	 */
+	#[Table(name: "sti_vehicles")]
+	#[DiscriminatorColumn(name: "vehicle_type")]
 	class VehicleEntity {
 
 		/**
 		 * @Orm\Column(name="id", type="integer", unsigned=true, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="identity")
 		 */
+		#[Column(name: "id", type: "integer", unsigned: true, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "identity")]
 		protected ?int $id = null;
 
 		/**
 		 * @Orm\Column(name="name", type="string", limit=100)
 		 */
+		#[Column(name: "name", type: "string", limit: 100)]
 		protected string $name;
 
 		public function getId(): ?int {

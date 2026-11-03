@@ -14,21 +14,26 @@
 	 * generation for a composite key.
 	 * @Orm\Table(name="cki_generated_key_orders")
 	 */
+	#[Table(name: "cki_generated_key_orders")]
 	class CkiGeneratedKeyOrderEntity {
 		/**
 		 * @Orm\Column(name="tenant_id", type="integer", primary_key=true)
 		 */
+		#[Column(name: "tenant_id", type: "integer", primary_key: true)]
 		protected ?int $tenantId = null;
 
 		/**
 		 * @Orm\Column(name="token", type="string", limit=36, primary_key=true)
 		 * @Orm\PrimaryKeyStrategy(strategy="uuid")
 		 */
+		#[Column(name: "token", type: "string", limit: 36, primary_key: true)]
+		#[PrimaryKeyStrategy(strategy: "uuid")]
 		protected ?string $token = null;
 
 		/**
 		 * @Orm\Column(name="amount", type="integer")
 		 */
+		#[Column(name: "amount", type: "integer")]
 		protected ?int $amount = null;
 
 		public function getTenantId(): ?int {
