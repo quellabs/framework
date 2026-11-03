@@ -28,6 +28,7 @@
 
 	use Quellabs\ObjectQuel\Sculpt\Commands\MakeBlankMigrationCommand;
 	use Quellabs\ObjectQuel\Sculpt\Commands\QuelMigrateCommand;
+	use Quellabs\ObjectQuel\Sculpt\Commands\StatusCommand;
 	use Quellabs\ObjectQuel\Sculpt\ServiceProvider;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	use Quellabs\Sculpt\ConfigurationManager;
@@ -195,6 +196,16 @@
 		check('shows the applied migration\'s version', str_contains($out, '20260101000001'));
 		check('shows the pending migration\'s name', str_contains($out, $classNameB));
 		check('pending migration was not applied', !in_array($tableB, $provider->getDatabaseAdapter()->getTables(), true));
+
+		// ---------------------------------------------------------------
+		// Scenario 3b: quel:migrate:status reports the same status as
+		// quel:migrate --status, via the shared AbstractMigrationCommand.
+		// ---------------------------------------------------------------
+		section('quel:migrate:status');
+		[$exitCode, $out] = runAnyCommand(StatusCommand::class, $provider, []);
+		check('exit code is 0', $exitCode === 0);
+		check('shows the applied migration\'s version', str_contains($out, '20260101000001'));
+		check('shows the pending migration\'s name', str_contains($out, $classNameB));
 
 		// ---------------------------------------------------------------
 		// Scenario 4: --dry-run previews without applying
