@@ -379,6 +379,8 @@ class ProductRepository extends Repository {
 
 ## Troubleshooting
 
+Do not register `canvas-objectquel` and `canvas-doctrine` together with overlapping `entity_namespace`/entity path configuration. Route-entity binding matches by namespace only, so a class belonging to the other ORM can be bound to the wrong EntityManager.
+
 ## Support
 
 For support and documentation:

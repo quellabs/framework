@@ -82,11 +82,15 @@
 			$provider = new ServiceProvider();
 			$provider->setConfig(array_merge([
 				'driver'   => 'sqlite',
-				'database' => ':memory:',
+				'database' => ':memory:'
 			], $config));
 			return $provider;
 		}
 
+		/**
+		 * supports() matches only ConnectionInterface, not models or unrelated classes.
+		 * @return void
+		 */
 		public function testSupportsOnlyTheConnectionInterface(): void {
 			$provider = new ServiceProvider();
 
@@ -95,6 +99,10 @@
 			$this->assertFalse($provider->supports(\stdClass::class, []));
 		}
 
+		/**
+		 * getConnectionDefaults() returns the exact documented default values.
+		 * @return void
+		 */
 		public function testGetConnectionDefaultsReturnsExpectedValues(): void {
 			$this->assertSame([
 				'driver'    => 'mysql',
@@ -105,10 +113,15 @@
 				'port'      => 3306,
 				'charset'   => 'utf8mb4',
 				'collation' => 'utf8mb4_unicode_ci',
-				'prefix'    => '',
+				'prefix'    => ''
 			], ServiceProvider::getConnectionDefaults());
 		}
 
+		/**
+		 * setConfig() alone boots the Capsule, letting a plain Eloquent
+		 * model resolve a connection without any DI resolution.
+		 * @return void
+		 */
 		public function testSetConfigBootsEloquentWithoutAnyDiResolution(): void {
 			// setConfig() alone -- never calling createInstance() -- must be
 			// enough for a plain Eloquent model to resolve a connection.
@@ -122,6 +135,10 @@
 			$this->assertSame('jane', ServiceProviderTestModel::first()->name);
 		}
 
+		/**
+		 * createInstance() returns a working, queryable connection.
+		 * @return void
+		 */
 		public function testCreateInstanceReturnsAWorkingConnection(): void {
 			$provider = $this->makeProvider();
 
@@ -135,6 +152,10 @@
 			$this->assertSame('via-di', $connection->table('direct_connection_test')->first()->name);
 		}
 
+		/**
+		 * A config value supplied by the caller overrides its default.
+		 * @return void
+		 */
 		public function testCustomConfigOverridesDefaults(): void {
 			$provider = $this->makeProvider(['prefix' => 'wp_']);
 
@@ -143,6 +164,10 @@
 			$this->assertSame('wp_', $connection->getTablePrefix());
 		}
 
+		/**
+		 * A config value the caller didn't override falls back to its default.
+		 * @return void
+		 */
 		public function testUnspecifiedConfigValuesFallBackToDefaults(): void {
 			$provider = $this->makeProvider();
 
@@ -154,6 +179,10 @@
 			$this->assertSame('utf8mb4_unicode_ci', $connection->getConfig('collation'));
 		}
 
+		/**
+		 * The Capsule is built once per process and reused across createInstance() calls.
+		 * @return void
+		 */
 		public function testCapsuleIsBuiltOnlyOnceAndReusedAcrossCalls(): void {
 			$provider = $this->makeProvider();
 
