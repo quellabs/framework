@@ -11,13 +11,16 @@
 	/**
 	 * The "target" schema for QuelMigrationBuilderRegressionTest's combined
 	 * diff — deliberately touches every facet Phase 7 of
-	 * objectquel-migrations-implementation-plan.md asks for in one pass:
-	 * a retyped column (price), a dropped column (the pre-existing
-	 * legacy_note isn't declared here), an added non-nullable column with a
-	 * declared default that needs backfilling (status), an added nullable
-	 * enum column (priority), an added index (on quantity) alongside a
-	 * pre-existing one this entity doesn't declare (deleted), and an added
-	 * foreign key (customer_id).
+	 * objectquel-migrations-implementation-plan.md asks for in one pass
+	 * that can still succeed together on SQLite (a retyped column no
+	 * longer can — see QuelMigrationBuilder::assertRetypeSupported() —
+	 * so this fixture doesn't declare one; that refusal has its own
+	 * coverage in QuelMigrationBuilderTest instead): a dropped column (the
+	 * pre-existing legacy_note isn't declared here), an added non-nullable
+	 * column with a declared default that needs backfilling (status), an
+	 * added nullable enum column (priority), an added index (on quantity)
+	 * alongside a pre-existing one this entity doesn't declare (deleted),
+	 * and an added foreign key (customer_id).
 	 * @Orm\Index(name="idx_mig_reg_orders_quantity", columns={"quantity"})
 	 * @Orm\Table(name="mig_reg_orders")
 	 */
@@ -35,8 +38,10 @@
 		protected ?int $customerId = null;
 
 		/**
-		 * Pre-existing column, declared as `integer` in the live table —
-		 * retyped here to `decimal(10,2)`.
+		 * Pre-existing column, already `decimal(10,2)` in the live table —
+		 * unchanged, same reason quantity is: the fixture needs a column
+		 * the entity and the live table already agree on, now that a
+		 * retype can no longer be part of this scenario.
 		 * @Orm\Column(name="price", type="decimal", precision=10, scale=2)
 		 */
 		protected ?float $price = null;

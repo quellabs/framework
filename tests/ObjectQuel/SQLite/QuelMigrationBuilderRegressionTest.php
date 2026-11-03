@@ -19,14 +19,18 @@
 	 * real diff (not hand-crafted arrays, unlike QuelMigrationBuilderTest) fed
 	 * into QuelMigrationBuilder — against one small, combined fixture entity
 	 * set covering every facet Phase 7 of
-	 * objectquel-migrations-implementation-plan.md asks for together: a new
-	 * table with PK+FK, an added/dropped/retyped column, an added
-	 * non-nullable column with backfill on a populated table, an enum
-	 * column, an added and a deleted index, and an added foreign key. FK
-	 * add/modify/delete's own deeper coverage lives in
-	 * ForeignKeyMigrationTest instead — this test's job is proving all of
-	 * the above work correctly *together* in one real diff-to-generation
-	 * pass, not re-covering each facet exhaustively on its own.
+	 * objectquel-migrations-implementation-plan.md asks for together that
+	 * can still succeed on SQLite: a new table with PK+FK, an added/dropped
+	 * column, an added non-nullable column with backfill on a populated
+	 * table, an enum column, an added and a deleted index, and an added
+	 * foreign key. A modified/retyped column is deliberately not part of
+	 * this combined scenario — SQLite refuses that outright (see
+	 * QuelMigrationBuilder::assertRetypeSupported()), covered on its own in
+	 * QuelMigrationBuilderTest instead. FK add/modify/delete's own deeper
+	 * coverage lives in ForeignKeyMigrationTest instead — this test's job
+	 * is proving all of the above work correctly *together* in one real
+	 * diff-to-generation pass, not re-covering each facet exhaustively on
+	 * its own.
 	 */
 	class QuelMigrationBuilderRegressionTest extends TestCase {
 		use FkTestSupport;
@@ -76,9 +80,14 @@
 			// The "before" schema: mig_reg_customers already matches its
 			// entity exactly (no changes expected there). mig_reg_orders is
 			// the pre-existing table the entity's changes are diffed
-			// against — legacy_note will be dropped, price retyped,
+			// against — legacy_note will be dropped,
 			// idx_mig_reg_orders_price_old will be dropped (not declared on
 			// the entity), and status/priority don't exist yet (added).
+			// price is already NUMERIC(10,2), matching the entity exactly —
+			// a modified/retyped column can no longer be part of a
+			// combined scenario that's supposed to generate successfully
+			// on SQLite (see QuelMigrationBuilder::assertRetypeSupported());
+			// that refusal has its own coverage in QuelMigrationBuilderTest.
 			// mig_reg_line_items doesn't exist at all yet (new table).
 			$adapter->execute('CREATE TABLE mig_reg_customers (id INTEGER PRIMARY KEY NOT NULL)');
 			$adapter->execute(
@@ -86,7 +95,7 @@
 				'id INTEGER PRIMARY KEY NOT NULL, ' .
 				'customer_id INTEGER NOT NULL, ' .
 				'legacy_note TEXT, ' .
-				'price INTEGER NOT NULL, ' .
+				'price NUMERIC(10,2) NOT NULL, ' .
 				'quantity INTEGER NOT NULL' .
 				')'
 			);
@@ -113,8 +122,7 @@
 			$this->assertArrayHasKey('status', $orderChanges['added']);
 			$this->assertArrayHasKey('priority', $orderChanges['added']);
 			$this->assertArrayHasKey('legacy_note', $orderChanges['deleted']);
-			$this->assertArrayHasKey('price', $orderChanges['modified']);
-			$this->assertSame('decimal', $orderChanges['modified']['price']['to']->type);
+			$this->assertArrayNotHasKey('price', $orderChanges['modified']);
 
 			// --- mig_reg_orders: index facets -------------------------------------------
 
@@ -148,9 +156,9 @@
 				$content
 			);
 
-			// Dropped/retyped columns, folded into one combined alter statement.
+			// Dropped column, folded into the same combined alter statement
+			// as every other column/index change below.
 			$this->assertStringContainsString('drop legacy_note', $content);
-			$this->assertStringContainsString('retype price = decimal(10,2)', $content);
 
 			// Added non-nullable column with backfill. The Quel text's own
 			// quotes are escaped (\') in $content, since this is the raw PHP
