@@ -53,9 +53,9 @@
 	}
 
 	/**
-	 * LegacyHandler's resolver chain is configurable via its constructor so that
+	 * LegacyHandler's resolver chain is configurable via its constructor, so
 	 * app.php's legacy_resolvers option can wire up resolvers like
-	 * WordPressStyleResolver without requiring manual addResolver() calls.
+	 * WordPressStyleResolver directly.
 	 */
 	class LegacyHandlerResolverConfigTest extends TestCase {
 		private string $legacyPath;
