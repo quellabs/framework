@@ -111,11 +111,20 @@
 			$this->assertSame('BackfillUserStatus', $located[0]->name);
 		}
 
-		public function testRejectsAMissingNameArgument(): void {
+		/**
+		 * Omitting the name must not be an error: the command defaults to
+		 * "Migration<YmdHis>", using its own run-time version stamp as the
+		 * class name so it's guaranteed unique in the migrations directory.
+		 */
+		public function testCreatesAnAutoNamedMigrationFileWhenNameIsOmitted(): void {
 			[$exitCode, $out] = $this->runCommand([]);
 
-			$this->assertSame(1, $exitCode);
-			$this->assertStringContainsString('Missing required argument', $out);
+			$this->assertSame(0, $exitCode);
+			$this->assertStringContainsString('Success!', $out);
+
+			$files = glob($this->migrationsDir . '/*.php');
+			$this->assertCount(1, $files);
+			$this->assertMatchesRegularExpression('/^(\d{14})_Migration\1\.php$/', basename($files[0]));
 		}
 
 		public function testRejectsAnInvalidPhpIdentifier(): void {

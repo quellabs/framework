@@ -14,7 +14,7 @@
 		 * @return string
 		 */
 		public function getSignature(): string {
-			return 'doctrine:migrations:status';
+			return 'doctrine:migrate:status';
 		}
 
 		/**

@@ -43,6 +43,8 @@ parameters:
         - packages/recommender
     bootstrapFiles:
         - vendor/autoload.php
+    stubFiles:
+        - packages/canvas-eloquent/stubs/Facade.stub.php
     scanDirectories:
         - packages/annotation-reader/src
         - packages/canvas-objectquel/src

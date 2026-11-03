@@ -297,7 +297,7 @@
 		'entity_namespace'    => $namespace,
 		'entity_path'         => $entityPath,
 		'migrations_path'     => $migrationsDir,
-		'migration_table'     => $trackingTable,
+		'migrations_table'    => $trackingTable,
 		// Every phase below writes a brand-new class name and expects its
 		// annotations to be read fresh — a cached annotation collection from
 		// an earlier run (the production default is

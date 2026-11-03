@@ -152,7 +152,7 @@
 		'entity_namespace' => 'App\\Entities',
 		'entity_path'      => $entityPath,
 		'migrations_path'  => $migrationsDir,
-		'migration_table'  => $trackingTable,
+		'migrations_table' => $trackingTable,
 	]);
 
 	try {

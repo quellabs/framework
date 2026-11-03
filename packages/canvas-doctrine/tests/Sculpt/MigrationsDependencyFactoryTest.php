@@ -104,6 +104,33 @@
 		}
 
 		/**
+		 * Honors a custom migrations_table, instead of the default
+		 * 'doctrine_migrations'.
+		 * @return void
+		 */
+		public function testHonorsCustomMigrationsTableName(): void {
+			$config = $this->config();
+			$config['migrations_table'] = 'custom_migrations';
+
+			$dependencyFactory = MigrationsDependencyFactory::create($config);
+			$metadataStorageConfiguration = $dependencyFactory->getConfiguration()->getMetadataStorageConfiguration();
+
+			$this->assertInstanceOf(TableMetadataStorageConfiguration::class, $metadataStorageConfiguration);
+			$this->assertSame('custom_migrations', $metadataStorageConfiguration->getTableName());
+		}
+
+		/**
+		 * Rejects an empty migrations_table.
+		 * @return void
+		 */
+		public function testRejectsInvalidMigrationsTable(): void {
+			$config = $this->config();
+			$config['migrations_table'] = '';
+			$this->expectException(\InvalidArgumentException::class);
+			MigrationsDependencyFactory::create($config);
+		}
+
+		/**
 		 * Runs diff, migrate, and status as separate DependencyFactory instances
 		 * sharing the same SQLite file, the way separate CLI invocations would.
 		 * @return void
@@ -135,6 +162,6 @@
 
 			$tables = $statusDependencyFactory->getConnection()->createSchemaManager()->listTableNames();
 			$this->assertContains('DoctrineTestEntity', $tables);
-			$this->assertContains('doctrine_migration_versions', $tables);
+			$this->assertContains('doctrine_migrations', $tables);
 		}
 	}
