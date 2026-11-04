@@ -163,9 +163,8 @@
 	}
 
 	/**
-	 * CsrfTokenManager::validateToken() must compare tokens with hash_equals()
-	 * rather than in_array(), so a mismatch doesn't leak timing information
-	 * about how many leading bytes matched.
+	 * Verifies CsrfTokenManager::validateToken() compares with hash_equals(),
+	 * not in_array(), so a mismatch can't leak a leading-byte timing signal.
 	 */
 	class CsrfTokenManagerTest extends TestCase {
 		/**
