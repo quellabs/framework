@@ -62,14 +62,16 @@
 		public function validateToken(string $token, string $intention = 'default'): bool {
 			// Get all stored tokens for this intention
 			$tokens = $this->getStoredTokens($intention);
-			
-			// Check if token exists in stored tokens (strict comparison)
-			if (in_array($token, $tokens, true)) {
-				// Remove token after use (single-use tokens)
-				$this->removeToken($intention, $token);
-				return true;
+
+			// hash_equals() avoids leaking a byte-match timing signal
+			foreach ($tokens as $storedToken) {
+				if (hash_equals($storedToken, $token)) {
+					// Remove token after use (single-use tokens)
+					$this->removeToken($intention, $storedToken);
+					return true;
+				}
 			}
-			
+
 			return false;
 		}
 		

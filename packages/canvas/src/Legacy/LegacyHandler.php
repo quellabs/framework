@@ -170,17 +170,26 @@
 		}
 
 		/**
-		 * Perform basic security checks on the resolved file.
-		 * Ensures the file exists, is readable, and has a .php extension.
+		 * Perform basic security checks on the resolved file, including a
+		 * canonical-path check that blocks path traversal outside legacyPath.
 		 * @param string $file Path to the file to check
 		 * @return bool True if the file is safe to execute
 		 */
 		private function isSafeFile(string $file): bool {
 			// Basic security: must be .php and exist
-			return
-				file_exists($file) &&
-				str_ends_with($file, '.php') &&
-				is_readable($file);
+			if (!file_exists($file) || !is_readable($file) || !str_ends_with($file, '.php')) {
+				return false;
+			}
+
+			// Canonicalize both paths and ensure the resolved file stays within legacyPath
+			$realFile = realpath($file);
+			$realLegacyPath = realpath($this->legacyPath);
+
+			if ($realFile === false || $realLegacyPath === false) {
+				return false;
+			}
+
+			return str_starts_with($realFile, $realLegacyPath . DIRECTORY_SEPARATOR);
 		}
 		
 		/**
