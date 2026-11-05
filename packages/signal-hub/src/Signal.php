@@ -192,7 +192,7 @@
 			$this->slots[spl_object_id($slot)] = [
 				'slot'     => $slot,
 				'priority' => $priority,
-				'once'     => $once,
+				'once'     => $once
 			];
 		}
 	}
