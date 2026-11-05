@@ -69,7 +69,12 @@
 				'copyright',  // Copyright information
 				'license',    // License information
 				'package',    // Package information
-				'template',   // Template documentation
+				'template',   // Generic type parameter declaration (phpDocumentor/PHPStan/Psalm)
+				'extends',    // Generic parent args, e.g. @extends Repository<User> -- same family as 'template'
+				'implements', // Generic interface args, e.g. @implements Collection<string>
+				'method',     // Magic-method documentation, e.g. @method string getName()
+				'property',   // Magic-property documentation; also covers @property-read/-write (hyphenated continuations tokenize separately)
+				'mixin',      // Magic-property/method source class, e.g. @mixin SomeTrait
 				'url',        // URL references
 				'note',       // General notes
 				'deprecated', // Deprecation notices
