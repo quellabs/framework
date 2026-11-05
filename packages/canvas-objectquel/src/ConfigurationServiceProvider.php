@@ -89,10 +89,17 @@
 			$proxyPath = $configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath;
 			$config->setProxyDir(is_string($proxyPath) ? $proxyPath : $defaultProxyPath);
 
-			// Configure entity annotation metadata cache directory
+			// Configure entity annotation metadata cache directory. An
+			// explicitly empty string disables metadata caching outright --
+			// matches ObjectQuel\Sculpt\ServiceProvider's own semantics for
+			// this key -- rather than silently caching to the computed
+			// default path anyway, which left a project with no way to
+			// actually turn this off.
 			$defaultMetadataCachePath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'annotations';
+			$metadataCacheDisabled = $this->hasConfigValue('metadata_cache_path') && $this->getConfigValue('metadata_cache_path') === '';
 			$metadataCachePath = $configData["metadata_cache_path"] ?? $defaults["metadata_cache_path"] ?? $defaultMetadataCachePath;
 			$config->setMetadataCachePath((is_string($metadataCachePath) && $metadataCachePath !== '') ? $metadataCachePath : $defaultMetadataCachePath);
+			$config->setUseMetadataCache(!$metadataCacheDisabled);
 			$annotationSource = $configData['annotation_source'] ?? $defaults['annotation_source'];
 			if (!is_string($annotationSource)) {
 				throw new \InvalidArgumentException('annotation_source must be a string');

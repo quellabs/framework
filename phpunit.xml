@@ -65,6 +65,9 @@
             <directory>packages/signal-hub/tests</directory>
             <exclude>packages/signal-hub/tests/Fixtures</exclude>
         </testsuite>
+        <testsuite name="CanvasObjectQuel">
+            <directory>packages/canvas-objectquel/tests</directory>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>
