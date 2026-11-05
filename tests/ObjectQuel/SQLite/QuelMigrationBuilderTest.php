@@ -7,6 +7,7 @@
 	use Quellabs\ObjectQuel\DatabaseAdapter\ColumnDefinition;
 	use Quellabs\ObjectQuel\DatabaseAdapter\DatabaseAdapter;
 	use Quellabs\ObjectQuel\DatabaseAdapter\ForeignKeyDefinition;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\Sculpt\Helpers\QuelMigrationBuilder;
 	use Quellabs\ObjectQuel\Tests\Support\FakePlatformCapabilities;
 	use Quellabs\ObjectQuel\Tests\Support\FkTestSupport;
@@ -231,7 +232,18 @@
 		// Modified / deleted columns
 		// -------------------------------------------------------------------------
 
+		/**
+		 * On a platform that actually supports it, a modified column emits
+		 * `retype` on up() and the original definition's own `retype` on
+		 * down(). Uses a platform other than this file's shared sqlite-
+		 * backed $this->builder — sqlite refuses this outright, covered by
+		 * the sibling test below.
+		 */
 		public function testModifiedColumnEmitsRetypeOnUpAndTheOriginalDefinitionOnDown(): void {
+			$builder = new QuelMigrationBuilder($this->adapter, sys_get_temp_dir(), new FakePlatformCapabilities('mysql'));
+			$method = new \ReflectionMethod(QuelMigrationBuilder::class, 'buildMigrationContent');
+			$method->setAccessible(true);
+
 			$changes = $this->emptyChangeSet();
 			$changes['modified'] = [
 				'price' => [
@@ -241,10 +253,34 @@
 				],
 			];
 
-			$content = $this->buildMigrationContent(['products' => $changes]);
+			$content = $method->invoke($builder, 'TestMigration', ['products' => $changes]);
 
 			$this->assertStringContainsString("\$this->query('alter products (retype price = decimal(10,2))');", $content);
 			$this->assertStringContainsString("\$this->query('alter products (retype price = integer)');", $content);
+		}
+
+		/**
+		 * SQLite has no ALTER COLUMN — QuelToSQLAlter::compileRetypeColumn()
+		 * already refuses a `retype` op at apply time (quel:migrate), but
+		 * generating the migration file in the first place (make:migrations,
+		 * this file's shared sqlite-backed $this->builder) must refuse it
+		 * too, rather than writing a file guaranteed to fail the moment
+		 * anyone runs it.
+		 */
+		public function testModifiedColumnRefusesToGenerateOnSqlite(): void {
+			$changes = $this->emptyChangeSet();
+			$changes['modified'] = [
+				'price' => [
+					'from'    => $this->baseColumn(['type' => 'integer', 'limit' => null]),
+					'to'      => $this->baseColumn(['type' => 'decimal', 'precision' => 10, 'scale' => 2, 'limit' => null]),
+					'changes' => [],
+				],
+			];
+
+			$this->expectException(QuelException::class);
+			$this->expectExceptionMessage("Cannot generate a migration for 'products.price'");
+
+			$this->buildMigrationContent(['products' => $changes]);
 		}
 
 		public function testDeletedColumnEmitsDropOnUpAndAddOnDown(): void {
