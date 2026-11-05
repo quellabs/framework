@@ -273,6 +273,140 @@
 		}
 
 		/**
+		 * disconnectAll() removes every connection, including ones added
+		 * with different priorities.
+		 * @return void
+		 */
+		public function testDisconnectAllRemovesEveryConnection(): void {
+			$signal = new Signal();
+
+			$signal->connect(new Slot(function () {
+			}), priority: 10);
+			$signal->connect(new Slot(function () {
+			}), priority: -10);
+
+			$signal->disconnectAll();
+
+			$this->assertSame(0, $signal->countConnections());
+		}
+
+		/**
+		 * disconnectAll() on a Signal with no connections is a no-op.
+		 * @return void
+		 */
+		public function testDisconnectAllOnEmptySignalDoesNothing(): void {
+			$signal = new Signal();
+
+			$signal->disconnectAll();
+
+			$this->assertSame(0, $signal->countConnections());
+		}
+
+		/**
+		 * connectOnce() invokes the Slot on the next emit(), then
+		 * disconnects it so a later emit() does not reach it again.
+		 * @return void
+		 */
+		public function testConnectOnceFiresOnlyOnTheNextEmit(): void {
+			$signal = new Signal();
+			$calls = 0;
+
+			$signal->connectOnce(new Slot(function () use (&$calls) {
+				$calls++;
+			}));
+
+			$signal->emit();
+			$signal->emit();
+
+			$this->assertSame(1, $calls);
+		}
+
+		/**
+		 * A once-connection is already disconnected by the time its own
+		 * receiver runs, so isConnected() reports false from inside it.
+		 * @return void
+		 */
+		public function testConnectOnceSlotIsAlreadyDisconnectedDuringItsOwnInvocation(): void {
+			$signal = new Signal();
+			$stillConnected = null;
+			$slot = null;
+
+			$slot = new Slot(function () use ($signal, &$stillConnected, &$slot) {
+				$stillConnected = $signal->isConnected($slot);
+			});
+
+			$signal->connectOnce($slot);
+			$signal->emit();
+
+			$this->assertFalse($stillConnected);
+		}
+
+		/**
+		 * A once-connection still participates in priority ordering
+		 * alongside regular connections.
+		 * @return void
+		 */
+		public function testConnectOnceRespectsPriorityAmongOtherSlots(): void {
+			$signal = new Signal();
+			$order = [];
+
+			$signal->connectOnce(new Slot(function () use (&$order) {
+				$order[] = 'once';
+			}), priority: 10);
+
+			$signal->connect(new Slot(function () use (&$order) {
+				$order[] = 'regular';
+			}), priority: 0);
+
+			$signal->emit();
+
+			$this->assertSame(['once', 'regular'], $order);
+		}
+
+		/**
+		 * Connecting a Slot normally and then upgrading it with
+		 * connectOnce() does not create a second entry; the existing
+		 * connection becomes one-shot.
+		 * @return void
+		 */
+		public function testConnectOnceUpgradesAnExistingConnection(): void {
+			$signal = new Signal();
+			$calls = 0;
+			$slot = new Slot(function () use (&$calls) {
+				$calls++;
+			});
+
+			$signal->connect($slot);
+			$signal->connectOnce($slot);
+
+			$this->assertSame(1, $signal->countConnections());
+
+			$signal->emit();
+			$signal->emit();
+
+			$this->assertSame(1, $calls);
+		}
+
+		/**
+		 * A once-connection may be manually disconnected before it ever
+		 * fires, exactly like a regular connection.
+		 * @return void
+		 */
+		public function testConnectOnceSlotCanBeDisconnectedBeforeItFires(): void {
+			$signal = new Signal();
+			$calls = 0;
+			$slot = new Slot(function () use (&$calls) {
+				$calls++;
+			});
+
+			$signal->connectOnce($slot);
+			$signal->disconnect($slot);
+			$signal->emit();
+
+			$this->assertSame(0, $calls);
+		}
+
+		/**
 		 * The same Slot instance can be connected to two different Signals
 		 * at once, each tracking its own priority for that connection.
 		 * @return void

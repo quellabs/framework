@@ -26,7 +26,7 @@
 	 * The same Slot can be connected to multiple signals with different priorities.
 	 * Slots are sorted by priority on every emit() call.
 	 *
-	 * @phpstan-type SlotEntry array{slot: Slot, priority: int}
+	 * @phpstan-type SlotEntry array{slot: Slot, priority: int, once: bool}
 	 */
 	class Signal {
 		
@@ -74,12 +74,22 @@
 		 * @return void
 		 */
 		public function connect(Slot $slot, int $priority = 0): void {
-			// Use spl_object_id as the array key for O(1) duplicate detection and disconnect.
-			// The Slot object is stored in the entry value to maintain a strong reference.
-			$this->slots[spl_object_id($slot)] = [
-				'slot'     => $slot,
-				'priority' => $priority,
-			];
+			$this->addConnection($slot, $priority, false);
+		}
+		
+		/**
+		 * Connect a Slot that automatically disconnects itself after its next invocation.
+		 *
+		 * If the Slot is already connected, it is upgraded to a one-shot connection with
+		 * the given priority. The disconnect happens before the Slot is invoked, so the
+		 * Slot sees itself as already disconnected during that final call.
+		 *
+		 * @param Slot $slot Slot to connect
+		 * @param int $priority Execution order relative to other slots; higher runs first
+		 * @return void
+		 */
+		public function connectOnce(Slot $slot, int $priority = 0): void {
+			$this->addConnection($slot, $priority, true);
 		}
 		
 		/**
@@ -102,6 +112,14 @@
 		}
 		
 		/**
+		 * Disconnect every currently connected Slot.
+		 * @return void
+		 */
+		public function disconnectAll(): void {
+			$this->slots = [];
+		}
+		
+		/**
 		 * Emit the signal, invoking all connected slots in priority order.
 		 *
 		 * Slots are sorted by priority on each emit. This keeps connect() cheap
@@ -120,9 +138,18 @@
 			// do not affect the current emit call
 			$slots = $this->slots;
 			
-			usort($slots, fn($a, $b) => $b['priority'] <=> $a['priority']);
+			// Sorting 0 or 1 entries can never change their order, so skip the call
+			if (count($slots) > 1) {
+				usort($slots, fn($a, $b) => $b['priority'] <=> $a['priority']);
+			}
 			
 			foreach ($slots as $entry) {
+				// A once-connection must look disconnected to its own receiver,
+				// so remove it from the live list before invoking
+				if ($entry['once']) {
+					unset($this->slots[spl_object_id($entry['slot'])]);
+				}
+				
 				$entry['slot']->invoke(...$args);
 			}
 		}
@@ -150,5 +177,22 @@
 		 */
 		public function getName(): ?string {
 			return $this->name;
+		}
+
+		/**
+		 * Add or update a connection entry.
+		 * @param Slot $slot Slot to connect
+		 * @param int $priority Execution order relative to other slots; higher runs first
+		 * @param bool $once Whether this connection disconnects itself after one invocation
+		 * @return void
+		 */
+		private function addConnection(Slot $slot, int $priority, bool $once): void {
+			// Use spl_object_id as the array key for O(1) duplicate detection and disconnect.
+			// The Slot object is stored in the entry value to maintain a strong reference.
+			$this->slots[spl_object_id($slot)] = [
+				'slot'     => $slot,
+				'priority' => $priority,
+				'once'     => $once,
+			];
 		}
 	}

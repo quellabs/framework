@@ -113,7 +113,14 @@ $signalB->connect($slot, priority: 10);
 $signalA->disconnect($slot); // still connected to $signalB
 ```
 
-**Explicit disconnect** — store the Slot as a property and call `disconnect()` when needed:
+**One-shot connections** — `connectOnce()` disconnects the Slot right before its first invocation, so it never fires twice:
+
+```php
+$signal->connectOnce(new Slot(fn(Payment $p) => $this->sendWelcomeEmail($p)));
+```
+
+**Explicit disconnect** — store the Slot as a property and call `disconnect()` when needed. `disconnectAll()` clears
+every connection at once, e.g. when tearing down a signal's listeners without tracking each Slot individually:
 
 ```php
 class InventoryListener {
@@ -145,7 +152,7 @@ $hub->signalRegistered()->connect(new Slot(function(Signal $signal) {
 
 Four classes, no traits:
 
-- **`Signal`** — holds connections, emits to slots (`connect`, `disconnect`, `emit`, `isConnected`)
+- **`Signal`** — holds connections, emits to slots (`connect`, `connectOnce`, `disconnect`, `disconnectAll`, `emit`, `isConnected`)
 - **`Slot`** — wraps a callable with stable object identity; the unit of connection
 - **`SignalHub`** — registry and rendezvous point (`discoverSignals`, `unregisterSignals`, `getSignal`, `findSignals`)
 - **`SignalHubLocator`** — optional static accessor for use outside DI contexts
