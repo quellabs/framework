@@ -61,6 +61,10 @@
             <directory>packages/canvas-doctrine/tests</directory>
             <exclude>packages/canvas-doctrine/tests/Fixtures</exclude>
         </testsuite>
+        <testsuite name="SignalHub">
+            <directory>packages/signal-hub/tests</directory>
+            <exclude>packages/signal-hub/tests/Fixtures</exclude>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>
