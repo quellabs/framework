@@ -107,29 +107,6 @@
 				$this->assertSame($workers - $limit, $rejected);
 			} finally {
 				@unlink($scriptPath);
-				$this->cleanUpKey($key, $window, $now);
-			}
-		}
-
-		/**
-		 * Deletes the Redis key the worker processes wrote to, mirroring
-		 * RedisRateLimitStore::buildKey() so the test leaves no state behind.
-		 * @param string $key
-		 * @param int $window
-		 * @param int $now
-		 * @return void
-		 */
-		private function cleanUpKey(string $key, int $window, int $now): void {
-			try {
-				$windowStart = intdiv($now, $window) * $window;
-				$redisKey = 'rate_limit:' . hash('sha256', $key . ':fixed:' . $windowStart);
-
-				$redis = new \Redis();
-				$redis->connect('127.0.0.1', 6379, 2.0);
-				$redis->del($redisKey);
-				$redis->close();
-			} catch (\Throwable) {
-				// Best-effort cleanup; the key would expire on its own regardless.
 			}
 		}
 
