@@ -56,14 +56,14 @@
 		 * @param array<string, mixed> $dependencies Additional autowired dependencies (currently unused)
 		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
-		 * @return object A configured Configuration instance
+		 * @return Configuration A configured Configuration instance
 		 */
 		public function createInstance(
 			string $className,
 			array $dependencies,
 			array $metadata,
 			?MethodContextInterface $methodContext = null
-		): object {
+		): Configuration {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;
