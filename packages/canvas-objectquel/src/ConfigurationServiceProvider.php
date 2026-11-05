@@ -52,23 +52,18 @@
 		
 		/**
 		 * Creates a new Configuration instance with settings from config file
-		 *
-		 * Implements singleton pattern to ensure only one Configuration exists per application
-		 * lifecycle. Configuration is loaded from the application's config system and merged
-		 * with defaults.
-		 *
 		 * @param string $className The class name to instantiate (Configuration)
 		 * @param array<string, mixed> $dependencies Additional autowired dependencies (currently unused)
 		 * @param array<string, mixed> $metadata Metadata as passed by Discover
 		 * @param MethodContextInterface|null $methodContext Optional method context
-		 * @return object A configured Configuration instance
+		 * @return Configuration A configured Configuration instance
 		 */
 		public function createInstance(
 			string $className,
 			array $dependencies,
 			array $metadata,
 			?MethodContextInterface $methodContext = null
-		): object {
+		): Configuration {
 			// Return existing instance if already created (singleton behavior)
 			if (self::$instance !== null) {
 				return self::$instance;
@@ -88,15 +83,20 @@
 			$defaultProxyPath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'proxies';
 			$proxyPath = $configData["proxy_path"] ?? $defaults["proxy_path"] ?? $defaultProxyPath;
 			$config->setProxyDir(is_string($proxyPath) ? $proxyPath : $defaultProxyPath);
-
+			
 			// Configure entity annotation metadata cache directory
 			$defaultMetadataCachePath = ComposerUtils::getProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'objectquel' . DIRECTORY_SEPARATOR . 'annotations';
+			$metadataCacheDisabled = $this->hasConfigValue('metadata_cache_path') && $this->getConfigValue('metadata_cache_path') === '';
 			$metadataCachePath = $configData["metadata_cache_path"] ?? $defaults["metadata_cache_path"] ?? $defaultMetadataCachePath;
 			$config->setMetadataCachePath((is_string($metadataCachePath) && $metadataCachePath !== '') ? $metadataCachePath : $defaultMetadataCachePath);
+			$config->setUseMetadataCache(!$metadataCacheDisabled);
+			
 			$annotationSource = $configData['annotation_source'] ?? $defaults['annotation_source'];
+			
 			if (!is_string($annotationSource)) {
 				throw new \InvalidArgumentException('annotation_source must be a string');
 			}
+			
 			$config->setAnnotationSource($annotationSource);
 			
 			// Configure entity class namespace
