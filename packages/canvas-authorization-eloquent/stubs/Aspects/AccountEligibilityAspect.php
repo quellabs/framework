@@ -3,6 +3,7 @@
 	namespace App\Aspects;
 
 	use App\Entities\UserEntity;
+	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\Contracts\AOP\BeforeAspectInterface;
 	use Quellabs\Contracts\AOP\MethodContextInterface;
 	use Quellabs\CanvasAuthorization\Exceptions\AccountEligibilityException;
@@ -28,6 +29,8 @@
 	 * @InterceptWith(Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure=true)
 	 * @InterceptWith(App\Aspects\AccountEligibilityAspect::class, throwOnFailure=true)
 	 */
+	#[InterceptWith(\Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure: true)]
+	#[InterceptWith(\App\Aspects\AccountEligibilityAspect::class, throwOnFailure: true)]
 	class AccountEligibilityAspect implements BeforeAspectInterface {
 
 		/**

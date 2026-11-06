@@ -2,6 +2,7 @@
 
 	namespace Quellabs\CanvasAuthorization\ObjectQuel;
 
+	use Quellabs\Canvas\Annotations\InterceptWith;
 	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\Contracts\AOP\BeforeAspectInterface;
 	use Quellabs\ObjectQuel\Exception\EntityResolutionException;
@@ -48,6 +49,8 @@
 	 * @InterceptWith(Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure=true)
 	 * @InterceptWith(Quellabs\CanvasAuthorization\ObjectQuel\AccountEligibilityAspect::class, userEntityClass=App\Entities\UserEntity::class, throwOnFailure=true)
 	 */
+	#[InterceptWith(\Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure: true)]
+	#[InterceptWith(\Quellabs\CanvasAuthorization\ObjectQuel\AccountEligibilityAspect::class, userEntityClass: \App\Entities\UserEntity::class, throwOnFailure: true)]
 	class AccountEligibilityAspect implements BeforeAspectInterface {
 
 		/**
