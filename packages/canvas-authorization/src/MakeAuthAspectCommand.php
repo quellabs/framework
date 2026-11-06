@@ -4,6 +4,7 @@
 
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\StubCommand;
+	use Quellabs\Support\OrmEngineResolver;
 
 	/**
 	 * Ejects a local, fully editable copy of AccountEligibilityAspect into the
@@ -35,8 +36,10 @@
 		 * @return array<string, string>
 		 */
 		protected function getStubs(): array {
+			$orm = OrmEngineResolver::resolve();
+
 			return [
-				'Aspects/AccountEligibilityAspect.php' => 'src/Aspects/AccountEligibilityAspect.php',
+				"Aspects/{$orm}/AccountEligibilityAspect.php" => 'src/Aspects/AccountEligibilityAspect.php',
 			];
 		}
 

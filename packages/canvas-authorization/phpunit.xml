@@ -7,6 +7,7 @@
     <testsuites>
         <testsuite name="CanvasAuthorization">
             <directory>tests</directory>
+            <exclude>tests/E2E</exclude>
         </testsuite>
     </testsuites>
 

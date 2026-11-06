@@ -35,17 +35,25 @@
     "php": ">=8.3",
     "quellabs/canvas": "^1.",
     "quellabs/contracts": "^1.",
-    "quellabs/objectquel": "^2.",
     "quellabs/sculpt": "^1.",
     "quellabs/support": "^1."
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.0"
+    "phpunit/phpunit": "^11.0",
+    "quellabs/objectquel": "^2."
+  },
+  "suggest": {
+    "quellabs/canvas-doctrine": "Scaffolds Doctrine-flavored auth stubs via install:auth",
+    "quellabs/canvas-eloquent": "Scaffolds Eloquent-flavored auth stubs via install:auth",
+    "quellabs/canvas-objectquel": "Scaffolds ObjectQuel-flavored auth stubs via install:auth (the default when none of these is installed)"
   },
   "autoload": {
     "psr-4": {
       "Quellabs\\CanvasAuthorization\\": "src/"
-    }
+    },
+    "exclude-from-classmap": [
+      "/tests/E2E/"
+    ]
   },
   "autoload-dev": {
     "psr-4": {
