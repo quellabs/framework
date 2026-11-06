@@ -4,7 +4,7 @@
 	
 	use Psr\Log\LoggerInterface;
 	use Psr\Log\NullLogger;
-	use Quellabs\Contracts\Scheduler\JobInterface;
+	use Quellabs\Contracts\Scheduler\QueueableInterface;
 	use Quellabs\DependencyInjection\Container;
 	
 	/**
@@ -107,9 +107,11 @@
 				// Reconstruct job via DI container using payload as constructor parameters
 				$job = $this->container->make($envelope->class, $envelope->payload);
 				
-				// Validate the reconstructed instance implements JobInterface
-				if (!$job instanceof JobInterface) {
-					throw new \RuntimeException("Class '{$envelope->class}' does not implement JobInterface");
+				// Validate the reconstructed instance implements QueueableInterface - not just
+				// the broader JobInterface, which every Cron task also implements but was never
+				// designed to be remotely instantiated with queue-supplied constructor arguments
+				if (!$job instanceof QueueableInterface) {
+					throw new \RuntimeException("Class '{$envelope->class}' does not implement QueueableInterface");
 				}
 				
 				// Execute the job

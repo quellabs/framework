@@ -105,6 +105,27 @@
 		}
 
 		/**
+		 * A relative include path must resolve relative to the including file's own
+		 * directory, not relative to the process's current working directory - resolveIncludePath()
+		 * used to validate file_exists() against the former but call realpath() on the latter.
+		 * @return void
+		 */
+		public function testRelativeIncludeResolvesRelativeToIncludingFile(): void {
+			mkdir($this->directory . '/sub', 0777, true);
+			$child = $this->directory . '/sub/child.php';
+			$parent = $this->directory . '/sub/parent.php';
+			file_put_contents($child, '<?php echo "child";');
+			file_put_contents($parent, "<?php require 'child.php';");
+
+			$processor = new RecursiveLegacyPreprocessor($this->directory . '/cache');
+			$cachedParent = $processor->processFileRecursively($parent);
+
+			// The include was resolved and preprocessed - a cached copy of the child exists.
+			$this->assertNotEmpty(glob($this->directory . '/cache/*.php'));
+			$this->assertStringContainsString('child', file_get_contents($cachedParent));
+		}
+
+		/**
 		 * Excluding 'lib' must not also match an unrelated file whose name merely contains "lib".
 		 * @return void
 		 */

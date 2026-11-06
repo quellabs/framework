@@ -2,9 +2,8 @@
 	
 	namespace Quellabs\Canvas\Scheduler\Redis;
 	
-	use Quellabs\Contracts\Scheduler\JobInterface;
 	use Quellabs\Contracts\Scheduler\QueueableInterface;
-	
+
 	/**
 	 * Represents a job as it travels through the Redis queue.
 	 * Wraps the job class name, payload, and execution metadata
@@ -12,7 +11,7 @@
 	 *
 	 * @phpstan-type EnvelopeData array{
 	 *     id: string,
-	 *     class: class-string<JobInterface>,
+	 *     class: class-string<QueueableInterface>,
 	 *     payload: array<string, mixed>,
 	 *     attempts: int,
 	 *     max_retries: int,
@@ -28,7 +27,7 @@
 		public string $id;
 		
 		/**
-		 * @var class-string<JobInterface> Fully qualified job class name
+		 * @var class-string<QueueableInterface> Fully qualified job class name
 		 */
 		public string $class;
 		
@@ -59,7 +58,7 @@
 		
 		/**
 		 * JobEnvelope constructor
-		 * @param class-string<JobInterface> $class
+		 * @param class-string<QueueableInterface> $class
 		 * @param array<string, mixed> $payload
 		 * @param int $attempts
 		 * @param int $maxRetries
@@ -103,7 +102,7 @@
 		 * Reconstruct an envelope from a JSON string popped from Redis
 		 * @param string $json
 		 * @return self
-		 * @throws \InvalidArgumentException If the JSON is malformed or missing required fields
+		 * @throws \InvalidArgumentException If the JSON is malformed, missing required fields, or contains invalid types
 		 */
 		public static function fromJson(string $json): self {
 			$data = json_decode($json, true);
@@ -118,26 +117,62 @@
 					throw new \InvalidArgumentException("Invalid job envelope JSON: missing field '{$field}'");
 				}
 			}
-			
+
+			// Validate field types before use to catch corrupted messages early
+			if (!is_string($data['id']) || $data['id'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'id' must be a non-empty string");
+			}
+
+			if (!is_string($data['class']) || $data['class'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'class' must be a non-empty string");
+			}
+
+			if (!is_array($data['payload'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'payload' must be an array");
+			}
+
+			if (!is_int($data['attempts'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'attempts' must be an integer");
+			}
+
+			if (!is_int($data['max_retries'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'max_retries' must be an integer");
+			}
+
+			if (!is_int($data['timeout'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'timeout' must be an integer");
+			}
+
+			if (!is_int($data['queued_at'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'queued_at' must be an integer");
+			}
+
 			if (!class_exists($data['class'])) {
 				throw new \InvalidArgumentException("Job class '{$data['class']}' does not exist");
 			}
-			
-			if (!is_a($data['class'], JobInterface::class, true)) {
-				throw new \InvalidArgumentException("Class '{$data['class']}' does not implement JobInterface");
+
+			// QueueableInterface, not the broader JobInterface - every Cron task also
+			// implements JobInterface, but was never designed to be remotely instantiated
+			// with queue-supplied constructor arguments. Restricting to QueueableInterface
+			// keeps "can be dispatched to this queue" the only classes this check accepts.
+			if (!is_a($data['class'], QueueableInterface::class, true)) {
+				throw new \InvalidArgumentException("Class '{$data['class']}' does not implement QueueableInterface");
 			}
-			
-			/** @var class-string<JobInterface> $class */
+
+			/** @var class-string<QueueableInterface> $class */
 			$class = $data['class'];
-			
+
+			/** @var array<string, mixed> $payload */
+			$payload = $data['payload'];
+
 			return new self(
 				class: $class,
-				payload: $data['payload'],
-				attempts: (int)$data['attempts'],
-				maxRetries: (int)$data['max_retries'],
-				timeout: (int)$data['timeout'],
+				payload: $payload,
+				attempts: $data['attempts'],
+				maxRetries: $data['max_retries'],
+				timeout: $data['timeout'],
 				id: $data['id'],
-				queuedAt: (int)$data['queued_at']
+				queuedAt: $data['queued_at']
 			);
 		}
 		

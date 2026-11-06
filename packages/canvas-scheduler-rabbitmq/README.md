@@ -177,6 +177,16 @@ published to a separate failed queue for inspection.
 
 Both queues are declared durable and messages are published as persistent, so jobs survive a RabbitMQ broker restart.
 
+## Security
+
+Anyone who can publish to the pending queue can choose which `QueueableInterface` class gets instantiated and every
+constructor argument it's built with — the worker reconstructs a job via `$container->make($envelope->class,
+$envelope->payload)`, where both `class` and `payload` come from the queue message. Treat publish access to this
+queue (credentials and network reachability) as equivalent to code-execution trust on the worker, the same way you'd
+treat write access to a deploy pipeline. The worker only accepts classes implementing `QueueableInterface` — never the
+broader `JobInterface` that a Cron task also implements — but within that constraint, the queue's producer still picks
+the class and arguments.
+
 ## License
 
 MIT
