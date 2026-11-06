@@ -2,7 +2,7 @@
 	
 	return [
 		// Shows the debug panel (POST data, cookies, SQL with bound parameter values)
-		// on every HTML response. Enable only for local development - never in production.
+		// on every HTML response. Restrict access before enabling in production.
 		'enabled' => false,
 		
 		// Optional panels that are loaded besides the built in Request panel
