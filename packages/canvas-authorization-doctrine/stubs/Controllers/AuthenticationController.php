@@ -65,6 +65,7 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/login", methods: ["GET"])]
 		public function login(Request $request): Response {
 			if (!empty($request->getSession()->get('auth_user_id'))) {
 				return new RedirectResponse('/');
@@ -81,6 +82,7 @@
 		 * @param Request $request
 		 * @return Response
 		 */
+		#[Route("/logout", methods: ["POST", "GET"])]
 		public function logout(Request $request): Response {
 			$session = $request->getSession();
 
@@ -100,6 +102,7 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/register", methods: ["GET"])]
 		public function registration(): Response {
 			return $this->render('registration_form.{{ template_ext }}');
 		}
@@ -112,6 +115,8 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/login", methods: ["POST"])]
+		#[InterceptWith(\Quellabs\Canvas\Validation\ValidateAspect::class, validator: \App\Validation\LoginFormValidator::class)]
 		public function processLogin(Request $request): Response {
 			if (!$request->attributes->get('validation_passed', true)) {
 				return $this->render('login.{{ template_ext }}', [
@@ -153,6 +158,8 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/register", methods: ["POST"])]
+		#[InterceptWith(\Quellabs\Canvas\Validation\ValidateAspect::class, validator: \App\Validation\RegistrationFormValidator::class)]
 		public function processRegistration(Request $request): Response {
 			if (!$request->attributes->get('validation_passed', true)) {
 				return $this->render('registration_form.{{ template_ext }}', [
@@ -213,6 +220,7 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/forgot-password", methods: ["GET"])]
 		public function forgotPassword(): Response {
 			return $this->render('forgot_password.{{ template_ext }}', [
 				'errors'    => [],
@@ -231,6 +239,8 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/forgot-password", methods: ["POST"])]
+		#[InterceptWith(\Quellabs\Canvas\Validation\ValidateAspect::class, validator: \App\Validation\ForgotPasswordFormValidator::class)]
 		public function processForgotPassword(Request $request): Response {
 			if (!$request->attributes->get('validation_passed', true)) {
 				return $this->render('forgot_password.{{ template_ext }}', [
@@ -272,6 +282,7 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/reset-password", methods: ["GET"])]
 		public function resetPassword(Request $request): Response {
 			return $this->render('reset_password.{{ template_ext }}', [
 				'token'  => (string)$request->query->get('token', ''),
@@ -289,6 +300,8 @@
 		 * @return Response
 		 * @throws TemplateRenderException
 		 */
+		#[Route("/reset-password", methods: ["POST"])]
+		#[InterceptWith(\Quellabs\Canvas\Validation\ValidateAspect::class, validator: \App\Validation\ResetPasswordFormValidator::class)]
 		public function processResetPassword(Request $request): Response {
 			$rawToken = (string)$request->request->get('token', '');
 

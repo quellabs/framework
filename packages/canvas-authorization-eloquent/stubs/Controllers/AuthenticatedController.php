@@ -25,5 +25,7 @@
 	 * @InterceptWith(Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure=true)
 	 * @InterceptWith(App\Aspects\AccountEligibilityAspect::class, throwOnFailure=true)
 	 */
+	#[InterceptWith(\Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure: true)]
+	#[InterceptWith(\App\Aspects\AccountEligibilityAspect::class, throwOnFailure: true)]
 	abstract class AuthenticatedController extends BaseController {
 	}

@@ -19,5 +19,7 @@
 	 * @InterceptWith(Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure=true)
 	 * @InterceptWith(Quellabs\CanvasAuthorization\ObjectQuel\AccountEligibilityAspect::class, userEntityClass=App\Entities\UserEntity::class, throwOnFailure=true)
 	 */
+	#[InterceptWith(\Quellabs\CanvasAuthorization\SessionAuthenticationAspect::class, throwOnFailure: true)]
+	#[InterceptWith(\Quellabs\CanvasAuthorization\ObjectQuel\AccountEligibilityAspect::class, userEntityClass: \App\Entities\UserEntity::class, throwOnFailure: true)]
 	abstract class AuthenticatedController extends BaseController {
 	}
