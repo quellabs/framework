@@ -268,10 +268,6 @@ HTML;
 }
 
 /* Minimized state - only show header */
-.canvas-debug-bar.minimized {
-    max-height: 40px;
-}
-
 .canvas-debug-bar.minimized .canvas-debug-bar-content {
     display: none;
 }
@@ -350,6 +346,7 @@ HTML;
     display: flex;
     align-items: center;
     gap: 6px;
+    margin: 0;
     font-size: 12px;
     color: #666666;
     cursor: pointer;
