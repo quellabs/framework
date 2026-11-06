@@ -396,7 +396,9 @@
       "Quellabs\\AnnotationReader\\Tests\\": "tests/AnnotationReader/",
       "Quellabs\\DependencyInjection\\Tests\\": "tests/DependencyInjection/",
       "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/",
-      "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/"
+      "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/",
+      "Quellabs\\SignalHub\\Tests\\": "packages/signal-hub/tests/",
+      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/"
     }
   },
   "scripts": {

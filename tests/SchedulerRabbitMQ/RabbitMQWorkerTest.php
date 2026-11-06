@@ -49,7 +49,26 @@
 	 */
 	class NotAJob {
 	}
-	
+
+	/**
+	 * Implements only the broader JobInterface (e.g. a Cron task would) - not
+	 * QueueableInterface - to prove the worker rejects it rather than accepting
+	 * any JobInterface implementor, which would let a queue message remotely
+	 * instantiate a class never designed to be reconstructed this way.
+	 */
+	class JobInterfaceOnlyJob implements JobInterface {
+		public function handle(): void {
+		}
+
+		public function getMaxRetries(): int {
+			return 3;
+		}
+
+		public function getTimeout(): int {
+			return 60;
+		}
+	}
+
 	/**
 	 * Captures log records so tests can assert on them.
 	 */
@@ -231,9 +250,26 @@
 		}
 		
 		// -------------------------------------------------------------------------
-		// work — non-JobInterface class
+		// work — non-QueueableInterface class
 		// -------------------------------------------------------------------------
-		
+
+		public function testWorkCallsFailWhenContainerReturnsAJobInterfaceImplementorThatIsNotQueueable(): void {
+			// Implementing the broader JobInterface (as a Cron task would) must not be
+			// enough to pass the worker's check - only QueueableInterface should.
+			$envelope = new JobEnvelope(TrackableJob::class, [], 0, 3, 60, 'bad-class', 0);
+
+			$this->queue->method('pop')->willReturnOnConsecutiveCalls($envelope, null);
+			$this->container->method('make')->willReturn(new JobInterfaceOnlyJob());
+			$this->queue->method('close');
+
+			$this->queue
+				->expects($this->once())
+				->method('fail')
+				->with($envelope);
+
+			$this->worker->work(maxJobs: 1, idleSleepUs: 0);
+		}
+
 		public function testWorkCallsFailWhenContainerReturnsNonJobInterface(): void {
 			$envelope = new JobEnvelope(TrackableJob::class, [], 0, 3, 60, 'bad-class', 0);
 			
