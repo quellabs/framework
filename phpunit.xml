@@ -41,6 +41,9 @@
         <testsuite name="CanvasSchedulerRabbitMQ">
             <directory>tests/SchedulerRabbitMQ</directory>
         </testsuite>
+        <testsuite name="CanvasSchedulerRedis">
+            <directory>tests/SchedulerRedis</directory>
+        </testsuite>
         <testsuite name="Support">
             <directory>tests/Support</directory>
         </testsuite>

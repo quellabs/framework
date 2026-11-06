@@ -171,6 +171,16 @@ canvas:failed:default
 | `{prefix}:failed:{name}`        | Failed jobs             |
 | `{prefix}:reserved:{name}:{id}` | Currently executing job |
 
+## Security
+
+Anyone who can push to the pending queue key can choose which `QueueableInterface` class gets instantiated and every
+constructor argument it's built with — the worker reconstructs a job via `$container->make($envelope->class,
+$envelope->payload)`, where both `class` and `payload` come from the queue message. Treat write access to this Redis
+instance/key (credentials and network reachability) as equivalent to code-execution trust on the worker, the same way
+you'd treat write access to a deploy pipeline. The worker only accepts classes implementing `QueueableInterface` —
+never the broader `JobInterface` that a Cron task also implements — but within that constraint, the queue's producer
+still picks the class and arguments.
+
 ## License
 
 MIT
