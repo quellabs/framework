@@ -344,6 +344,33 @@
 			$this->assertSame('<a>click</a>', $result);
 		}
 
+		public function testStripTagsPreservesSafeHref(): void {
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize('<a href="https://example.com/page" onclick="alert(1)">click</a>');
+			$this->assertSame('<a href="https://example.com/page">click</a>', $result);
+		}
+
+		public function testStripTagsPreservesRelativeHref(): void {
+			// A relative path/fragment has no scheme to execute, so it's safe as-is.
+			$rule = new StripTags(['a']);
+			$this->assertSame('<a href="/page">x</a>', $rule->sanitize('<a href="/page">x</a>'));
+			$this->assertSame('<a href="#section">x</a>', $rule->sanitize('<a href="#section">x</a>'));
+		}
+
+		public function testStripTagsPreservesSingleQuotedSafeHref(): void {
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize("<a href='https://example.com'>click</a>");
+			$this->assertSame('<a href="https://example.com">click</a>', $result);
+		}
+
+		public function testStripTagsRemovesHrefWithObfuscatedDangerousScheme(): void {
+			// Browsers strip tab/newline and decode entities before reading the scheme,
+			// so these are both "javascript:" in disguise and must still be rejected.
+			$rule = new StripTags(['a']);
+			$this->assertSame('<a>x</a>', $rule->sanitize("<a href=\"jav\tascript:alert(1)\">x</a>"));
+			$this->assertSame('<a>x</a>', $rule->sanitize('<a href="&#106;avascript:alert(1)">x</a>'));
+		}
+
 		public function testStripTagsPassesThroughEmptyString(): void {
 			$rule = new StripTags();
 			$this->assertSame('', $rule->sanitize(''));
