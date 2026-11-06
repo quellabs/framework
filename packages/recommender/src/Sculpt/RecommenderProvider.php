@@ -10,48 +10,17 @@
 	/**
 	 * Registers quellabs/recommender commands with the Sculpt CLI.
 	 *
-	 * Sculpt discovers this provider automatically via the "discover" section
-	 * in composer.json. Database credentials are read from config/database.php
-	 * (shared with other Canvas packages). Recommender-specific settings are
-	 * read from config/recommender.php.
-	 *
-	 * Minimal config/recommender.php example:
-	 *
-	 *   return [
-	 *       'category'      => 1,
-	 *       'direct_slope'  => true,
-	 *       'direct_links'  => false,
-	 *   ];
+	 * Sculpt discovers this provider through the "discover" section of composer.json.
+	 * Database credentials come from config/database.php, and recommender settings
+	 * come from config/recommender.php.
 	 */
 	class RecommenderProvider extends ServiceProvider {
 		
-		/**
-		 * Cached Connection singleton
-		 */
+		/** @var Connection|null Cached database connection */
 		private ?Connection $connection = null;
 		
-		/**
-		 * Cached RecommendationConfig singleton
-		 */
+		/** @var RecommendationConfig|null Cached recommendation settings */
 		private ?RecommendationConfig $recommendationConfig = null;
-		
-		/**
-		 * Returns the default configuration values.
-		 * Database defaults are intentionally absent — they are read from database.php.
-		 * @return array<string, mixed>
-		 */
-		public static function getDefaults(): array {
-			return [
-				'category'                    => 1,
-				'threshold_nr_common_ratings' => 30,
-				'threshold_mult'              => 2,
-				'threshold_rating'            => 0.66,
-				'cost'                        => 5.0,
-				'not_interested'              => -1.0,
-				'direct_links'                => false,
-				'direct_slope'                => true,
-			];
-		}
 		
 		/**
 		 * Register all recommender commands with the Sculpt application.
@@ -63,13 +32,15 @@
 				PublishConfigCommand::class,
 				InitCommand::class,
 				RebuildLinksCommand::class,
+				InitEvaluationCommand::class,
+				PruneEvaluationCommand::class,
+				TrainClickModelCommand::class,
+				ActivateClickModelCommand::class,
 			]);
 		}
 		
 		/**
-		 * Return a configured CakePHP Connection instance (singleton).
-		 * Database credentials are read from config/database.php, which is
-		 * listed as a config source alongside config/recommender.php in composer.json.
+		 * Return the configured database connection, created once from config/database.php.
 		 * @return Connection
 		 */
 		public function getConnection(): Connection {
@@ -91,7 +62,7 @@
 		}
 		
 		/**
-		 * Return a RecommendationConfig instance built from config/recommender.php (singleton).
+		 * Return the recommendation settings built from config/recommender.php, created once.
 		 * @return RecommendationConfig
 		 */
 		public function getRecommendationConfig(): RecommendationConfig {
@@ -99,35 +70,14 @@
 				return $this->recommendationConfig;
 			}
 			
-			$this->recommendationConfig = new RecommendationConfig(
-				category: $this->getConfigValueAsInt('category', 1),
-				thresholdNrCommonRatings: $this->getConfigValueAsInt('threshold_nr_common_ratings', 30),
-				thresholdMult: $this->getConfigValueAsInt('threshold_mult', 2),
-				thresholdRating: $this->getConfigValueAsFloat('threshold_rating', 0.66),
-				cost: $this->getConfigValueAsFloat('cost', 5.0),
-				notInterested: $this->getConfigValueAsFloat('not_interested', -1.0),
-				directLinks: (bool)$this->getConfigValue('direct_links', false),
-				directSlope: (bool)$this->getConfigValue('direct_slope', true),
-			);
-			
+			$this->recommendationConfig = RecommendationConfig::fromArray($this->getConfig());
 			return $this->recommendationConfig;
-		}
-		
-		/**
-		 * Retrieve a float value from config, falling back to the provided default.
-		 * @param string $key Config key
-		 * @param float $default Fallback value when the key is missing or non-numeric
-		 * @return float
-		 */
-		private function getConfigValueAsFloat(string $key, float $default): float {
-			$value = $this->getConfigValue($key);
-			return is_numeric($value) ? (float)$value : $default;
 		}
 		
 		/**
 		 * Resolve a short driver name to a fully qualified CakePHP driver class.
 		 * @param string $driver The configured database driver name or alias
-		 * @return string
+		 * @return string Driver class name, or the input when it is not a known alias
 		 */
 		private function resolveDriver(string $driver): string {
 			$driverMap = [

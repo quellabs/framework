@@ -33,7 +33,7 @@ class RebuildLinksCommandTest extends IntegrationTestCase {
              * @return StatementInterface Statement
              */
             public function execute(string $sql, array $params = [], array $types = []): StatementInterface {
-                if (str_contains($sql, 'INSERT INTO recommender_links_stage')) {
+                if (str_contains($sql, 'INSERT INTO vogoo_links_stage')) {
                     throw new \RuntimeException('Injected staging failure');
                 }
                 return $this->inner->execute($sql, $params, $types);

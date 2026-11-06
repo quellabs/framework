@@ -2,7 +2,8 @@
 	
 	namespace Quellabs\Recommender\Tests;
 	
-	use Quellabs\Recommender\Statistics;
+	use Quellabs\Recommender\Config\RecommendationConfig;
+use Quellabs\Recommender\Statistics;
 	
 	/**
 	 * Integration tests for Statistics.
@@ -64,7 +65,7 @@
 		
 		public function testNumProductsExcludesNotInterestedRatings(): void {
 			$this->insertRating(1, 10, 0.8);
-			$this->insertRating(1, 11, $this->config->getNotInterested());
+			$this->insertRating(1, 11, RecommendationConfig::NOT_INTERESTED);
 			$this->assertSame(1, $this->stats->numProducts());
 		}
 		
@@ -97,8 +98,8 @@
 			$this->insertRating(3, 10, 0.7);
 			$this->insertRating(1, 11, 0.6);
 			$result = $this->stats->mostRatedProducts();
-			$this->assertSame(10, (int)$result[0]['product_id']);
-			$this->assertSame(3, (int)$result[0]['num_ratings']);
+			$this->assertSame(10, (int)$result[0]->productId);
+			$this->assertSame(3, (int)$result[0]->numRatings);
 		}
 		
 		public function testMostRatedProductsRespectsLimit(): void {
@@ -123,8 +124,8 @@
 			$this->insertRating(1, 11, 0.3);
 			$this->insertRating(2, 11, 0.1);
 			$result = $this->stats->topRatedProducts();
-			$this->assertSame(10, (int)$result[0]['product_id']);
-			$this->assertGreaterThan($result[1]['avg_rating'], $result[0]['avg_rating']);
+			$this->assertSame(10, (int)$result[0]->productId);
+			$this->assertGreaterThan($result[1]->averageRating, $result[0]->averageRating);
 		}
 		
 		public function testTopRatedProductsRespectsMinRatings(): void {
@@ -132,8 +133,8 @@
 			$this->insertRating(1, 11, 0.8);
 			$this->insertRating(2, 11, 0.7);
 			// product 10 has 1 rating, product 11 has 2 — minRatings=2 should exclude 10
-			$result     = $this->stats->topRatedProducts(minRatings: 2);
-			$productIds = array_column($result, 'product_id');
+			$result     = $this->stats->topRatedProducts(topRatedMinRatings: 2);
+			$productIds = array_map(fn($row) => $row->productId, $result);
 			$this->assertNotContains(10, $productIds);
 			$this->assertContains(11, $productIds);
 		}

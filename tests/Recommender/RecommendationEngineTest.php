@@ -1,7 +1,9 @@
 <?php
 	
 	namespace Quellabs\Recommender\Tests;
-	
+
+	use Quellabs\Recommender\RatingKind;
+	use Quellabs\Recommender\RatingOrder;
 	use Quellabs\Recommender\Config\RecommendationConfig;
 	use Quellabs\Recommender\RecommendationEngine;
 	
@@ -23,8 +25,7 @@
 		// =========================================================================
 		
 		public function testSetRatingInsertsRow(): void {
-			$result = $this->engine->setRating(1, 10, 0.8);
-			$this->assertTrue($result);
+			$this->engine->setRating(1, 10, 0.8);
 			$row = $this->fetchRatingRow(1, 10);
 			$this->assertNotNull($row);
 			$this->assertEqualsWithDelta(0.8, (float)$row['rating'], 0.0001);
@@ -37,55 +38,71 @@
 			$this->assertEqualsWithDelta(0.9, (float)$row['rating'], 0.0001);
 		}
 		
-		public function testSetRatingReturnsFalseForOutOfRangeValue(): void {
-			$this->assertFalse($this->engine->setRating(1, 10, 1.5));
-			$this->assertFalse($this->engine->setRating(1, 10, -0.5));
+		/**
+		 * Assert that a rating write rejects its input with an InvalidArgumentException.
+		 * @param callable $write Rating write to attempt
+		 * @return void
+		 */
+		private function assertRejectsWrite(callable $write): void {
+			try {
+				$write();
+				$this->fail('Invalid rating input was accepted.');
+			} catch (\InvalidArgumentException) {
+				$this->assertTrue(true);
+			}
+		}
+
+		public function testSetRatingRejectsOutOfRangeValue(): void {
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(1, 10, 1.5));
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(1, 10, -0.5));
 		}
 
 		/** Reject nonfinite values and IDs outside the unsigned schema.
 		 * @return void
 		 */
 		public function testSetRatingRejectsInvalidNumericInput(): void {
-			$this->assertFalse($this->engine->setRating(1, 10, NAN));
-			$this->assertFalse($this->engine->setRating(1, 10, INF));
-			$this->assertFalse($this->engine->setRating(-1, 10, 0.5));
-			$this->assertFalse($this->engine->setRating(1, -10, 0.5));
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(1, 10, NAN));
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(1, 10, INF));
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(-1, 10, 0.5));
+			$this->assertRejectsWrite(fn() => $this->engine->setRating(1, -10, 0.5));
 		}
-		
+
 		public function testSetRatingAcceptsNotInterestedSentinel(): void {
-			$result = $this->engine->setRating(1, 10, $this->config->getNotInterested());
-			$this->assertTrue($result);
+			$this->engine->setRating(1, 10, RecommendationConfig::NOT_INTERESTED);
 			$row = $this->fetchRatingRow(1, 10);
 			$this->assertNotNull($row);
 		}
-		
+
 		public function testSetRatingAcceptsBoundaryValues(): void {
-			$this->assertTrue($this->engine->setRating(1, 10, 0.0));
-			$this->assertTrue($this->engine->setRating(1, 11, 1.0));
+			$this->engine->setRating(1, 10, 0.0);
+			$this->engine->setRating(1, 11, 1.0);
+			$this->assertNotNull($this->fetchRatingRow(1, 10));
+			$this->assertNotNull($this->fetchRatingRow(1, 11));
 		}
 		
 		public function testGetRatingReturnsRatingAndTs(): void {
 			$this->engine->setRating(1, 10, 0.7);
-			$result = $this->engine->getRating(1, 10);
-			$this->assertArrayHasKey('rating', $result);
-			$this->assertArrayHasKey('ts', $result);
-			$this->assertEqualsWithDelta(0.7, $result['rating'], 0.0001);
+			$result = $this->engine->memberRating(1, 10);
+			$this->assertSame(1, $result->memberId);
+			$this->assertSame(10, $result->productId);
+			$this->assertNotSame('', $result->timestamp);
+			$this->assertEqualsWithDelta(0.7, $result->rating, 0.0001);
 		}
 		
-		public function testGetRatingReturnsEmptyArrayWhenNotFound(): void {
-			$this->assertSame([], $this->engine->getRating(1, 99));
+		public function testMemberRatingReturnsNullWhenNotFound(): void {
+			$this->assertNull($this->engine->memberRating(1, 99));
 		}
 		
-		public function testGetRatingExcludesNotInterestedByDefault(): void {
+		public function testMemberRatingExcludesNotInterestedByDefault(): void {
 			$this->engine->setNotInterested(1, 10);
-			$this->assertSame([], $this->engine->getRating(1, 10));
+			$this->assertNull($this->engine->memberRating(1, 10));
 		}
 		
 		public function testGetRatingIncludesNotInterestedWhenRequested(): void {
 			$this->engine->setNotInterested(1, 10);
-			$result = $this->engine->getRating(1, 10, notInterested: true);
+			$result = $this->engine->memberRating(1, 10, RatingKind::All);
 			$this->assertNotEmpty($result);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), $result['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, $result->rating, 0.0001);
 		}
 		
 		// =========================================================================
@@ -96,7 +113,7 @@
 			$this->engine->setNotInterested(1, 10);
 			$row = $this->fetchRatingRow(1, 10);
 			$this->assertNotNull($row);
-			$this->assertEqualsWithDelta($this->config->getNotInterested(), (float)$row['rating'], 0.0001);
+			$this->assertEqualsWithDelta(RecommendationConfig::NOT_INTERESTED, (float)$row['rating'], 0.0001);
 		}
 		
 		// =========================================================================
@@ -137,15 +154,20 @@
 		public function testMemberNumRatingsCountsNotInterestedWhenRequested(): void {
 			$this->engine->setNotInterested(1, 10);
 			$this->engine->setNotInterested(1, 11);
-			$this->assertSame(2, $this->engine->memberNumRatings(1, realRatings: false, notInterested: true));
+			$this->assertSame(2, $this->engine->memberNumRatings(1, RatingKind::NotInterested));
 		}
 		
 		// =========================================================================
 		// memberAverageRating
 		// =========================================================================
 		
-		public function testMemberAverageRatingReturnsZeroWhenNoRatings(): void {
-			$this->assertEqualsWithDelta(0.0, $this->engine->memberAverageRating(1), 0.0001);
+		public function testMemberAverageRatingReturnsNullWhenNoRatings(): void {
+			$this->assertNull($this->engine->memberAverageRating(1));
+		}
+		
+		public function testMemberAverageRatingKeepsZeroRatingDistinctFromNone(): void {
+			$this->engine->setRating(1, 10, 0.0);
+			$this->assertSame(0.0, $this->engine->memberAverageRating(1));
 		}
 		
 		public function testMemberAverageRatingCalculatesCorrectly(): void {
@@ -169,7 +191,7 @@
 			$this->engine->setRating(1, 10, 0.8);
 			$this->engine->setRating(1, 11, 0.3);
 			$this->engine->setRating(1, 12, 0.5);
-			$ratings = $this->engine->memberRatings(1, orderByRating: true, ascending: true);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingAscending);
 			$values = array_map('floatval', array_column($ratings, 'rating'));
 			
 			for ($i = 1; $i < count($values); $i++) {
@@ -180,7 +202,7 @@
 		public function testMemberRatingsOrderByRatingDescending(): void {
 			$this->engine->setRating(1, 10, 0.8);
 			$this->engine->setRating(1, 11, 0.3);
-			$ratings = $this->engine->memberRatings(1, orderByRating: true, ascending: false);
+			$ratings = $this->engine->memberRatings(1, order: RatingOrder::RatingDescending);
 			$values = array_column($ratings, 'rating');
 			$this->assertGreaterThanOrEqual((float)$values[1], (float)$values[0]);
 		}
@@ -201,8 +223,8 @@
 			$this->assertEqualsWithDelta(0.6, $this->engine->productAverageRating(10), 0.0001);
 		}
 		
-		public function testProductAverageRatingReturnsZeroWhenNoRatings(): void {
-			$this->assertEqualsWithDelta(0.0, $this->engine->productAverageRating(99), 0.0001);
+		public function testProductAverageRatingReturnsNullWhenNoRatings(): void {
+			$this->assertNull($this->engine->productAverageRating(99));
 		}
 		
 		// =========================================================================
@@ -224,42 +246,42 @@
 		}
 		
 		// =========================================================================
-		// automaticRating
+		// recordPurchase / recordClick
 		// =========================================================================
 		
-		public function testAutomaticRatingPurchaseSetsMaxRating(): void {
-			$this->engine->automaticRating(1, 10, purchase: true);
-			$result = $this->engine->getRating(1, 10);
-			$this->assertEqualsWithDelta(1.0, $result['rating'], 0.0001);
+		public function testRecordPurchaseSetsMaxRating(): void {
+			$this->engine->recordPurchase(1, 10);
+			$result = $this->engine->memberRating(1, 10);
+			$this->assertEqualsWithDelta(1.0, $result->rating, 0.0001);
 		}
 		
-		public function testAutomaticRatingClickSetsInitialRating(): void {
-			$this->engine->automaticRating(1, 10, purchase: false);
-			$result = $this->engine->getRating(1, 10);
-			$this->assertEqualsWithDelta(0.7, $result['rating'], 0.0001);
+		public function testRecordClickSetsInitialRating(): void {
+			$this->engine->recordClick(1, 10);
+			$result = $this->engine->memberRating(1, 10);
+			$this->assertEqualsWithDelta(0.7, $result->rating, 0.0001);
 		}
 		
-		public function testAutomaticRatingClickIncrementsExistingRating(): void {
+		public function testRecordClickIncrementsExistingRating(): void {
 			$this->engine->setRating(1, 10, 0.5);
-			$this->engine->automaticRating(1, 10, purchase: false);
-			$result = $this->engine->getRating(1, 10);
-			$this->assertEqualsWithDelta(0.51, $result['rating'], 0.0001);
+			$this->engine->recordClick(1, 10);
+			$result = $this->engine->memberRating(1, 10);
+			$this->assertEqualsWithDelta(0.51, $result->rating, 0.0001);
 		}
 		
-		public function testAutomaticRatingClickDoesNotExceedOne(): void {
+		public function testRecordClickDoesNotExceedOne(): void {
 			$this->engine->setRating(1, 10, 1.0);
-			$this->engine->automaticRating(1, 10, purchase: false);
-			$result = $this->engine->getRating(1, 10);
-			$this->assertEqualsWithDelta(1.0, $result['rating'], 0.0001);
+			$this->engine->recordClick(1, 10);
+			$result = $this->engine->memberRating(1, 10);
+			$this->assertEqualsWithDelta(1.0, $result->rating, 0.0001);
 		}
 
 		/** A click near the upper boundary clamps before rating validation.
 		 * @return void
 		 */
-		public function testAutomaticRatingClickClampsNearOne(): void {
+		public function testRecordClickClampsNearOne(): void {
 			$this->engine->setRating(1, 10, 0.995);
-			$this->assertTrue($this->engine->automaticRating(1, 10, purchase: false));
-			$this->assertEqualsWithDelta(1.0, $this->engine->getRating(1, 10)['rating'], 0.00001);
+			$this->engine->recordClick(1, 10);
+			$this->assertEqualsWithDelta(1.0, $this->engine->memberRating(1, 10)->rating, 0.00001);
 		}
 		
 		// =========================================================================
@@ -269,8 +291,8 @@
 		public function testRatingsAreIsolatedByCategory(): void {
 			$this->engine->setRating(1, 10, 0.8, 1);
 			$this->engine->setRating(1, 10, 0.3, 2);
-			$this->assertEqualsWithDelta(0.8, $this->engine->getRating(1, 10, category: 1)['rating'], 0.0001);
-			$this->assertEqualsWithDelta(0.3, $this->engine->getRating(1, 10, category: 2)['rating'], 0.0001);
+			$this->assertEqualsWithDelta(0.8, $this->engine->memberRating(1, 10, category: 1)->rating, 0.0001);
+			$this->assertEqualsWithDelta(0.3, $this->engine->memberRating(1, 10, category: 2)->rating, 0.0001);
 		}
 		
 		public function testMemberNumRatingsResolvesDefaultCategory(): void {
@@ -279,5 +301,29 @@
 			$engine->setRating(1, 10, 0.8);   // goes into category 2
 			$this->assertSame(0, $engine->memberNumRatings(1, category: 1));
 			$this->assertSame(1, $engine->memberNumRatings(1, category: 2));
+		}
+
+		// =========================================================================
+		// Member erasure and ID validation
+		// =========================================================================
+
+		public function testDeleteMemberDataRemovesRatingsInEveryCategory(): void {
+			$this->engine->setRating(1, 10, 0.8, 1);
+			$this->engine->setRating(1, 11, 0.5, 2);
+			$this->engine->deleteMemberData(1);
+			$this->assertSame(0, $this->engine->memberNumRatings(1, category: 1));
+			$this->assertSame(0, $this->engine->memberNumRatings(1, category: 2));
+		}
+
+		public function testMemberRatingsReturnsRatingObjects(): void {
+			$this->engine->setRating(1, 10, 0.8);
+			$ratings = $this->engine->memberRatings(1);
+			$this->assertContainsOnlyInstancesOf(\Quellabs\Recommender\Rating::class, $ratings);
+			$this->assertSame(10, $ratings[0]->productId);
+		}
+
+		public function testNegativeMemberIdIsRejected(): void {
+			$this->expectException(\InvalidArgumentException::class);
+			$this->engine->memberNumRatings(-1);
 		}
 	}

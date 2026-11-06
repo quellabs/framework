@@ -3,7 +3,7 @@
 namespace Quellabs\Recommender\Tests;
 
 use Quellabs\Recommender\Config\RecommendationConfig;
-use Quellabs\Recommender\LinkUpdater;
+use Quellabs\Recommender\Internal\Links\LinkUpdater;
 
 /** Focused integration coverage for independent incremental deltas. */
 class LinkUpdaterTest extends IntegrationTestCase {

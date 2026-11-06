@@ -4,26 +4,29 @@
 	
 	use Cake\Database\Connection;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Quellabs\Recommender\Internal\Identifier;
 	
 	/**
 	 * Catalogue-level statistics about the ratings store.
 	 *
-	 * All methods throw on database failure. Wrap calls in try/catch if you need
-	 * to handle errors.
+	 * Methods throw on database failure.
 	 */
 	readonly class Statistics {
 		
+		/** @var Connection Database connection */
 		private Connection $connection;
+		
+		/** @var RecommendationConfig Recommendation settings used to resolve categories */
 		private RecommendationConfig $config;
 		
 		/**
-		 * Statistics constructor
+		 * Build the statistics service.
 		 * @param Connection $connection The CakePHP database connection
 		 * @param RecommendationConfig $config The recommendation configuration
 		 */
 		public function __construct(Connection $connection, RecommendationConfig $config) {
-			$this->config = $config;
 			$this->connection = $connection;
+			$this->config = $config;
 		}
 		
 		/**
@@ -32,18 +35,14 @@
 		 * @return int
 		 */
 		public function numMembers(?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
-			
-			$row = $this->connection->execute('
+			return $this->fetchCount('
 				SELECT
 					COUNT(DISTINCT `member_id`) AS cnter
 				FROM `vogoo_ratings`
 				WHERE `category` = :category
-			', [
-				'category' => $cat
-			])->fetchAssoc();
-			
-			return (int)$row['cnter'];
+			',
+				$this->config->resolveCategory($category)
+			);
 		}
 		
 		/**
@@ -52,14 +51,15 @@
 		 * @return array<int, int>
 		 */
 		public function members(?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+			$resolvedCategory = $this->config->resolveCategory($category);
 			
 			$rows = $this->connection->execute('
-				SELECT DISTINCT `member_id`
+				SELECT DISTINCT
+					`member_id`
 				FROM `vogoo_ratings`
 				WHERE `category` = :category
 			', [
-				'category' => $cat
+				'category' => $resolvedCategory,
 			])->fetchAll('assoc');
 			
 			return array_map('intval', array_column($rows, 'member_id'));
@@ -71,19 +71,13 @@
 		 * @return int
 		 */
 		public function numProducts(?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
-			
-			$row = $this->connection->execute('
+			return $this->fetchCount('
 				SELECT
 					COUNT(DISTINCT `product_id`) AS cnter
 				FROM `vogoo_ratings`
 				WHERE `category` = :category AND
 				      `rating` >= 0.0
-			', [
-				'category' => $cat
-			])->fetchAssoc();
-			
-			return (int)$row['cnter'];
+			', $this->config->resolveCategory($category));
 		}
 		
 		/**
@@ -92,30 +86,23 @@
 		 * @return int
 		 */
 		public function numRatings(?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
-			
-			$row = $this->connection->execute('
+			return $this->fetchCount('
 				SELECT
 					COUNT(*) AS cnter
 				FROM `vogoo_ratings`
 				WHERE `category` = :category AND
 				      `rating` >= 0.0
-			', [
-				'category' => $cat
-			])->fetchAssoc();
-			
-			return (int)$row['cnter'];
+			', $this->config->resolveCategory($category));
 		}
 		
 		/**
-		 * Return the most-rated products as [['product_id' => int, 'num_ratings' => int], ...]
-		 * ordered by rating count descending.
+		 * Return the most-rated products, ordered by rating count descending.
 		 * @param int $limit Maximum number of results (0 = unlimited)
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, num_ratings: int}>
+		 * @return array<int, ProductCount>
 		 */
 		public function mostRatedProducts(int $limit = 10, ?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
 			
 			$sql = '
@@ -133,31 +120,27 @@
 				$sql .= ' LIMIT ' . $limit;
 			}
 			
-			$rows = $this->connection->execute($sql, ['category' => $cat])->fetchAll('assoc');
+			$rows = $this->connection->execute($sql, ['category' => $resolvedCategory])->fetchAll('assoc');
 			
 			return array_map(
-				fn($row) => [
-					'product_id'  => (int)$row['product_id'],
-					'num_ratings' => (int)$row['num_ratings']
-				],
+				fn($row) => new ProductCount((int)$row['product_id'], (int)$row['num_ratings']),
 				$rows
 			);
 		}
 		
 		/**
-		 * Return the highest-rated products as [['product_id' => int, 'avg_rating' => float], ...]
-		 * ordered by average rating descending. Products with fewer than $minRatings
-		 * ratings are excluded.
-		 *
+		 * Return the highest-rated products, ordered by average rating descending.
+		 * Products with fewer than $topRatedMinRatings ratings are excluded.
 		 * @param int $limit Maximum number of results (0 = unlimited)
-		 * @param int $minRatings Minimum number of ratings to qualify
+		 * @param int $topRatedMinRatings Minimum number of ratings to qualify, at least 1
 		 * @param int|null $category Defaults to configured default
-		 * @return array<int, array{product_id: int, avg_rating: float}>
+		 * @return array<int, ProductAverage>
+		 * @throws \InvalidArgumentException When the minimum ratings is below 1
 		 */
-		public function topRatedProducts(int $limit = 10, int $minRatings = 1, ?int $category = null): array {
-			$cat = $this->config->resolveCategory($category);
+		public function topRatedProducts(int $limit = 10, int $topRatedMinRatings = 1, ?int $category = null): array {
+			Identifier::assertAtLeast($topRatedMinRatings, 1, 'Minimum ratings');
+			$resolvedCategory = $this->config->resolveCategory($category);
 			$limit = max(0, $limit);
-			$minRatings = max(1, $minRatings);
 			
 			$sql = '
 				SELECT
@@ -176,37 +159,38 @@
 			}
 			
 			$rows = $this->connection->execute($sql, [
-				'category'    => $cat,
-				'min_ratings' => $minRatings
+				'category'    => $resolvedCategory,
+				'min_ratings' => $topRatedMinRatings,
 			])->fetchAll('assoc');
 			
 			return array_map(
-				fn($row) => [
-					'product_id' => (int)$row['product_id'],
-					'avg_rating' => (float)$row['avg_rating']
-				],
+				fn($row) => new ProductAverage((int)$row['product_id'], (float)$row['avg_rating']),
 				$rows
 			);
 		}
 		
 		/**
-		 * Return the number of directed pair rows with either liked or Slope One data.
-		 * Useful for monitoring link table growth.
+		 * Return the number of link rows in the category, useful for monitoring link table growth.
 		 * @param int|null $category Defaults to configured default
 		 * @return int Number of link rows in the category
 		 */
 		public function numLinks(?int $category = null): int {
-			$cat = $this->config->resolveCategory($category);
-			
-			$row = $this->connection->execute('
+			return $this->fetchCount('
 				SELECT
 					COUNT(*) AS cnter
 				FROM `vogoo_links`
 				WHERE `category` = :category
-			', [
-				'category' => $cat
-			])->fetchAssoc();
-			
+			', $this->config->resolveCategory($category));
+		}
+		
+		/**
+		 * Run a counting query that selects a single "cnter" column for one category.
+		 * @param string $sql Query with a :category placeholder and a cnter alias
+		 * @param int $category Already-resolved category
+		 * @return int The counted value
+		 */
+		private function fetchCount(string $sql, int $category): int {
+			$row = $this->connection->execute($sql, ['category' => $category])->fetchAssoc();
 			return (int)$row['cnter'];
 		}
 	}
