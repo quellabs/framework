@@ -12,7 +12,12 @@
 	 * Must implement QueueableInterface so is_a() passes.
 	 */
 	class StubJob implements JobInterface, QueueableInterface {
-		public function __construct(public readonly string $title = '') {}
+		private readonly string $title;
+
+		public function __construct(string $title = '') {
+			$this->title = $title;
+		}
+
 		public function handle(): void {}
 		public function getPayload(): array { return ['title' => $this->title]; }
 		public function getMaxRetries(): int { return 3; }
@@ -68,7 +73,7 @@
 				'attempts'    => 0,
 				'max_retries' => 3,
 				'timeout'     => 60,
-				'queued_at'   => 0,
+				'queued_at'   => 0
 			];
 		}
 
