@@ -119,6 +119,10 @@
 			$collation = $configData["collation"] ?? null;
 			$config->setCollation(is_string($collation) && $collation !== '' ? $collation : null);
 
+			// Default page size for a WINDOW clause that omits one; null leaves the parser's own fallback of 1 in effect
+			$defaultWindowSize = $configData["default_window_size"] ?? null;
+			$config->setDefaultWindowSize(is_int($defaultWindowSize) ? $defaultWindowSize : null);
+
 			// Cache and return the instance
 			self::$instance = $config;
 			return self::$instance;
