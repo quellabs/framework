@@ -71,6 +71,10 @@
         <testsuite name="CanvasObjectQuel">
             <directory>packages/canvas-objectquel/tests</directory>
         </testsuite>
+        <testsuite name="CanvasAuthorization">
+            <directory>packages/canvas-authorization/tests</directory>
+            <exclude>packages/canvas-authorization/tests/Fixtures</exclude>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>

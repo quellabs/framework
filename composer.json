@@ -270,6 +270,13 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -282,7 +289,7 @@
     "dragonmantank/cron-expression": "*",
     "cakephp/database": "*",
     "composer-plugin-api": "^2.0",
-    "quellabs/canvas-authorization": "^1.0"
+    "quellabs/canvas-authorization": "dev-main as 1.999.999"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
@@ -397,7 +404,8 @@
       "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/",
       "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/",
       "Quellabs\\SignalHub\\Tests\\": "packages/signal-hub/tests/",
-      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/"
+      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
+      "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/"
     }
   },
   "scripts": {
