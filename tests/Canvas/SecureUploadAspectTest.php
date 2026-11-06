@@ -126,6 +126,43 @@
 			$this->assertFileDoesNotExist($this->uploadAbsolutePath . '/ok.png');
 		}
 
+		public function testReservedFilenameIsRejected(): void {
+			$upload = $this->makeImageUpload('.htaccess');
+
+			$request = Request::create('/upload', 'POST');
+			$request->files->set('file', $upload);
+
+			$aspect = new SecureUploadAspect(
+				uploadPath: $this->uploadRelativePath,
+				randomizeFilenames: false,
+				directoryStructure: ''
+			);
+
+			$aspect->before($this->makeContext($request));
+
+			$results = $request->attributes->get('uploaded_files');
+			$this->assertFalse($results['file'][0]['success']);
+			$this->assertFileDoesNotExist($this->uploadAbsolutePath . '/.htaccess');
+		}
+
+		public function testDangerousCompoundExtensionIsRejected(): void {
+			$upload = $this->makeImageUpload('shell.phar.png');
+
+			$request = Request::create('/upload', 'POST');
+			$request->files->set('file', $upload);
+
+			$aspect = new SecureUploadAspect(
+				uploadPath: $this->uploadRelativePath,
+				randomizeFilenames: false,
+				directoryStructure: ''
+			);
+
+			$aspect->before($this->makeContext($request));
+
+			$results = $request->attributes->get('uploaded_files');
+			$this->assertFalse($results['file'][0]['success']);
+		}
+
 		public function testDuplicateTargetWithinBatchIsRenamedByDefault(): void {
 			$first = $this->makeImageUpload('same.png');
 			$second = $this->makeImageUpload('same.png');

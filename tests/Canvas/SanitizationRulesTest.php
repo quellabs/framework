@@ -154,7 +154,24 @@
 			$rule = new PathSafe();
 			$this->assertStringNotContainsString('../', $rule->sanitize('....//etc/passwd'));
 		}
-		
+
+		public function testPathSafeRemovesBareTraversalSegment(): void {
+			// A ".." with no trailing separator used to pass through untouched.
+			$rule = new PathSafe();
+			$this->assertSame('uploads', $rule->sanitize('uploads/..'));
+			$this->assertSame('', $rule->sanitize('..'));
+		}
+
+		public function testPathSafeRemovesLeadingSlash(): void {
+			$rule = new PathSafe();
+			$this->assertSame('etc/passwd', $rule->sanitize('/etc/passwd'));
+		}
+
+		public function testPathSafeRemovesWindowsDrivePrefix(): void {
+			$rule = new PathSafe();
+			$this->assertSame('windows/system32', $rule->sanitize('C:\\windows\\system32'));
+		}
+
 		// -------------------------------------------------------------------------
 		// RemoveControlChars
 		// -------------------------------------------------------------------------
@@ -319,6 +336,14 @@
 			$this->assertStringContainsString('<p>', $result);
 		}
 		
+		public function testStripTagsRemovesAttributesFromAllowedTags(): void {
+			// strip_tags() only filters tag names, not attributes - an allowed tag
+			// could otherwise carry a javascript: href or an inline event handler through untouched.
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize('<a href="javascript:alert(1)" onclick="alert(1)">click</a>');
+			$this->assertSame('<a>click</a>', $result);
+		}
+
 		public function testStripTagsPassesThroughEmptyString(): void {
 			$rule = new StripTags();
 			$this->assertSame('', $rule->sanitize(''));
