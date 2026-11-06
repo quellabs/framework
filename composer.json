@@ -277,6 +277,27 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-doctrine",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-eloquent",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-objectquel",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -316,6 +337,9 @@
     "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/canvas-eloquent": "dev-main as 1.999.999",
     "quellabs/canvas-doctrine": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-doctrine": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-eloquent": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-objectquel": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 2.999.999",
@@ -405,7 +429,10 @@
       "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/",
       "Quellabs\\SignalHub\\Tests\\": "packages/signal-hub/tests/",
       "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
-      "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/"
+      "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/",
+      "Quellabs\\CanvasAuthorization\\Doctrine\\Tests\\": "packages/canvas-authorization-doctrine/tests/",
+      "Quellabs\\CanvasAuthorization\\Eloquent\\Tests\\": "packages/canvas-authorization-eloquent/tests/",
+      "Quellabs\\CanvasAuthorization\\ObjectQuel\\Tests\\": "packages/canvas-authorization-objectquel/tests/"
     }
   },
   "scripts": {

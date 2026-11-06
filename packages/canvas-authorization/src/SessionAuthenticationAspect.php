@@ -11,9 +11,9 @@
 	 * Session authentication aspect that validates a logged-in session before a method executes.
 	 *
 	 * This is a validator only — like Quellabs\Canvas\Security\JwtAuthenticationAspect, it
-	 * does not perform login itself. Login code elsewhere in the application (this package's
-	 * AuthenticationController, when scaffolded via install:auth) is responsible for writing
-	 * three session keys on successful credential verification:
+	 * does not perform login itself. Login code elsewhere in the application (the
+	 * AuthenticationController scaffolded by one of the install:auth-{orm} commands)
+	 * is responsible for writing three session keys on successful credential verification:
 	 *
 	 *   auth_user_id  — mixed, the authenticated user's identifier
 	 *   auth_time     — int|float, Unix timestamp of when the credential was proven

@@ -8,8 +8,8 @@
 	 * Default PasswordResetNotifierInterface implementation: writes the
 	 * reset link to the PHP error log instead of sending an email.
 	 *
-	 * This is a placeholder so install:auth produces a working forgot-
-	 * password flow out of the box — it is not meant to reach production.
+	 * This is a placeholder so the install:auth-{orm} commands produce a
+	 * working forgot-password flow out of the box — it is not meant to reach production.
 	 * AuthenticationController takes a PasswordResetNotifierInterface
 	 * constructor argument and only falls back to this class when the DI
 	 * container has no other binding for the interface, so swap to a

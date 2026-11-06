@@ -1,0 +1,61 @@
+{
+  "name": "quellabs/canvas-authorization-doctrine",
+  "description": "Doctrine-flavored auth scaffolding for Canvas (install:auth-doctrine)",
+  "keywords": [
+    "canvas-framework"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-authorization-doctrine",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-authorization-doctrine/issues",
+    "source": "https://github.com/quellabs/canvas-authorization-doctrine"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "support@quellabs.com",
+      "homepage": "https://www.canvasphp.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.3"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": true
+    }
+  },
+  "require": {
+    "php": ">=8.3",
+    "quellabs/canvas-authorization": "^1.",
+    "quellabs/canvas-doctrine": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\CanvasAuthorization\\Doctrine\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Quellabs\\CanvasAuthorization\\Doctrine\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "sculpt": {
+        "provider": "Quellabs\\CanvasAuthorization\\Doctrine\\ServiceProvider"
+      }
+    }
+  }
+}

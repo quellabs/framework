@@ -1,0 +1,61 @@
+{
+  "name": "quellabs/canvas-authorization-eloquent",
+  "description": "Eloquent-flavored auth scaffolding for Canvas (install:auth-eloquent)",
+  "keywords": [
+    "canvas-framework"
+  ],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/quellabs/canvas-authorization-eloquent",
+  "support": {
+    "issues": "https://github.com/quellabs/canvas-authorization-eloquent/issues",
+    "source": "https://github.com/quellabs/canvas-authorization-eloquent"
+  },
+  "authors": [
+    {
+      "name": "Quellabs",
+      "email": "support@quellabs.com",
+      "homepage": "https://www.canvasphp.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.3"
+    },
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {
+      "quellabs/discover": true
+    }
+  },
+  "require": {
+    "php": ">=8.3",
+    "quellabs/canvas-authorization": "^1.",
+    "quellabs/canvas-eloquent": "^1.",
+    "quellabs/sculpt": "^1.",
+    "quellabs/support": "^1."
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Quellabs\\CanvasAuthorization\\Eloquent\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Quellabs\\CanvasAuthorization\\Eloquent\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "discover": {
+      "sculpt": {
+        "provider": "Quellabs\\CanvasAuthorization\\Eloquent\\ServiceProvider"
+      }
+    }
+  }
+}
