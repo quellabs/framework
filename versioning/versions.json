@@ -1,7 +1,7 @@
 {
   "annotation-reader": "1.7.2",
   "cache": "1.0.5",
-  "canvas": "1.33.0",
+  "canvas": "1.34.0",
   "canvas-blade": "1.1.1",
   "canvas-database": "1.0.2",
   "canvas-doctrine": "1.2.0",
@@ -34,7 +34,7 @@
   "canvas-shipments-postnl": "1.1.0",
   "canvas-shipments-sendcloud": "1.1.0",
   "canvas-smarty": "1.1.4",
-  "canvas-skeleton": "1.8.0",
+  "canvas-skeleton": "1.9.0",
   "canvas-twig": "1.1.1",
   "contracts": "1.6.0",
   "dependency-injection": "1.5.0",
