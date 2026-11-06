@@ -132,8 +132,9 @@
 			// absence means there is no logged-in session at all
 			$userId = $request->attributes->get('session_user_id');
 
-			if ($userId === null) {
-				return $this->fail($request, 'No authenticated session');
+			if (!is_int($userId) && !is_string($userId)) {
+				$this->fail($request, 'No authenticated session');
+				return null;
 			}
 
 			// Only hit the database if we haven't validated recently, to avoid a
@@ -141,6 +142,12 @@
 			$session = $request->getSession();
 			$lastValidated = $session->get('user_validated_at', 0);
 			$currentTime = time();
+
+			// Written exclusively via $session->set() below as an int, so a non-int
+			// value here would mean something else wrote to this session key
+			if (!is_int($lastValidated)) {
+				$lastValidated = 0;
+			}
 
 			if ($currentTime - $lastValidated > $this->validationInterval) {
 				/** @var AccountEligibilityInterface|null $user */
@@ -152,7 +159,8 @@
 					$session->remove('auth_time');
 					$session->remove('auth_methods');
 					$session->remove('user_validated_at');
-					return $this->fail($request, 'Account is no longer eligible');
+					$this->fail($request, 'Account is no longer eligible');
+					return null;
 				}
 
 				// User is valid - update the validation timestamp to avoid immediate re-validation
@@ -167,14 +175,13 @@
 		 * Report an eligibility failure via the configured failure mode.
 		 * @param Request $request
 		 * @param string $reason Reason the account is not eligible
-		 * @return Response|null Always null — attribute mode never short-circuits via Response.
+		 * @return void
 		 */
-		private function fail(Request $request, string $reason): ?Response {
+		private function fail(Request $request, string $reason): void {
 			if ($this->throwOnFailure) {
 				throw new AccountEligibilityException($reason);
 			}
 
 			$request->attributes->set('account_eligibility_error', $reason);
-			return null;
 		}
 	}
