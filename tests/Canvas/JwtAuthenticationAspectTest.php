@@ -24,7 +24,7 @@
 		// Helpers
 		// =========================================================================
 		
-		private string $secret = 'test-secret-key';
+		private string $secret = 'test-secret-key-that-is-at-least-32-bytes-long';
 		
 		/**
 		 * Build a ConfigProviderInterface mock whose loadConfigFile() returns a
@@ -131,7 +131,13 @@
 			$this->expectException(\RuntimeException::class);
 			new JwtAuthenticationAspect($this->makeConfigProvider([]));
 		}
-		
+
+		public function testConstructorThrowsWhenSecretIsTooShort(): void {
+			// A short HS256 secret is brute-forceable offline against any captured token.
+			$this->expectException(\RuntimeException::class);
+			$this->makeAspect(['secret' => 'short-secret']);
+		}
+
 		public function testConstructorThrowsWhenAlgorithmIsUnsupported(): void {
 			$this->expectException(\InvalidArgumentException::class);
 			$this->makeAspect(['algorithm' => 'RS256']);
@@ -155,7 +161,7 @@
 		public function testAnnotationSecretOverridesConfig(): void {
 			// If the annotation secret is wrong the signature will fail — that proves
 			// the annotation value was used rather than the config value
-			$aspect  = $this->makeAspect(['secret' => $this->secret], secret: 'wrong-secret');
+			$aspect  = $this->makeAspect(['secret' => $this->secret], secret: 'wrong-secret-that-is-also-at-least-32-bytes');
 			$token   = $this->makeToken($this->makePayload());
 			$request = Request::create('/');
 			$request->headers->set('Authorization', 'Bearer ' . $token);
@@ -357,7 +363,7 @@
 		
 		public function testWrongSecretSetsJwtError(): void {
 			$aspect  = new JwtAuthenticationAspect(
-				$this->makeConfigProvider(['secret' => 'correct-secret']),
+				$this->makeConfigProvider(['secret' => 'correct-secret-that-is-at-least-32-bytes-long']),
 			);
 			$token   = $this->makeToken($this->makePayload()); // signed with $this->secret
 			$request = Request::create('/');

@@ -9,12 +9,29 @@
 	
 	/**
 	 * Stub job used for class-name-based checks in fromJson().
-	 * Must implement JobInterface so is_a() passes.
+	 * Must implement QueueableInterface so is_a() passes.
 	 */
 	class StubJob implements JobInterface, QueueableInterface {
-		public function __construct(public readonly string $title = '') {}
+		private readonly string $title;
+
+		public function __construct(string $title = '') {
+			$this->title = $title;
+		}
+
 		public function handle(): void {}
 		public function getPayload(): array { return ['title' => $this->title]; }
+		public function getMaxRetries(): int { return 3; }
+		public function getTimeout(): int { return 60; }
+	}
+
+	/**
+	 * Implements only the broader JobInterface (e.g. a Cron task would) - not
+	 * QueueableInterface - to prove fromJson() rejects it rather than accepting
+	 * any JobInterface implementor, which would let a queue message remotely
+	 * instantiate a class never designed to be reconstructed this way.
+	 */
+	class NonQueueableJob implements JobInterface {
+		public function handle(): void {}
 		public function getMaxRetries(): int { return 3; }
 		public function getTimeout(): int { return 60; }
 	}
@@ -146,13 +163,25 @@
 			JobEnvelope::fromJson(json_encode($data));
 		}
 		
-		public function testFromJsonThrowsWhenClassDoesNotImplementJobInterface(): void {
-			// Use a real class that exists but doesn't implement JobInterface
+		public function testFromJsonThrowsWhenClassDoesNotImplementQueueableInterface(): void {
+			// Use a real class that exists but doesn't implement QueueableInterface
 			$data = $this->validEnvelopeArray();
 			$data['class'] = \stdClass::class;
-			
+
 			$this->expectException(\InvalidArgumentException::class);
-			$this->expectExceptionMessageMatches('/does not implement JobInterface/');
+			$this->expectExceptionMessageMatches('/does not implement QueueableInterface/');
+			JobEnvelope::fromJson(json_encode($data));
+		}
+
+		public function testFromJsonRejectsAJobInterfaceImplementorThatIsNotQueueable(): void {
+			// A class implementing only JobInterface (e.g. a Cron task) must still be
+			// rejected - accepting it would let a queue message remotely instantiate
+			// a class never designed to be reconstructed from queue-supplied arguments.
+			$data = $this->validEnvelopeArray();
+			$data['class'] = NonQueueableJob::class;
+
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessageMatches('/does not implement QueueableInterface/');
 			JobEnvelope::fromJson(json_encode($data));
 		}
 		
@@ -239,7 +268,7 @@
 				'attempts'    => 0,
 				'max_retries' => 3,
 				'timeout'     => 60,
-				'queued_at'   => 1700000000,
+				'queued_at'   => 1700000000
 			];
 		}
 	}

@@ -154,7 +154,24 @@
 			$rule = new PathSafe();
 			$this->assertStringNotContainsString('../', $rule->sanitize('....//etc/passwd'));
 		}
-		
+
+		public function testPathSafeRemovesBareTraversalSegment(): void {
+			// A ".." with no trailing separator used to pass through untouched.
+			$rule = new PathSafe();
+			$this->assertSame('uploads', $rule->sanitize('uploads/..'));
+			$this->assertSame('', $rule->sanitize('..'));
+		}
+
+		public function testPathSafeRemovesLeadingSlash(): void {
+			$rule = new PathSafe();
+			$this->assertSame('etc/passwd', $rule->sanitize('/etc/passwd'));
+		}
+
+		public function testPathSafeRemovesWindowsDrivePrefix(): void {
+			$rule = new PathSafe();
+			$this->assertSame('windows/system32', $rule->sanitize('C:\\windows\\system32'));
+		}
+
 		// -------------------------------------------------------------------------
 		// RemoveControlChars
 		// -------------------------------------------------------------------------
@@ -319,6 +336,41 @@
 			$this->assertStringContainsString('<p>', $result);
 		}
 		
+		public function testStripTagsRemovesAttributesFromAllowedTags(): void {
+			// strip_tags() only filters tag names, not attributes - an allowed tag
+			// could otherwise carry a javascript: href or an inline event handler through untouched.
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize('<a href="javascript:alert(1)" onclick="alert(1)">click</a>');
+			$this->assertSame('<a>click</a>', $result);
+		}
+
+		public function testStripTagsPreservesSafeHref(): void {
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize('<a href="https://example.com/page" onclick="alert(1)">click</a>');
+			$this->assertSame('<a href="https://example.com/page">click</a>', $result);
+		}
+
+		public function testStripTagsPreservesRelativeHref(): void {
+			// A relative path/fragment has no scheme to execute, so it's safe as-is.
+			$rule = new StripTags(['a']);
+			$this->assertSame('<a href="/page">x</a>', $rule->sanitize('<a href="/page">x</a>'));
+			$this->assertSame('<a href="#section">x</a>', $rule->sanitize('<a href="#section">x</a>'));
+		}
+
+		public function testStripTagsPreservesSingleQuotedSafeHref(): void {
+			$rule = new StripTags(['a']);
+			$result = $rule->sanitize("<a href='https://example.com'>click</a>");
+			$this->assertSame('<a href="https://example.com">click</a>', $result);
+		}
+
+		public function testStripTagsRemovesHrefWithObfuscatedDangerousScheme(): void {
+			// Browsers strip tab/newline and decode entities before reading the scheme,
+			// so these are both "javascript:" in disguise and must still be rejected.
+			$rule = new StripTags(['a']);
+			$this->assertSame('<a>x</a>', $rule->sanitize("<a href=\"jav\tascript:alert(1)\">x</a>"));
+			$this->assertSame('<a>x</a>', $rule->sanitize('<a href="&#106;avascript:alert(1)">x</a>'));
+		}
+
 		public function testStripTagsPassesThroughEmptyString(): void {
 			$rule = new StripTags();
 			$this->assertSame('', $rule->sanitize(''));
