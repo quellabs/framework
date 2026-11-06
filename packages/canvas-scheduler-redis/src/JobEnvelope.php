@@ -102,7 +102,7 @@
 		 * Reconstruct an envelope from a JSON string popped from Redis
 		 * @param string $json
 		 * @return self
-		 * @throws \InvalidArgumentException If the JSON is malformed or missing required fields
+		 * @throws \InvalidArgumentException If the JSON is malformed, missing required fields, or contains invalid types
 		 */
 		public static function fromJson(string $json): self {
 			$data = json_decode($json, true);
@@ -117,11 +117,40 @@
 					throw new \InvalidArgumentException("Invalid job envelope JSON: missing field '{$field}'");
 				}
 			}
-			
+
+			// Validate field types before use to catch corrupted messages early
+			if (!is_string($data['id']) || $data['id'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'id' must be a non-empty string");
+			}
+
+			if (!is_string($data['class']) || $data['class'] === '') {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'class' must be a non-empty string");
+			}
+
+			if (!is_array($data['payload'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'payload' must be an array");
+			}
+
+			if (!is_int($data['attempts'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'attempts' must be an integer");
+			}
+
+			if (!is_int($data['max_retries'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'max_retries' must be an integer");
+			}
+
+			if (!is_int($data['timeout'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'timeout' must be an integer");
+			}
+
+			if (!is_int($data['queued_at'])) {
+				throw new \InvalidArgumentException("Invalid job envelope JSON: 'queued_at' must be an integer");
+			}
+
 			if (!class_exists($data['class'])) {
 				throw new \InvalidArgumentException("Job class '{$data['class']}' does not exist");
 			}
-			
+
 			// QueueableInterface, not the broader JobInterface - every Cron task also
 			// implements JobInterface, but was never designed to be remotely instantiated
 			// with queue-supplied constructor arguments. Restricting to QueueableInterface
@@ -132,15 +161,18 @@
 
 			/** @var class-string<QueueableInterface> $class */
 			$class = $data['class'];
-			
+
+			/** @var array<string, mixed> $payload */
+			$payload = $data['payload'];
+
 			return new self(
 				class: $class,
-				payload: $data['payload'],
-				attempts: (int)$data['attempts'],
-				maxRetries: (int)$data['max_retries'],
-				timeout: (int)$data['timeout'],
+				payload: $payload,
+				attempts: $data['attempts'],
+				maxRetries: $data['max_retries'],
+				timeout: $data['timeout'],
 				id: $data['id'],
-				queuedAt: (int)$data['queued_at']
+				queuedAt: $data['queued_at']
 			);
 		}
 		

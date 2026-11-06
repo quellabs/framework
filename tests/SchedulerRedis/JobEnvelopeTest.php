@@ -81,6 +81,33 @@
 			JobEnvelope::fromJson(json_encode($data));
 		}
 
+		public function testFromJsonThrowsWhenPayloadIsNotAnArray(): void {
+			$data = $this->validEnvelopeArray();
+			$data['payload'] = 'not-an-array';
+
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessageMatches("/'payload' must be an array/");
+			JobEnvelope::fromJson(json_encode($data));
+		}
+
+		public function testFromJsonThrowsWhenAttemptsIsNotAnInteger(): void {
+			$data = $this->validEnvelopeArray();
+			$data['attempts'] = 'not-a-number';
+
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessageMatches("/'attempts' must be an integer/");
+			JobEnvelope::fromJson(json_encode($data));
+		}
+
+		public function testFromJsonThrowsWhenIdIsEmpty(): void {
+			$data = $this->validEnvelopeArray();
+			$data['id'] = '';
+
+			$this->expectException(\InvalidArgumentException::class);
+			$this->expectExceptionMessageMatches("/'id' must be a non-empty string/");
+			JobEnvelope::fromJson(json_encode($data));
+		}
+
 		public function testFromJsonThrowsWhenClassDoesNotImplementQueueableInterface(): void {
 			// Use a real class that exists but doesn't implement QueueableInterface
 			$data = $this->validEnvelopeArray();
