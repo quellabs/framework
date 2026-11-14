@@ -35,4 +35,17 @@
 
 			self::assertSame($expected, $provider->getConfiguration()->getMetadataCachePath());
 		}
+		/**
+		 * Passes development mode through the CLI configuration path.
+		 * @return void
+		 */
+		public function testDevelopmentModeIsReadFromConfiguration(): void {
+			$provider = new ServiceProvider();
+			$provider->setConfig(['development_mode' => true]);
+			self::assertTrue($provider->getConfiguration()->getDevelopmentMode());
+
+			$provider->setConfig(['development_mode' => false]);
+			self::assertFalse($provider->getConfiguration()->getDevelopmentMode());
+		}
+
 	}
