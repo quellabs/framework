@@ -213,7 +213,7 @@
 			// Strip null and empty description rather than sending an empty field.
 			$payload = array_filter([
 				'refunded_amount' => $refundedAmount,
-				'description'     => $description,
+				'description'     => $description
 			], fn($v) => $v !== null && $v !== '');
 			
 			return $this->request(
@@ -244,7 +244,7 @@
 				// Merge caller-supplied headers (e.g. Klarna-Idempotency-Key) over the base auth headers.
 				$headers = array_merge([
 					'Accept'        => 'application/json',
-					'Authorization' => 'Basic ' . $this->basicAuth,
+					'Authorization' => 'Basic ' . $this->basicAuth
 				], $extraHeaders);
 				
 				$options = ['headers' => $headers];
@@ -285,7 +285,7 @@
 			} catch (\Throwable $e) {
 				// Network errors, timeouts, and DNS failures land here.
 				return [
-					'request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()],
+					'request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]
 				];
 			}
 		}

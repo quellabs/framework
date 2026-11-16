@@ -39,5 +39,5 @@
 		// NONE          — Klarna authorises only; you place and capture the order yourself.
 		//
 		// @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/
-		'place_order_mode'  => 'CAPTURE_ORDER',
+		'place_order_mode'  => 'CAPTURE_ORDER'
 	];

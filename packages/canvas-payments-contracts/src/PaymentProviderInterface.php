@@ -83,4 +83,20 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void;
 
+		/**
+		 * Returns settlement/payout batch information.
+		 * @param string $settlementId Provider-specific settlement identifier, or an
+		 *                             equivalent lookup key (e.g. Mollie accepts its own
+		 *                             id or the bank-statement reference string).
+		 * @return SettlementInfo
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo;
+
+		/**
+		 * Returns the individual payments included in a settlement.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 */
+		public function getSettlementPayments(string $settlementId): array;
+
 	}

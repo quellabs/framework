@@ -17,6 +17,9 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Stripe Driver
@@ -45,7 +48,7 @@
 			'stripe_multi'      => 'stripe',
 			'stripe_card'       => 'card',
 			'stripe_ideal'      => 'ideal',
-			'stripe_bancontact' => 'bancontact',
+			'stripe_bancontact' => 'bancontact'
 		];
 		
 		/**
@@ -65,7 +68,7 @@
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -110,7 +113,7 @@
 				'brand_name'        => '',
 				'verify_ssl'        => true,
 				'return_url'        => '',
-				'cancel_return_url' => '',
+				'cancel_return_url' => ''
 			];
 		}
 		
@@ -168,7 +171,7 @@
 		 */
 		public function exchange(string $transactionId, array $extraData = []): PaymentState {
 			$action          = $extraData['action'] ?? null;
-			$paymentIntentId = isset($extraData['paymentIntentId']) ? ($this->normalizeString($extraData['paymentIntentId']) ?: null) : null;
+			$paymentIntentId = $this->normalizeString($extraData['paymentIntentId'] ?? null) ?: null;
 			
 			// Branch 1: Buyer explicitly canceled on the Stripe-hosted checkout page.
 			// No API call needed — the absence of any payment attempt is definitive.
@@ -327,7 +330,7 @@
 				currency: strtoupper($response['currency']),
 				metadata: [
 					'status' => $response['status'],
-					'reason' => isset($response['reason']) && is_string($response['reason']) ? $response['reason'] : null,
+					'reason' => isset($response['reason']) && is_string($response['reason']) ? $response['reason'] : null
 				],
 			);
 		}
@@ -389,7 +392,7 @@
 					currency: strtoupper($this->normalizeString($refundRaw['currency'] ?? null)),
 					metadata: [
 						'status' => isset($refundRaw['status']) ? $this->normalizeString($refundRaw['status']) : null,
-						'reason' => isset($refundRaw['reason']) ? $this->normalizeString($refundRaw['reason']) : null,
+						'reason' => isset($refundRaw['reason']) ? $this->normalizeString($refundRaw['reason']) : null
 					],
 				);
 			}
@@ -426,6 +429,26 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
 		/**
@@ -471,7 +494,7 @@
 						valueRefunded: $amountRefunded,
 						internalState: 'succeeded',
 						metadata: [
-							'paymentReference' => $paymentIntentId,
+							'paymentReference' => $paymentIntentId
 						],
 					);
 				
@@ -489,7 +512,7 @@
 						internalState: 'requires_action',
 						metadata: [
 							'paymentReference' => $paymentIntentId,
-							'redirectUrl'      => $redirectUrl,
+							'redirectUrl'      => $redirectUrl
 						],
 					);
 				
@@ -504,7 +527,7 @@
 						internalState: 'canceled',
 						metadata: [
 							'paymentReference'   => $paymentIntentId,
-							'cancellationReason' => isset($intent['cancellation_reason']) ? $this->normalizeString($intent['cancellation_reason']) : null,
+							'cancellationReason' => isset($intent['cancellation_reason']) ? $this->normalizeString($intent['cancellation_reason']) : null
 						],
 					);
 				
@@ -519,7 +542,7 @@
 						valueRefunded: 0,
 						internalState: $intentStatus,
 						metadata: [
-							'paymentReference' => $paymentIntentId,
+							'paymentReference' => $paymentIntentId
 						],
 					);
 			}

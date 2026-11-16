@@ -18,6 +18,9 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * XPay Driver
@@ -77,7 +80,7 @@
 			'xpay_bancomatpay' => 'BANCOMATPAY',
 			'xpay_klarna'      => 'KLARNA',
 			'xpay_alipay'      => 'ALIPAY',
-			'xpay_wechatpay'   => 'WECHATPAY',
+			'xpay_wechatpay'   => 'WECHATPAY'
 		];
 		
 		/**
@@ -105,7 +108,7 @@
 			'THREEDS_VALIDATED' => PaymentStatus::Pending,
 			'THREEDS_FAILED'    => PaymentStatus::Failed,
 			'FAILED'            => PaymentStatus::Failed,
-			'REVERSED'          => PaymentStatus::Refunded,
+			'REVERSED'          => PaymentStatus::Refunded
 		];
 		
 		/**
@@ -119,7 +122,7 @@
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -157,7 +160,7 @@
 				'return_url'        => '',
 				'return_url_cancel' => '',
 				'webhook_url'       => '',
-				'default_language'  => 'ENG',
+				'default_language'  => 'ENG'
 			];
 		}
 		
@@ -204,7 +207,7 @@
 				'amount'     => (string)$request->amount,
 				'resultUrl'  => $config['return_url'],
 				'cancelUrl'  => $config['return_url_cancel'],
-				'language'   => $config['default_language'],
+				'language'   => $config['default_language']
 			];
 			
 			// notificationUrl triggers server-to-server push notifications after each state change
@@ -222,7 +225,7 @@
 				'orderId'     => $request->reference,
 				'amount'      => (string)$request->amount,
 				'currency'    => $request->currency,
-				'description' => $request->description,
+				'description' => $request->description
 			];
 			
 			// Build customerInfo from billing or shipping address if present
@@ -235,7 +238,7 @@
 			// Call the API
 			$result = $this->getGateway()->createOrder([
 				'paymentSession' => $paymentSession,
-				'order'          => $order,
+				'order'          => $order
 			]);
 			
 			// If the API call failed, throw exception
@@ -362,7 +365,7 @@
 					'operationId'    => $operationId,
 					'paymentMethod'  => isset($captureOp['paymentMethod']) ? $this->normalizeString($captureOp['paymentMethod']) : null,
 					'paymentCircuit' => isset($captureOp['paymentCircuit']) ? $this->normalizeString($captureOp['paymentCircuit']) : null,
-					'operationType'  => isset($captureOp['operationType']) ? $this->normalizeString($captureOp['operationType']) : null,
+					'operationType'  => isset($captureOp['operationType']) ? $this->normalizeString($captureOp['operationType']) : null
 				], fn($v) => $v !== null),
 			);
 		}
@@ -531,6 +534,26 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
 		/**
@@ -710,7 +733,7 @@
 				'city'     => $address->city,
 				'postCode' => $address->postalCode,
 				'province' => $address->region,
-				'country'  => $address->country, // caller should pass ISO 3166-1 alpha-3 (ITA, NLD, DEU…)
+				'country'  => $address->country  // caller should pass ISO 3166-1 alpha-3 (ITA, NLD, DEU…)
 			];
 			
 			return array_filter($fields, fn($v) => $v !== null && $v !== '');

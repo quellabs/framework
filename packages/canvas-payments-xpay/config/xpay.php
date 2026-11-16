@@ -27,5 +27,5 @@
 		// BCP 47 / ISO 639-2 language code for the hosted payment page.
 		// XPay accepts 3-letter codes: ENG, ITA, DEU, FRA, SPA, POR, etc.
 		// @see https://developer.nexigroup.com/xpayglobal/en-EU/api/payment-api-v1/
-		'default_language' => 'ENG',
+		'default_language' => 'ENG'
 	];

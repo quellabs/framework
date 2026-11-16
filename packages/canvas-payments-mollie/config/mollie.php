@@ -24,5 +24,5 @@
 		'return_url' => 'https://example.com/order/thankyou',
 		
 		// Where to redirect the buyer after the package handles the cancel.
-		'cancel_return_url' => 'https://example.com/order/cancelled',
+		'cancel_return_url' => 'https://example.com/order/cancelled'
 	];

@@ -128,8 +128,8 @@
 				$options = [
 					'headers' => [
 						'Accept'  => 'application/json',
-						'api_key' => $this->apiKey,
-					],
+						'api_key' => $this->apiKey
+					]
 				];
 
 				if ($payload !== null) {

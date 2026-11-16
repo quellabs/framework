@@ -92,7 +92,7 @@
 				'line_items[0][price_data][currency]'           => strtolower($currency),
 				'line_items[0][price_data][unit_amount]'        => $amount,
 				'line_items[0][price_data][product_data][name]' => $description,
-				'payment_intent_data[description]'              => $description,
+				'payment_intent_data[description]'              => $description
 			];
 			
 			// When specific payment methods are requested, pass them explicitly.
@@ -120,7 +120,7 @@
 			// Expand the payment_intent object so we get status, amount, and currency inline
 			// without a second API call.
 			return $this->sendRequest('GET', '/v1/checkout/sessions/' . urlencode($sessionId), [
-				'expand[]' => 'payment_intent',
+				'expand[]' => 'payment_intent'
 			]);
 		}
 		
@@ -153,7 +153,7 @@
 			// Build payload
 			$body = [
 				'payment_intent' => $paymentIntentId,
-				'reason'         => $reason,
+				'reason'         => $reason
 			];
 			
 			// Omitting amount triggers a full refund on Stripe's side
@@ -163,7 +163,7 @@
 			
 			// Call API
 			return $this->sendRequest('POST', '/v1/refunds', $body, [
-				'Idempotency-Key' => $idempotencyKey,
+				'Idempotency-Key' => $idempotencyKey
 			]);
 		}
 		
@@ -176,7 +176,7 @@
 		public function getRefundsForPaymentIntent(string $paymentIntentId): array {
 			return $this->sendRequest('GET', '/v1/refunds', [
 				'payment_intent' => $paymentIntentId,
-				'limit'          => 100,
+				'limit'          => 100
 			]);
 		}
 		
@@ -289,9 +289,9 @@
 				$options = [
 					'auth_basic'  => [$this->m_secret_key, ''],
 					'headers'     => array_merge([
-						'Stripe-Version' => self::API_VERSION,
+						'Stripe-Version' => self::API_VERSION
 					], $headers),
-					'verify_peer' => $this->m_verify_ssl,
+					'verify_peer' => $this->m_verify_ssl
 				];
 				
 				if ($method !== 'GET') {

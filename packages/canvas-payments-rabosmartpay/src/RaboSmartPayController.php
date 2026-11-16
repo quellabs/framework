@@ -139,7 +139,7 @@
 				$this->normalizeString($body['authentication'] ?? ''),
 				$this->normalizeString($body['expiry'] ?? ''),
 				$this->normalizeString($body['eventName'] ?? ''),
-				$this->normalizeString($body['poiId'] ?? ''),
+				$this->normalizeString($body['poiId'] ?? '')
 			]);
 			
 			if (!$this->rabo->verifySignature($signaturePayload, $this->normalizeString($body['signature']))) {

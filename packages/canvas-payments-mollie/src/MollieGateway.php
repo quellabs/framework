@@ -149,10 +149,10 @@
 			return $this->callHttpClient("POST", "payments/{$transactionId}/refunds", [
 				"amount"      => [
 					"currency" => $resolvedCurrency,
-					"value"    => $resolvedAmount,
+					"value"    => $resolvedAmount
 				],
 				"description" => $description,
-				"testmode"    => $this->testMode,
+				"testmode"    => $this->testMode
 			]);
 		}
 		
@@ -240,6 +240,28 @@
 		}
 
 		/**
+		 * Returns settlement information. $settlementId accepts either Mollie's own
+		 * id (stl_...) or the bank-reference string Mollie prints on the payout's
+		 * bank statement line (e.g. "1234567.2404.03").
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/get-settlement
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function getSettlement(string $settlementId): array {
+			return $this->callHttpClient("GET", "settlements/{$settlementId}");
+		}
+
+		/**
+		 * Returns every payment included in a settlement, following pagination.
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/list-settlement-payments
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function listSettlementPayments(string $settlementId): array {
+			return $this->callHttpClientPaginated("GET", "settlements/{$settlementId}/payments");
+		}
+
+		/**
 		 * Returns true if Mollie is in test mode, false if not
 		 * @return bool
 		 */
@@ -248,14 +270,16 @@
 		}
 
 		/**
-		 * Call the API and return the result
+		 * Performs the HTTP request and returns the raw decoded response body, without
+		 * unwrapping _embedded or single-resource shapes. callHttpClient() and
+		 * callHttpClientPaginated() each build their own response shape on top of this.
 		 * @param string $method
 		 * @param string $action
 		 * @param array<string, mixed> $data
 		 * @param bool $expectNoContent Set for endpoints that respond with 204 No Content on success (e.g. mandate revocation)
-		 * @return GatewayResponse
+		 * @return array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}
 		 */
-		protected function callHttpClient(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
+		protected function callHttpClientRaw(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
 			try {
 				$client = HttpClient::create([
 					'base_uri'    => 'https://api.mollie.nl/v2/',
@@ -263,7 +287,7 @@
 					'headers'     => [
 						'Accept'        => 'application/json',
 						'Authorization' => "Bearer {$this->apiKey}",
-						'Content-Type'  => 'application/json',
+						'Content-Type'  => 'application/json'
 					],
 
 					// Enforce strict SSL verification using the bundled CA certificate
@@ -277,28 +301,91 @@
 
 				// A 204 No Content response has no JSON body to decode — treat it as success directly
 				if ($expectNoContent && $statusCode === 204) {
-					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => []];
+					return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => [], 'statusCode' => $statusCode];
 				}
 
 				$jsonData = $response->toArray();
 			} catch (\Exception|TransportExceptionInterface|DecodingExceptionInterface|ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface $e) {
 				// Network failure, timeout, or non-2xx response — return a normalized error
-				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()]];
+				return ['request' => ['result' => 0, 'errorId' => $e->getCode(), 'errorMessage' => $e->getMessage()], 'response' => [], 'statusCode' => 0];
 			}
 
-			// Single-resource responses (payment, method, refund, customer, mandate) are returned as-is
-			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund', 'customer', 'mandate'])) {
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData, 'statusCode' => $statusCode];
+		}
+
+		/**
+		 * Call the API and return the result
+		 * @param string $method
+		 * @param string $action
+		 * @param array<string, mixed> $data
+		 * @param bool $expectNoContent Set for endpoints that respond with 204 No Content on success (e.g. mandate revocation)
+		 * @return GatewayResponse
+		 */
+		protected function callHttpClient(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
+			$raw = $this->callHttpClientRaw($method, $action, $data, $expectNoContent);
+
+			if ($raw['request']['result'] == 0) {
+				return ['request' => ['result' => $raw['request']['result'], 'errorId' => (string)$raw['request']['errorId'], 'errorMessage' => $raw['request']['errorMessage']]];
+			}
+
+			$jsonData = $raw['response'];
+
+			// Single-resource responses (payment, method, refund, customer, mandate, settlement) are returned as-is
+			if (isset($jsonData['resource']) && in_array($jsonData['resource'], ['payment', 'method', 'refund', 'customer', 'mandate', 'settlement'])) {
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $jsonData];
 			}
-			
+
 			// List responses are wrapped in _embedded — unwrap the first collection regardless of key name
 			// (methods use 'methods', refunds use 'refunds', etc.)
-			if (!empty($jsonData['_embedded'])) {
-				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => reset($jsonData['_embedded'])];
+			$embedded = $jsonData['_embedded'] ?? null;
+
+			if (is_array($embedded) && $embedded !== []) {
+				$firstCollection = reset($embedded);
+				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => is_array($firstCollection) ? $firstCollection : []];
 			}
-			
+
 			// Anything else is an API-level error — surface the status code and detail message
-			return ['request' => ['result' => 0, 'errorId' => (string)$statusCode, 'errorMessage' => $jsonData['detail']]];
+			return ['request' => ['result' => 0, 'errorId' => (string)$raw['statusCode'], 'errorMessage' => $this->normalizeString($jsonData['detail'] ?? null)]];
+		}
+
+		/**
+		 * Like callHttpClient(), but for paginated list endpoints: follows _links.next
+		 * until Mollie stops returning one, accumulating every page's _embedded items
+		 * into a single response array. Stops and returns what it has so far if a later
+		 * page fails — a partial settlement is still useful, an exception here would
+		 * discard pages already fetched.
+		 * @param string $method
+		 * @param string $action
+		 * @return GatewayResponse
+		 */
+		protected function callHttpClientPaginated(string $method, string $action): array {
+			$items = [];
+			$next  = $action;
+
+			while ($next !== null) {
+				$raw = $this->callHttpClientRaw($method, $next);
+
+				if ($raw['request']['result'] == 0) {
+					if (empty($items)) {
+						return ['request' => ['result' => $raw['request']['result'], 'errorId' => (string)$raw['request']['errorId'], 'errorMessage' => $raw['request']['errorMessage']]];
+					}
+
+					break;
+				}
+
+				$jsonData = $raw['response'];
+				$embedded = $jsonData['_embedded'] ?? null;
+				$firstCollection = is_array($embedded) && $embedded !== [] ? reset($embedded) : null;
+				$pageItems = is_array($firstCollection) ? array_values($firstCollection) : [];
+				$items     = array_merge($items, $pageItems);
+
+				// Mollie gives the next page as an absolute URL — Symfony's HttpClient
+				// accepts that as-is even with a base_uri configured on the client.
+				$nextHref = $this->arrayGet($jsonData, '_links.next.href');
+				$next     = is_string($nextHref) && $nextHref !== '' ? $nextHref : null;
+			}
+
+			return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => $items];
 		}
 		
 		/**
@@ -317,8 +404,8 @@
 					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 					'response' => [
 						'amount'   => number_format($amount / 100, 2, '.', ''),
-						'currency' => $currency,
-					],
+						'currency' => $currency
+					]
 				];
 			}
 			
@@ -346,8 +433,8 @@
 				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 				'response' => [
 					'amount'   => $resolvedAmount,
-					'currency' => $resolvedCurrency,
-				],
+					'currency' => $resolvedCurrency
+				]
 			];
 		}
 	}

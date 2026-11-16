@@ -17,6 +17,9 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Multisafepay driver
@@ -64,7 +67,7 @@
 			'msp_eps'          => 'EPS',
 			'msp_banktransfer' => 'BANKTRANSFER',
 			'msp_in3'          => 'IN3',
-			'msp_afterpay'     => 'AFTERPAY',
+			'msp_afterpay'     => 'AFTERPAY'
 		];
 		
 		/**
@@ -124,7 +127,7 @@
 				'notification_url'  => '',
 				'default_country'   => 'NL',
 				'default_currency'  => 'EUR',
-				'default_locale'    => 'nl_NL',
+				'default_locale'    => 'nl_NL'
 			];
 		}
 		
@@ -173,8 +176,8 @@
 					'notification_url' => $config['notification_url'],
 					'redirect_url'     => $config['return_url'],
 					'cancel_url'       => $config['cancel_return_url'],
-					'close_window'     => false,
-				],
+					'close_window'     => false
+				]
 			];
 			
 			// Attach customer block when billing address is present.
@@ -183,7 +186,7 @@
 				$payload['customer'] = array_filter([
 					'email'   => $request->billingAddress->email ?: null,
 					'country' => $request->billingAddress->country ?: null,
-					'locale'  => $config['default_locale'],
+					'locale'  => $config['default_locale']
 				], fn($v) => $v !== null);
 			}
 			
@@ -325,7 +328,7 @@
 				internalState: $status,
 				metadata: array_filter([
 					'paymentMethod' => $paymentMethod !== '' ? $paymentMethod : null,
-					'reason'        => $reason !== '' ? $reason : null,
+					'reason'        => $reason !== '' ? $reason : null
 				], fn($v) => $v !== null),
 			);
 		}
@@ -343,7 +346,7 @@
 			$payload = array_filter([
 				'currency'    => $request->currency,
 				'amount'      => $request->amount,
-				'description' => $request->description ?? '',
+				'description' => $request->description ?? ''
 			], fn($v) => $v !== null);
 			
 			// Call API to issue the refund
@@ -465,6 +468,26 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
 		/**

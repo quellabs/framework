@@ -16,6 +16,9 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Support\Tools;
@@ -66,7 +69,7 @@
 			'rabo_vpay'       => 'V_PAY',
 			'rabo_cards'      => 'CARDS',       // All card methods combined
 			'rabo_applepay'   => 'APPLE_PAY',
-			'rabo_paypal'     => 'PAYPAL',
+			'rabo_paypal'     => 'PAYPAL'
 		];
 		
 		/**
@@ -80,7 +83,7 @@
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -126,7 +129,7 @@
 				'cancel_return_url' => '',
 				'default_currency'  => 'EUR',
 				'language'          => 'NL',
-				'skip_result_page'  => true,
+				'skip_result_page'  => true
 			];
 		}
 		
@@ -194,7 +197,7 @@
 				'description'       => mb_substr($request->description, 0, 35), // API limit: 35 chars
 				'amount'            => [
 					'currency' => $request->currency ?: $config['default_currency'],
-					'amount'   => (string)$request->amount, // In cents, as a string
+					'amount'   => (string)$request->amount  // In cents, as a string
 				],
 				'language'          => $config['language'],
 				'merchantReturnURL' => $config['return_url'],
@@ -203,7 +206,7 @@
 				
 				// FORCE_ONCE skips brand selection on the hosted page for this order only.
 				// Use FORCE_ALWAYS when you never want brand selection shown.
-				'paymentBrandForce' => 'FORCE_ONCE',
+				'paymentBrandForce' => 'FORCE_ONCE'
 			];
 			
 			// Attach customer information when billing address data is available.
@@ -213,9 +216,9 @@
 					'emailAddress'    => $request->billingAddress->email ?: null,
 					'fullName'        => trim(implode(' ', array_filter([
 						$request->billingAddress->givenName,
-						$request->billingAddress->familyName,
+						$request->billingAddress->familyName
 					]))) ?: null,
-					'telephoneNumber' => $request->billingAddress->phone ?: null,
+					'telephoneNumber' => $request->billingAddress->phone ?: null
 				], fn($v) => $v !== null);
 				
 				if (!empty($customerInfo)) {
@@ -231,7 +234,7 @@
 					'houseNumberAddition' => $request->billingAddress->houseNumberSuffix ?: null,
 					'postalCode'          => $request->billingAddress->postalCode ?: null,
 					'city'                => $request->billingAddress->city ?: null,
-					'countryCode'         => $request->billingAddress->country ?: null,
+					'countryCode'         => $request->billingAddress->country ?: null
 				], fn($v) => $v !== null);
 				
 				if (!empty($billingDetail)) {
@@ -249,7 +252,7 @@
 					'houseNumberAddition' => $request->shippingAddress->houseNumberSuffix ?: null,
 					'postalCode'          => $request->shippingAddress->postalCode ?: null,
 					'city'                => $request->shippingAddress->city ?: null,
-					'countryCode'         => $request->shippingAddress->country ?: null,
+					'countryCode'         => $request->shippingAddress->country ?: null
 				], fn($v) => $v !== null);
 				
 				if (!empty($shippingDetail)) {
@@ -287,7 +290,7 @@
 				transactionId: $data['omnikassaOrderId'],
 				redirectUrl: $data['redirectUrl'],
 				metadata: [
-					'orderReference' => $merchantOrderId,
+					'orderReference' => $merchantOrderId
 				],
 			);
 		}
@@ -389,7 +392,7 @@
 				internalState: $orderStatus,
 				metadata: array_filter([
 					'paymentBrand' => $paymentBrand,
-					'errorCode'    => $extraData['errorCode'] ?? null,
+					'errorCode'    => $extraData['errorCode'] ?? null
 				], fn($v) => $v !== null && $v !== ''),
 			);
 		}
@@ -412,8 +415,8 @@
 				'description' => $request->description ?? '',
 				'amount'      => $request->amount !== null ? [
 					'currency' => $request->currency ?: $config['default_currency'],
-					'amount'   => (string)$request->amount, // In cents, as a string
-				] : null,
+					'amount'   => (string)$request->amount  // In cents, as a string
+				] : null
 			], fn($v) => $v !== null && $v !== '');
 			
 			// Call the API to refund the transaction
@@ -491,6 +494,26 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
 		/**

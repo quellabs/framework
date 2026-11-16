@@ -39,5 +39,5 @@
 		// Default locale passed to MSP for the hosted payment page language and formatting.
 		// Format: <language>_<COUNTRY>, e.g. 'nl_NL', 'en_US', 'de_DE'.
 		// @see https://docs.multisafepay.com/docs/localization
-		'default_locale' => 'nl_NL',
+		'default_locale' => 'nl_NL'
 	];

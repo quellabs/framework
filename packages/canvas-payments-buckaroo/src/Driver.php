@@ -18,6 +18,9 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Buckaroo driver
@@ -70,7 +73,7 @@
 			'bkr_in3'             => 'in3',
 			'bkr_afterpay'        => 'afterpay',
 			'bkr_sepadirectdebit' => 'sepadirectdebit',
-			'bkr_billink'         => 'billink',
+			'bkr_billink'         => 'billink'
 		];
 		
 		// Methods that require or meaningfully use address/shopper data
@@ -92,7 +95,7 @@
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -139,7 +142,7 @@
 				'return_url_error'  => '',
 				'return_url_reject' => '',
 				'webhook_url'       => '',
-				'default_culture'   => 'nl-NL',
+				'default_culture'   => 'nl-NL'
 			];
 		}
 		
@@ -221,10 +224,10 @@
 						[
 							'Name'       => $service,
 							'Action'     => 'Pay',
-							'Parameters' => $serviceParams,
-						],
-					],
-				],
+							'Parameters' => $serviceParams
+						]
+					]
+				]
 			];
 			
 			// Attach top-level customer fields — valid for all payment methods.
@@ -393,7 +396,7 @@
 					'paymentMethod' => $data['ServiceCode'] ?? null,
 					'subCode'       => $this->arrayGet($data, 'Status.SubCode.Code'),
 					'subMessage'    => $this->arrayGet($data, 'Status.SubCode.Description'),
-					'invoice'       => $data['Invoice'] ?? null,
+					'invoice'       => $data['Invoice'] ?? null
 				], fn($v) => $v !== null),
 			);
 		}
@@ -430,10 +433,10 @@
 					'ServiceList' => [
 						[
 							'Name'   => self::MODULE_TYPE_MAP[$request->paymentModule],
-							'Action' => 'Refund',
-						],
-					],
-				],
+							'Action' => 'Refund'
+						]
+					]
+				]
 			];
 			
 			// Only include AmountCredit when a specific partial amount is requested.
@@ -587,6 +590,26 @@
 		}
 
 		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
 		 * Sums the amounts of all related refund transactions.
 		 * Returns 0 if no refunds exist or if all lookups fail.
 		 * Used internally by exchange() to populate valueRefunded.
@@ -661,7 +684,7 @@
 				'PostalCode'        => $address->postalCode,
 				'City'              => $address->city,
 				'Country'           => $address->country,
-				'Region'            => $address->region,
+				'Region'            => $address->region
 			];
 			
 			$params = [];
