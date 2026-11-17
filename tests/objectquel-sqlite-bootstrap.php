@@ -30,6 +30,7 @@ $connection->execute('CREATE TABLE versioned_entities (id INTEGER PRIMARY KEY AU
 $connection->execute('CREATE TABLE uuid_versioned_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, token VARCHAR(36) NOT NULL)');
 $connection->execute('CREATE TABLE sequence_component_entities (token VARCHAR(36) NOT NULL, seq INTEGER NOT NULL, amount INTEGER NOT NULL, PRIMARY KEY (token, seq))');
 $connection->execute('CREATE TABLE string_pk_entities (code VARCHAR(20) PRIMARY KEY, position INTEGER NOT NULL)');
+$connection->execute('CREATE TABLE search_term_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL, note VARCHAR(255) NOT NULL DEFAULT \'\')');
 $connection->execute('CREATE TABLE sti_vehicles (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, vehicle_type VARCHAR(50) NOT NULL)');
 $connection->execute('CREATE TABLE default_column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, priority INTEGER NOT NULL DEFAULT 99)');
 $connection->execute('CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(255) NOT NULL)');
