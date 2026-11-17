@@ -428,11 +428,22 @@
       "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/",
       "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/",
       "Quellabs\\SignalHub\\Tests\\": "packages/signal-hub/tests/",
-      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
       "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/",
       "Quellabs\\CanvasAuthorization\\Doctrine\\Tests\\": "packages/canvas-authorization-doctrine/tests/",
       "Quellabs\\CanvasAuthorization\\Eloquent\\Tests\\": "packages/canvas-authorization-eloquent/tests/",
       "Quellabs\\CanvasAuthorization\\ObjectQuel\\Tests\\": "packages/canvas-authorization-objectquel/tests/"
+      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
+      "Quellabs\\Payments\\Mollie\\Tests\\": "packages/canvas-payments-mollie/tests/",
+      "Quellabs\\Payments\\Adyen\\Tests\\": "packages/canvas-payments-adyen/tests/",
+      "Quellabs\\Payments\\Buckaroo\\Tests\\": "packages/canvas-payments-buckaroo/tests/",
+      "Quellabs\\Payments\\Klarna\\Tests\\": "packages/canvas-payments-klarna/tests/",
+      "Quellabs\\Payments\\MultiSafepay\\Tests\\": "packages/canvas-payments-multisafepay/tests/",
+      "Quellabs\\Payments\\PayNL\\Tests\\": "packages/canvas-payments-paynl/tests/",
+      "Quellabs\\Payments\\Paypal\\Tests\\": "packages/canvas-payments-paypal/tests/",
+      "Quellabs\\Payments\\PaypalExpress\\Tests\\": "packages/canvas-payments-paypal-express/tests/",
+      "Quellabs\\Payments\\RaboSmartPay\\Tests\\": "packages/canvas-payments-rabosmartpay/tests/",
+      "Quellabs\\Payments\\Stripe\\Tests\\": "packages/canvas-payments-stripe/tests/",
+      "Quellabs\\Payments\\XPay\\Tests\\": "packages/canvas-payments-xpay/tests/"
     }
   },
   "scripts": {

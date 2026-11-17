@@ -70,7 +70,7 @@
 				// Finalize the session and retrieve the resulting payment state
 				$response = $this->adyen->exchange($sessionId, [
 					'action'         => 'return',
-					'redirectResult' => $redirectResult,
+					'redirectResult' => $redirectResult
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state
@@ -181,7 +181,7 @@
 					// Call driver to convert raw data to PaymentState
 					$response = $this->adyen->exchange($merchantReference, [
 						'action'       => 'webhook',
-						'notification' => $notification,
+						'notification' => $notification
 					]);
 					
 					// Notify listeners (e.g. order management) of the updated payment state

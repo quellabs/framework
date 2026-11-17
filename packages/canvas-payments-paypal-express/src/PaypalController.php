@@ -125,7 +125,7 @@
 				// Call Driver's exchange method to convert raw data to PaymentState
 				$response = $this->paypal->exchange($this->normalizeString($token), [
 					'action'               => 'ipn',
-					'paymentReference' => $paymentReference,
+					'paymentReference' => $paymentReference
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state

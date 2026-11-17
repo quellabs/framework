@@ -20,6 +20,10 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Payments\Contracts\SequenceType;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	
@@ -27,6 +31,7 @@
 	 * Mollie driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 * @phpstan-type RefundData array{
 	 *     id: string,
 	 *     paymentId: string,
@@ -73,7 +78,7 @@
 			'mollie_billie'      => 'billie',
 			'mollie_in3'         => 'in3',
 			'mollie_klarna'      => 'klarna',
-			'mollie_riverty'     => 'riverty',
+			'mollie_riverty'     => 'riverty'
 		];
 		
 		/**
@@ -92,15 +97,12 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -121,7 +123,7 @@
 				'test_mode'    => false,
 				'webhook_url'  => 'webhooks/mollie',
 				'redirect_url' => 'payment/return/mollie',
-				'cancel_url'   => 'payment/cancel/mollie',
+				'cancel_url'   => 'payment/cancel/mollie'
 			];
 		}
 		
@@ -169,7 +171,7 @@
 			$payload = array_filter([
 				'amount'          => [
 					'currency' => $request->currency,
-					'value'    => number_format($request->amount / 100, 2, '.', ''),
+					'value'    => number_format($request->amount / 100, 2, '.', '')
 				],
 				'description'     => $request->description,
 				'redirectUrl'     => $request->redirectUrl,
@@ -187,7 +189,7 @@
 				'shippingAddress' => $request->shippingAddress !== null ? $this->serializeAddress($request->shippingAddress) : null,
 				'sequenceType'    => $request->sequenceType?->value,
 				'customerId'      => !empty($customerReference) ? $customerReference : null,
-				'testmode'        => $this->getGateway()->testMode(),
+				'testmode'        => $this->getGateway()->testMode()
 			], fn($v) => $v !== null);
 
 			// Call the API
@@ -230,13 +232,21 @@
 		 */
 		public function chargeRecurring(RecurringChargeRequest $request): InitiateResult {
 			// Fall back to the configured webhook URL when none is given
-			$webhookUrl = $request->webhookUrl ?: ($this->normalizeString($this->getConfig()["webhook_url"] ?? null) ?: null);
+			$configuredWebhookUrl = $this->normalizeString($this->getConfig()["webhook_url"] ?? null);
+
+			if (!empty($request->webhookUrl)) {
+				$webhookUrl = $request->webhookUrl;
+			} elseif ($configuredWebhookUrl !== '') {
+				$webhookUrl = $configuredWebhookUrl;
+			} else {
+				$webhookUrl = null;
+			}
 
 			// Build the Mollie payment payload, stripping null fields before sending
 			$payload = array_filter([
 				'amount'       => [
 					'currency' => $request->currency,
-					'value'    => number_format($request->amount / 100, 2, '.', ''),
+					'value'    => number_format($request->amount / 100, 2, '.', '')
 				],
 				'description'  => $request->description,
 				'customerId'   => $request->customerReference,
@@ -244,7 +254,7 @@
 				'mandateId'    => $request->mandateId,
 				'webhookUrl'   => $webhookUrl,
 				'metadata'     => $request->metadata,
-				'testmode'     => $this->getGateway()->testMode(),
+				'testmode'     => $this->getGateway()->testMode()
 			], fn($v) => $v !== null);
 
 			// Call the API
@@ -292,7 +302,7 @@
 			$stateMap = [
 				'PENDING' => MandateStatus::Pending,
 				'VALID'   => MandateStatus::Valid,
-				'INVALID' => MandateStatus::Invalid,
+				'INVALID' => MandateStatus::Invalid
 			];
 
 			/** @var array<int, array<string, mixed>> $responseData */
@@ -333,6 +343,88 @@
 		}
 
 		/**
+		 * Returns settlement/payout batch information.
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/get-settlement
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			$response = $this->getGateway()->getSettlement($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			$r = $response["response"] ?? [];
+
+			// Map Mollie statuses to internal states
+			$stateMap = [
+				'OPEN'               => SettlementStatus::Open,
+				'PENDING'            => SettlementStatus::Pending,
+				'PROCESSING'         => SettlementStatus::Processing,
+				'PROCESSING-AT-BANK' => SettlementStatus::Processing,
+				'PAIDOUT'            => SettlementStatus::PaidOut,
+				'FAILED'             => SettlementStatus::Failed
+			];
+
+			$mollieStatus = $this->normalizeString($r["status"] ?? null);
+			$settledAtRaw = $this->normalizeString($r["settledAt"] ?? null);
+
+			/** @var array<string, mixed> $amount */
+			$amount = $r["amount"] ?? [];
+
+			return new SettlementInfo(
+				provider: self::DRIVER_NAME,
+				settlementId: $this->normalizeString($r["id"] ?? null),
+				reference: $this->normalizeString($r["reference"] ?? null),
+				status: $stateMap[strtoupper($mollieStatus)] ?? SettlementStatus::Unknown,
+				amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+				currency: $this->normalizeString($amount["currency"] ?? null),
+				settledAt: $settledAtRaw !== '' ? new \DateTimeImmutable($settledAtRaw) : null,
+				internalState: $mollieStatus,
+			);
+		}
+
+		/**
+		 * Returns the individual payments included in a settlement.
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/list-settlement-payments
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			$response = $this->getGateway()->listSettlementPayments($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $payment */
+				function (array $payment) use ($settlementId): SettlementPaymentInfo {
+					/** @var array<string, mixed> $amount */
+					$amount       = $payment["amount"] ?? [];
+					$createdAtRaw = $this->normalizeString($payment["createdAt"] ?? null);
+
+					return new SettlementPaymentInfo(
+						provider: self::DRIVER_NAME,
+						settlementId: $settlementId,
+						paymentReference: $this->normalizeString($payment["id"] ?? null),
+						amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+						currency: $this->normalizeString($amount["currency"] ?? null),
+						description: $this->normalizeString($payment["description"] ?? null),
+						createdAt: $createdAtRaw !== '' ? new \DateTimeImmutable($createdAtRaw) : null,
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
 		 * Creates a new Mollie customer, sourcing name/email from a billing address when available.
 		 * @param PaymentAddress|null $billingAddress
 		 * @return string
@@ -344,7 +436,7 @@
 
 			$payload = array_filter([
 				'name'  => $name,
-				'email' => $billingAddress?->email,
+				'email' => $billingAddress?->email
 			], fn($v) => $v !== null && $v !== '');
 
 			$response = $this->getGateway()->createCustomer($payload);
@@ -461,7 +553,7 @@
 				'EXPIRED'   => PaymentStatus::Expired,   // Customer abandoned, or bank transfer timed out
 				'FAILED'    => PaymentStatus::Failed,    // Cannot be completed with a different payment method
 				'PAID'      => PaymentStatus::Paid,
-				'REFUNDED'  => PaymentStatus::Refunded,
+				'REFUNDED'  => PaymentStatus::Refunded
 			];
 			
 			// Fetch mollie payment status
@@ -577,7 +669,7 @@
 						'name'     => $this->normalizeString($issuer["name"] ?? null),
 						'issuerId' => $this->normalizeString($issuer["id"] ?? null),
 						'swift'    => $this->normalizeString($issuer["id"] ?? null),
-						'icon'     => $this->normalizeString($image["size1x"] ?? null),
+						'icon'     => $this->normalizeString($image["size1x"] ?? null)
 					];
 				},
 				$issuers
@@ -638,7 +730,7 @@
 				'region'           => $address->region,
 				'country'          => $address->country,
 				'email'            => $address->email,
-				'phone'            => $address->phone,
+				'phone'            => $address->phone
 			], fn($v) => $v !== null);
 		}
 	}

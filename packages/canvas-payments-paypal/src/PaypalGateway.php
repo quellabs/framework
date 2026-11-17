@@ -79,23 +79,23 @@
 				'user_action'               => 'PAY_NOW',
 				'return_url'                => $this->m_return_url,
 				'cancel_url'                => $this->m_cancel_url,
-				'brand_name'                => $brandName ?: null,
+				'brand_name'                => $brandName ?: null
 			]);
 			
 			$body = [
 				'intent'         => 'CAPTURE',
 				'payment_source' => [
 					'paypal' => [
-						'experience_context' => $experienceContext,
-					],
+						'experience_context' => $experienceContext
+					]
 				],
 				'purchase_units' => [[
 					'amount'      => [
 						'currency_code' => $currency,
-						'value'         => number_format($value, 2, '.', ''),
+						'value'         => number_format($value, 2, '.', '')
 					],
-					'description' => $description,
-				]],
+					'description' => $description
+				]]
 			];
 			
 			return $this->sendRequest('POST', '/v2/checkout/orders', $body);
@@ -128,7 +128,7 @@
 			// Content-Type must be application/json but the body can be empty for a simple capture.
 			// PayPal still requires the header to be present, so we pass an empty body.
 			return $this->sendRequest('POST', '/v2/checkout/orders/' . urlencode($orderId) . '/capture', [], [
-				'PayPal-Request-Id' => $idempotencyKey,
+				'PayPal-Request-Id' => $idempotencyKey
 			]);
 		}
 		
@@ -164,13 +164,13 @@
 			if ($value !== null && $currencyType !== null) {
 				$body['amount'] = [
 					'value'         => number_format($value, 2, '.', ''),
-					'currency_code' => $currencyType,
+					'currency_code' => $currencyType
 				];
 			}
 			
 			// Call the gateway
 			return $this->sendRequest('POST', '/v2/payments/captures/' . urlencode($captureId) . '/refund', $body, [
-				'PayPal-Request-Id' => $idempotencyKey,
+				'PayPal-Request-Id' => $idempotencyKey
 			]);
 		}
 		
@@ -265,7 +265,7 @@
 				'paypal-cert-url',
 				'paypal-transmission-id',
 				'paypal-transmission-sig',
-				'paypal-transmission-time',
+				'paypal-transmission-time'
 			];
 			
 			// Validate all headers are present
@@ -288,7 +288,7 @@
 				'transmission_sig'  => $headers['paypal-transmission-sig'],
 				'transmission_time' => $headers['paypal-transmission-time'],
 				'webhook_id'        => $this->m_webhook_id,
-				'webhook_event'     => json_decode($rawBody, true),
+				'webhook_event'     => json_decode($rawBody, true)
 			];
 			
 			// Call API to verify webhook signature
@@ -321,7 +321,7 @@
 				$response = $this->m_client->request('POST', $this->m_base_url . '/v1/oauth2/token', [
 					'auth_basic'  => [$this->m_client_id, $this->m_client_secret],
 					'body'        => ['grant_type' => 'client_credentials'],
-					'verify_peer' => $this->m_verify_ssl,
+					'verify_peer' => $this->m_verify_ssl
 				]);
 				
 				// Fetch return data as array
@@ -377,9 +377,9 @@
 					'headers'     => array_merge([
 						'Authorization' => "Bearer {$accessToken}",
 						'Content-Type'  => 'application/json',
-						'Prefer'        => 'return=representation',
+						'Prefer'        => 'return=representation'
 					], $headers),
-					'verify_peer' => $this->m_verify_ssl,
+					'verify_peer' => $this->m_verify_ssl
 				];
 				
 				// Add JSON body if desired

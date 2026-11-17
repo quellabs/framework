@@ -41,5 +41,5 @@
 		// BCP 47 culture tag sent to Buckaroo for hosted page language and email templates.
 		// Supported values: nl-NL, en-US, de-DE, fr-FR, etc.
 		// @see https://docs.buckaroo.io/docs/apis (Culture field)
-		'default_culture' => 'nl-NL',
+		'default_culture' => 'nl-NL'
 	];

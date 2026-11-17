@@ -39,5 +39,5 @@
 		'exchange_url' => 'https://example.com/webhooks/paynl',
 		
 		// Default currency (ISO 4217). For NL merchants this is almost always 'EUR'.
-		'default_currency' => 'EUR',
+		'default_currency' => 'EUR'
 	];

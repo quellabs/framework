@@ -85,6 +85,19 @@
             <directory>packages/canvas-authorization-objectquel/tests</directory>
             <exclude>packages/canvas-authorization-objectquel/tests/Fixtures</exclude>
         </testsuite>
+        <testsuite name="CanvasPayments">
+            <directory>packages/canvas-payments-mollie/tests</directory>
+            <directory>packages/canvas-payments-adyen/tests</directory>
+            <directory>packages/canvas-payments-buckaroo/tests</directory>
+            <directory>packages/canvas-payments-klarna/tests</directory>
+            <directory>packages/canvas-payments-multisafepay/tests</directory>
+            <directory>packages/canvas-payments-paynl/tests</directory>
+            <directory>packages/canvas-payments-paypal/tests</directory>
+            <directory>packages/canvas-payments-paypal-express/tests</directory>
+            <directory>packages/canvas-payments-rabosmartpay/tests</directory>
+            <directory>packages/canvas-payments-stripe/tests</directory>
+            <directory>packages/canvas-payments-xpay/tests</directory>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>

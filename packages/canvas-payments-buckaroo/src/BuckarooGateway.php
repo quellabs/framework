@@ -157,8 +157,8 @@
 						'Content-Type'  => 'application/json',
 						'Accept'        => 'application/json',
 						'Authorization' => $this->buildAuthorizationHeader($method, $path, $body, $nonce, $timestamp),
-						'Culture'       => 'nl-NL',
-					],
+						'Culture'       => 'nl-NL'
+					]
 				];
 				
 				if ($payload !== null) {

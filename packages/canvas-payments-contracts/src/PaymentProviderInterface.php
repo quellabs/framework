@@ -18,8 +18,16 @@
 	 * implementation has no use for, so the shared methods are redeclared here instead of inherited.
 	 *
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-type ProviderMetadata array{driver: string, modules: list<string>}
 	 */
 	interface PaymentProviderInterface extends ProviderInterface {
+
+		/**
+		 * Returns discovery metadata for this provider, including all supported payment modules.
+		 * Narrows ProviderInterface::getMetadata()'s generic shape for payment providers.
+		 * @return ProviderMetadata
+		 */
+		public static function getMetadata(): array;
 
 		/**
 		 * Initiate a new payment session and return a redirect URL for the customer.
@@ -82,5 +90,21 @@
 		 * @return void
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void;
+
+		/**
+		 * Returns settlement/payout batch information.
+		 * @param string $settlementId Provider-specific settlement identifier, or an
+		 *                             equivalent lookup key (e.g. Mollie accepts its own
+		 *                             id or the bank-statement reference string).
+		 * @return SettlementInfo
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo;
+
+		/**
+		 * Returns the individual payments included in a settlement.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 */
+		public function getSettlementPayments(string $settlementId): array;
 
 	}
