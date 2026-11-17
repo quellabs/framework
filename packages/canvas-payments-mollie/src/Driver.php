@@ -31,6 +31,7 @@
 	 * Mollie driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 * @phpstan-type RefundData array{
 	 *     id: string,
 	 *     paymentId: string,
@@ -96,10 +97,7 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [

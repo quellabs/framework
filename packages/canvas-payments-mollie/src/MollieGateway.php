@@ -15,6 +15,7 @@
 	
 	/**
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
+	 * @phpstan-type MollieRawResponse array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}
 	 */
 	class MollieGateway {
 		
@@ -277,7 +278,7 @@
 		 * @param string $action
 		 * @param array<string, mixed> $data
 		 * @param bool $expectNoContent Set for endpoints that respond with 204 No Content on success (e.g. mandate revocation)
-		 * @return array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}
+		 * @return MollieRawResponse
 		 */
 		protected function callHttpClientRaw(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
 			try {

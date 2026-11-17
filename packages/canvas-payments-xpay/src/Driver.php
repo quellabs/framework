@@ -39,6 +39,7 @@
 	 * }
 	 *
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -114,10 +115,7 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [

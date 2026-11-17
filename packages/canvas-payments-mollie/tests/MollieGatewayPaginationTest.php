@@ -3,16 +3,20 @@
 	namespace Quellabs\Payments\Mollie\Tests;
 
 	use PHPUnit\Framework\TestCase;
+	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Payments\Mollie\MollieGateway;
 
 	/**
 	 * Exposes MollieGateway's protected pagination helper and replaces the real
 	 * HTTP layer with a queue of canned raw responses, so pagination logic can
 	 * be exercised without network access.
+	 *
+	 * @phpstan-import-type MollieRawResponse from MollieGateway
+	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 */
 	class PaginatingGatewayFake extends MollieGateway {
 
-		/** @var array<int, array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}> */
+		/** @var array<int, MollieRawResponse> */
 		private array $responses;
 
 		/** @var int */
@@ -20,7 +24,7 @@
 
 		/**
 		 * Stores the canned raw responses, returned one per call in order.
-		 * @param array<int, array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}> $responses
+		 * @param array<int, MollieRawResponse> $responses
 		 */
 		public function __construct(array $responses) {
 			$this->responses = $responses;
@@ -32,7 +36,7 @@
 		 * @param string $action
 		 * @param array<string, mixed> $data
 		 * @param bool $expectNoContent
-		 * @return array{request: array{result: int, errorId: int|string, errorMessage: string}, response: array<string, mixed>, statusCode: int}
+		 * @return MollieRawResponse
 		 */
 		protected function callHttpClientRaw(string $method, string $action, array $data = [], bool $expectNoContent = false): array {
 			$response = $this->responses[$this->callIndex] ?? [
@@ -50,7 +54,7 @@
 		 * Exposes the protected callHttpClientPaginated() for testing.
 		 * @param string $method
 		 * @param string $action
-		 * @return array{request: array{result: int, errorId: int|string, errorMessage: string}, response?: array<int, mixed>}
+		 * @return GatewayResponse
 		 */
 		public function paginate(string $method, string $action): array {
 			return $this->callHttpClientPaginated($method, $action);

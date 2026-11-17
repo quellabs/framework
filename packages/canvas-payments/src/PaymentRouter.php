@@ -19,6 +19,7 @@
 	/**
 	 * Payment Router
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class PaymentRouter implements PaymentInterface {
 		
@@ -125,7 +126,7 @@
 		/**
 		 * Returns the metadata for the given payment provider class.
 		 * @param class-string<PaymentProviderInterface> $class
-		 * @return array<string, mixed>
+		 * @return ProviderMetadata
 		 */
 		private function getMetadata(string $class): array {
 			return $class::getMetadata();

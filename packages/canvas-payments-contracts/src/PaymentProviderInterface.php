@@ -18,8 +18,16 @@
 	 * implementation has no use for, so the shared methods are redeclared here instead of inherited.
 	 *
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-type ProviderMetadata array{driver: string, modules: list<string>}
 	 */
 	interface PaymentProviderInterface extends ProviderInterface {
+
+		/**
+		 * Returns discovery metadata for this provider, including all supported payment modules.
+		 * Narrows ProviderInterface::getMetadata()'s generic shape for payment providers.
+		 * @return ProviderMetadata
+		 */
+		public static function getMetadata(): array;
 
 		/**
 		 * Initiate a new payment session and return a redirect URL for the customer.
