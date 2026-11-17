@@ -9,7 +9,13 @@
 	 * Carries the provider identifier and the provider's own error code alongside the message.
 	 */
 	class PaymentException extends RuntimeException {
-		
+
+		/** Identifier of the provider that raised the error (e.g. 'paypal', 'mollie') */
+		private readonly string $provider;
+
+		/** Provider-specific error code. Numeric for legacy NVP-style APIs, string for REST APIs. */
+		private readonly int|string $errorId;
+
 		/**
 		 * PaymentException constructor
 		 * @param string $provider
@@ -18,18 +24,13 @@
 		 * @param \Throwable|null $previous
 		 */
 		public function __construct(
-			/** Identifier of the provider that raised the error (e.g. 'paypal', 'mollie') */
-			private readonly string     $provider,
-			
-			/** Provider-specific error code. Numeric for legacy NVP-style APIs, string for REST APIs. */
-			private readonly int|string $errorId,
-		
-			/** Error message */
-			string $message,
-			
-			/** Previous exception */
+			string      $provider,
+			int|string  $errorId,
+			string      $message,
 			?\Throwable $previous = null
 		) {
+			$this->provider = $provider;
+			$this->errorId = $errorId;
 			parent::__construct($message, 0, $previous);
 		}
 		

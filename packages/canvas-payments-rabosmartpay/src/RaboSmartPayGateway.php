@@ -196,8 +196,8 @@
 			$response = $this->client->request('GET', $this->baseUrl . '/gatekeeper/refresh', [
 				'headers' => [
 					'Accept'        => 'application/json',
-					'Authorization' => 'Bearer ' . $this->refreshToken,
-				],
+					'Authorization' => 'Bearer ' . $this->refreshToken
+				]
 			]);
 			
 			// Fetch the status code
@@ -245,8 +245,8 @@
 				$options = [
 					'headers' => [
 						'Accept'        => 'application/json',
-						'Authorization' => "Bearer {$token}",
-					],
+						'Authorization' => "Bearer {$token}"
+					]
 				];
 				
 				if ($payload !== null) {

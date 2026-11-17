@@ -17,10 +17,14 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * PayNL Driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -68,21 +72,18 @@
 			'paynl_riverty'    => 2561,  // Riverty (formerly AfterPay NL)
 			'paynl_eps'        => 2062,
 			'paynl_trustly'    => 2718,
-			'paynl_paybybank'  => 2970,
+			'paynl_paybybank'  => 2970
 		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -129,7 +130,7 @@
 				'return_url'        => '',
 				'cancel_return_url' => '',
 				'exchange_url'      => '',
-				'default_currency'  => 'EUR',
+				'default_currency'  => 'EUR'
 			];
 		}
 		
@@ -192,13 +193,13 @@
 				'reference'     => $request->metadata['reference'] ?? null,
 				'amount'        => [
 					'value'    => $request->amount,
-					'currency' => $request->currency,
+					'currency' => $request->currency
 				],
 				'paymentMethod' => [
-					'id' => $paymentMethodId,
+					'id' => $paymentMethodId
 				],
 				'returnUrl'     => $config['return_url'],
-				'exchangeUrl'   => $config['exchange_url'],
+				'exchangeUrl'   => $config['exchange_url']
 			], fn($v) => $v !== null);
 			
 			// Attach a customer block when billing address data is available.
@@ -207,7 +208,7 @@
 			if ($request->billingAddress !== null) {
 				$customer = array_filter([
 					'email'   => $request->billingAddress->email ?: null,
-					'country' => $request->billingAddress->country ?: null,
+					'country' => $request->billingAddress->country ?: null
 				], fn($v) => $v !== null);
 				
 				if (!empty($customer)) {
@@ -391,7 +392,7 @@
 				internalState: $statusAction ?: $this->normalizeString($statusCode),
 				metadata: array_filter([
 					'paymentMethodId' => $paymentMethodId,
-					'orderId'         => $this->arrayGet($data, 'orderId'),  // Legacy human-readable ID
+					'orderId'         => $this->arrayGet($data, 'orderId')   // Legacy human-readable ID
 				], fn($v) => $v !== null),
 			);
 		}
@@ -420,8 +421,8 @@
 				'description' => $request->description ?? '',
 				'amount'      => $request->amount !== null ? [
 					'value'    => $request->amount,
-					'currency' => $request->currency,
-				] : null,
+					'currency' => $request->currency
+				] : null
 			], fn($v) => $v !== null);
 			
 			// Send the refund request to the Pay.nl API.
@@ -545,6 +546,26 @@
 		 */
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
 		/**

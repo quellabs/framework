@@ -13,10 +13,13 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Payment Router
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class PaymentRouter implements PaymentInterface {
 		
@@ -123,7 +126,7 @@
 		/**
 		 * Returns the metadata for the given payment provider class.
 		 * @param class-string<PaymentProviderInterface> $class
-		 * @return array<string, mixed>
+		 * @return ProviderMetadata
 		 */
 		private function getMetadata(string $class): array {
 			return $class::getMetadata();
@@ -217,5 +220,25 @@
 		 */
 		public function revokeMandate(string $driver, string $customerReference, string $mandateId): void {
 			$this->resolveDriver($driver)->revokeMandate($customerReference, $mandateId);
+		}
+
+		/**
+		 * Returns settlement/payout batch information.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 */
+		public function getSettlement(string $driver, string $settlementId): SettlementInfo {
+			return $this->resolveDriver($driver)->getSettlement($settlementId);
+		}
+
+		/**
+		 * Returns the individual payments included in a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 */
+		public function getSettlementPayments(string $driver, string $settlementId): array {
+			return $this->resolveDriver($driver)->getSettlementPayments($settlementId);
 		}
 	}

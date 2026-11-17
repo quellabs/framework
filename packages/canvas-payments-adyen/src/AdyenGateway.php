@@ -113,9 +113,9 @@
 				'merchantAccount' => $this->merchantAccount,
 				'amount'          => [
 					'value'    => $amount,
-					'currency' => $currency,
+					'currency' => $currency
 				],
-				'reference'       => $note,
+				'reference'       => $note
 			];
 			
 			return $this->post("/payments/{$pspReference}/refunds", $payload);
@@ -197,7 +197,7 @@
 			// Headers
 			$headers = [
 				'Content-Type' => 'application/json',
-				'X-API-Key'    => $this->apiKey,
+				'X-API-Key'    => $this->apiKey
 			];
 			
 			// Attach an idempotency key when a reference is present so that retrying the same
@@ -211,7 +211,7 @@
 				// Send request
 				$response = $this->client->request('POST', $this->baseUrl . $endpoint, [
 					'headers' => $headers,
-					'json'    => $payload,
+					'json'    => $payload
 				]);
 				
 				// Fetch response

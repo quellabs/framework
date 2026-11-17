@@ -38,5 +38,5 @@
 		
 		// When true, the Rabo Smart Pay result page (showing payment outcome) is skipped
 		// and the buyer is redirected immediately to your return or cancel URL.
-		'skip_result_page'  => true,
+		'skip_result_page'  => true
 	];

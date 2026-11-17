@@ -8,6 +8,27 @@
 	 */
 	final readonly class MandateInfo {
 
+		/** The provider that owns this mandate (e.g. 'mollie') */
+		public string $provider;
+
+		/** The provider's unique identifier for this mandate */
+		public string $mandateId;
+
+		/** The provider's customer identifier this mandate belongs to */
+		public string $customerReference;
+
+		/** Normalized mandate status mapped from the provider's internal state */
+		public MandateStatus $status;
+
+		/** Payment method the mandate was created for (e.g. 'directdebit', 'creditcard') */
+		public string $method;
+
+		/** Raw status string returned by the provider, before normalization */
+		public ?string $internalState;
+
+		/** @var array<string, mixed> Additional provider-specific metadata attached to the mandate */
+		public array $metadata;
+
 		/**
 		 * @param string $provider The provider that owns this mandate (e.g. 'mollie').
 		 * @param string $mandateId The provider's unique identifier for this mandate.
@@ -18,13 +39,20 @@
 		 * @param array<string, mixed> $metadata Additional provider-specific metadata attached to the mandate.
 		 */
 		public function __construct(
-			public string        $provider,
-			public string        $mandateId,
-			public string        $customerReference,
-			public MandateStatus $status,
-			public string        $method,
-			public ?string       $internalState = null,
-			public array         $metadata = [],
+			string        $provider,
+			string        $mandateId,
+			string        $customerReference,
+			MandateStatus $status,
+			string        $method,
+			?string       $internalState = null,
+			array         $metadata = [],
 		) {
+			$this->provider = $provider;
+			$this->mandateId = $mandateId;
+			$this->customerReference = $customerReference;
+			$this->status = $status;
+			$this->method = $method;
+			$this->internalState = $internalState;
+			$this->metadata = $metadata;
 		}
 	}

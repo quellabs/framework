@@ -158,7 +158,7 @@
 						'Accept'         => 'application/json',
 						'X-API-KEY'      => $this->apiKey,
 						'Correlation-Id' => Tools::createUUIDv4()
-					],
+					]
 				];
 				
 				if ($payload !== null) {

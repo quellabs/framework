@@ -61,7 +61,7 @@
 			try {
 				$action   = $request->query->get('action', 'return');
 				$response = $this->stripe->exchange($sessionId, [
-					'action' => $action,
+					'action' => $action
 				]);
 				
 				// requires_action — buyer needs to complete 3DS or similar.
@@ -176,7 +176,7 @@
 			return [
 				'payload'         => $payload,
 				'eventType'       => $this->normalizeString($payload['type'] ?? null),
-				'paymentIntentId' => $paymentIntentId,
+				'paymentIntentId' => $paymentIntentId
 			];
 		}
 		
@@ -201,7 +201,7 @@
 				$response = $this->stripe->exchange($paymentIntentId, [
 					'action'          => 'webhook',
 					'paymentIntentId' => $paymentIntentId,
-					'eventType'       => $eventType,
+					'eventType'       => $eventType
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state

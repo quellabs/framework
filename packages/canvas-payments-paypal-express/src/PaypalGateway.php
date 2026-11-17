@@ -78,7 +78,7 @@
 				"USER"      => $this->m_api_username,
 				"PWD"       => $this->m_api_password,
 				"SIGNATURE" => $this->m_api_signature,
-				"TOKEN"     => $token,
+				"TOKEN"     => $token
 			]);
 		}
 		
@@ -102,7 +102,7 @@
 				"PAYERID"                        => $payerId,
 				"PAYMENTREQUEST_0_PAYMENTACTION" => "Sale",
 				"PAYMENTREQUEST_0_AMT"           => $value,
-				"PAYMENTREQUEST_0_CURRENCYCODE"  => $currencyType,
+				"PAYMENTREQUEST_0_CURRENCYCODE"  => $currencyType
 			]);
 		}
 		
@@ -130,7 +130,7 @@
 				"PAYMENTREQUEST_0_DESC"          => $description,
 				"RETURNURL"                      => $this->m_return_url,
 				"CANCELURL"                      => $this->m_cancel_url,
-				"NOTIFYURL"                      => $this->m_notify_url,
+				"NOTIFYURL"                      => $this->m_notify_url
 			]));
 		}
 		
@@ -147,7 +147,7 @@
 				"USER"          => $this->m_api_username,
 				"PWD"           => $this->m_api_password,
 				"SIGNATURE"     => $this->m_api_signature,
-				"TRANSACTIONID" => $transactionId,
+				"TRANSACTIONID" => $transactionId
 			]);
 		}
 		
@@ -167,7 +167,7 @@
 				"SIGNATURE"     => $this->m_api_signature,
 				"TRANSACTIONID" => $transactionId,
 				"REFUNDTYPE"    => "Full",
-				"NOTE"          => $note,
+				"NOTE"          => $note
 			]);
 		}
 		
@@ -191,7 +191,7 @@
 				"REFUNDTYPE"    => "Partial",
 				"AMT"           => round($value, 2),
 				"CURRENCYCODE"  => $currencyType,
-				"NOTE"          => $note,
+				"NOTE"          => $note
 			]);
 		}
 		
@@ -212,7 +212,7 @@
 				"SIGNATURE"     => $this->m_api_signature,
 				"STARTDATE"     => $startDate,
 				"ENDDATE"       => $endDate ?? gmdate("Y-m-d\TH:i:s\Z"),
-				"TRANSACTIONID" => $transactionId,
+				"TRANSACTIONID" => $transactionId
 			]);
 		}
 		
@@ -231,11 +231,11 @@
 				$response = $client->request('POST', $this->m_ipn_url, [
 					'headers'      => [
 						'Connection' => 'Close',
-						'User-Agent' => 'PHP-IPN-Verification-Script',
+						'User-Agent' => 'PHP-IPN-Verification-Script'
 					],
 					'body'         => array_merge(['cmd' => '_notify-validate'], $data),
 					'verify_peer'  => true,
-					'http_version' => '1.1',
+					'http_version' => '1.1'
 				]);
 				
 				return ['request' => ['result' => 1, 'errorId' => '', 'errorMessage' => ''], 'response' => ['result' => $response->getContent()]];
@@ -256,7 +256,7 @@
 			try {
 				$response = $client->request('POST', $this->m_transaction_url, [
 					'body'        => $parameters,
-					'verify_peer' => $this->m_verify_ssl,
+					'verify_peer' => $this->m_verify_ssl
 				]);
 				
 				// PayPal returns URL-encoded NVP pairs — parse them into an associative array

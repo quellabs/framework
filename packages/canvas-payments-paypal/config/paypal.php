@@ -38,5 +38,5 @@
 		// The URL PayPal will POST webhook notifications to.
 		// Must be publicly accessible and match the URL registered in your PayPal app settings.
 		// Localhost will not work — use a tunnel (e.g. ngrok) for local development.
-		'webhook_url' => 'https://example.com/webhooks/paypal',
+		'webhook_url' => 'https://example.com/webhooks/paypal'
 	];

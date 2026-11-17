@@ -17,10 +17,14 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Adyen driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -55,7 +59,7 @@
 			'adyen_klarna'     => 'klarna',
 			'adyen_applepay'   => 'applepay',
 			'adyen_googlepay'  => 'googlepay',
-			'adyen_paypal'     => 'paypal',
+			'adyen_paypal'     => 'paypal'
 		];
 		
 		/**
@@ -70,7 +74,7 @@
 			'adyen_klarna',      // Required: address, name, email, phone
 			'adyen_in3',         // Required: address, name, email, phone
 			'adyen_riverty',     // Required: address, name, email, phone
-			'adyen_billie',      // Required: address, name, email, phone, companyName
+			'adyen_billie'       // Required: address, name, email, phone, companyName
 		];
 		
 		/**
@@ -83,21 +87,18 @@
 		private const MODULES_REQUIRING_SHOPPER_EMAIL = [
 			'adyen_bancontact',
 			'adyen_sofort',
-			'adyen_giropay',
+			'adyen_giropay'
 		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -146,7 +147,7 @@
 				'webhook_url'          => '',
 				'live_endpoint_prefix' => '',
 				'default_country'      => 'NL',
-				'default_currency'     => 'EUR',
+				'default_currency'     => 'EUR'
 			];
 		}
 		
@@ -189,7 +190,7 @@
 			if ($useAddressData && $billing !== null && ($billing->givenName !== null || $billing->familyName !== null)) {
 				$shopperName = array_filter([
 					'firstName' => $billing->givenName,
-					'lastName'  => $billing->familyName,
+					'lastName'  => $billing->familyName
 				], fn($v) => $v !== null);
 			}
 			
@@ -198,19 +199,19 @@
 				'merchantAccount' => $config['merchant_account'],
 				'amount'          => [
 					'value'    => $request->amount,
-					'currency' => $request->currency,
+					'currency' => $request->currency
 				],
 				'reference'       => $request->reference,
 				'returnUrl'       => $config['return_url'],
 				'description'     => $request->description,
 				'shopperLocale'   => 'nl-NL',
 				'countryCode'     => $billing?->country ?: null,
-				'shopperEmail'    => $useShopperEmail ? ($billing?->email ?: null) : null,
-				'telephoneNumber' => $useAddressData ? ($billing?->phone ?: null) : null,
+				'shopperEmail'    => $useShopperEmail ? $billing?->email : null,
+				'telephoneNumber' => $useAddressData ? $billing?->phone : null,
 				'shopperName'     => $shopperName ?: null,
 				'billingAddress'  => $useAddressData && $billing !== null ? $this->buildAddressPayload($billing) : null,
 				'deliveryAddress' => $useAddressData && $request->shippingAddress !== null ? $this->buildAddressPayload($request->shippingAddress) : null,
-				'companyName'     => $useAddressData ? ($billing?->organizationName ?: null) : null,
+				'companyName'     => $useAddressData ? $billing?->organizationName : null
 			], fn($v) => $v !== null && $v !== '' && $v !== []);
 			
 			// Create a new payment link
@@ -300,7 +301,7 @@
 			
 			// Build the /payments/details payload.
 			$payload = [
-				'details' => ['redirectResult' => $redirectResult],
+				'details' => ['redirectResult' => $redirectResult]
 			];
 			
 			// Submit to Adyen — this resolves the pending redirect into a final resultCode
@@ -363,7 +364,7 @@
 					'paymentReference' => $pspReference,
 					'sessionId'        => $transactionId,
 					'paymentMethod'    => isset($paymentMethodArr['type']) && is_string($paymentMethodArr['type']) ? $paymentMethodArr['type'] : null,
-					'refusalReason'    => isset($response['refusalReason']) && is_string($response['refusalReason']) ? $response['refusalReason'] : null,
+					'refusalReason'    => isset($response['refusalReason']) && is_string($response['refusalReason']) ? $response['refusalReason'] : null
 				], fn($v) => $v !== null),
 			);
 		}
@@ -467,6 +468,26 @@
 		public function revokeMandate(string $customerReference, string $mandateId): void {
 			throw new PaymentMandateException(self::DRIVER_NAME, 'not_supported', 'Mandates are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
 		
 		/**
 		 * Verifies the HMAC signature on an incoming Adyen webhook notification.
@@ -540,7 +561,7 @@
 					'paymentReference'  => $pspReference,
 					'merchantReference' => $notification['merchantReference'] ?? null,
 					'paymentMethod'     => $notification['paymentMethod'] ?? null,
-					'reason'            => $notification['reason'] ?? null,
+					'reason'            => $notification['reason'] ?? null
 				], fn($v) => $v !== null),
 			);
 		}
@@ -564,7 +585,7 @@
 				'postalCode'        => $address->postalCode,
 				'city'              => $address->city,
 				'country'           => $address->country,
-				'stateOrProvince'   => $address->region ?? null,
+				'stateOrProvince'   => $address->region ?? null
 			];
 		}
 		

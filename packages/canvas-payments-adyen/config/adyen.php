@@ -38,5 +38,5 @@
 		// payment method picker). Adyen uses these to filter the available methods list.
 		// For NL merchants this should almost always be 'NL' + 'EUR'.
 		'default_country'  => 'NL',
-		'default_currency' => 'EUR',
+		'default_currency' => 'EUR'
 	];

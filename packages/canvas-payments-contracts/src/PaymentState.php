@@ -12,7 +12,31 @@
 	 * making it suitable for change-detection (e.g. dirty-checking before persistence).
 	 */
 	final readonly class PaymentState {
-		
+
+		/** The provider that owns this payment (e.g. 'mollie', 'stripe') */
+		public string $provider;
+
+		/** The provider's unique identifier for this payment */
+		public string $transactionId;
+
+		/** Normalized payment status mapped from the provider's internal state */
+		public PaymentStatus $state;
+
+		/** ISO 4217 currency code (e.g. 'EUR', 'USD') */
+		public string $currency;
+
+		/** Total amount paid in the smallest currency unit, or null if unknown */
+		public ?int $valuePaid;
+
+		/** Total amount refunded so far, in the smallest currency unit */
+		public int $valueRefunded;
+
+		/** Raw status string returned by the provider, before normalization */
+		public ?string $internalState;
+
+		/** @var array<string, mixed> Additional provider-specific metadata attached to the payment */
+		public array $metadata;
+
 		/**
 		 * @param string $provider The provider that owns this payment (e.g. 'mollie', 'stripe').
 		 * @param string $transactionId The provider's unique identifier for this payment.
@@ -24,15 +48,23 @@
 		 * @param array<string, mixed> $metadata Additional provider-specific metadata attached to the payment.
 		 */
 		public function __construct(
-			public string        $provider,
-			public string        $transactionId,
-			public PaymentStatus $state,
-			public string        $currency,
-			public ?int          $valuePaid = null,
-			public int           $valueRefunded = 0,
-			public ?string       $internalState = null,
-			public array         $metadata = [],
+			string        $provider,
+			string        $transactionId,
+			PaymentStatus $state,
+			string        $currency,
+			?int          $valuePaid = null,
+			int           $valueRefunded = 0,
+			?string       $internalState = null,
+			array         $metadata = [],
 		) {
+			$this->provider = $provider;
+			$this->transactionId = $transactionId;
+			$this->state = $state;
+			$this->currency = $currency;
+			$this->valuePaid = $valuePaid;
+			$this->valueRefunded = $valueRefunded;
+			$this->internalState = $internalState;
+			$this->metadata = $metadata;
 		}
 		
 		/**
@@ -59,7 +91,7 @@
 				'valuePaid'     => $this->valuePaid,
 				'valueRefunded' => $this->valueRefunded,
 				'internalState' => $this->internalState,
-				'metadata'      => $this->normalizeMeta($this->metadata),
+				'metadata'      => $this->normalizeMeta($this->metadata)
 			];
 		}
 		
