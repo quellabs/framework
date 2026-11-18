@@ -28,11 +28,13 @@
 		 */
 		protected function getOrmStubs(): array {
 			return [
-				'Entities/UserEntity.php'                  => 'src/Entities/UserEntity.php',
-				'Entities/PasswordResetTokenEntity.php'    => 'src/Entities/PasswordResetTokenEntity.php',
-				'Controllers/AuthenticationController.php' => 'src/Controllers/AuthenticationController.php',
-				'Controllers/AuthenticatedController.php'  => 'src/Controllers/AuthenticatedController.php',
-				'Aspects/AccountEligibilityAspect.php'     => 'src/Aspects/AccountEligibilityAspect.php',
+				'Entities/UserEntity.php'                             => 'src/Entities/UserEntity.php',
+				'Entities/PasswordResetTokenEntity.php'               => 'src/Entities/PasswordResetTokenEntity.php',
+				'Controllers/AuthenticationController.php'            => 'src/Controllers/AuthenticationController.php',
+				'Controllers/AuthenticatedController.php'             => 'src/Controllers/AuthenticatedController.php',
+				'Aspects/AccountEligibilityAspect.php'                => 'src/Aspects/AccountEligibilityAspect.php',
+				'Migrations/create_users_table.php'                   => 'migrations/0001_01_01_000000_create_users_table.php',
+				'Migrations/create_password_reset_tokens_table.php'   => 'migrations/0001_01_01_000001_create_password_reset_tokens_table.php',
 			];
 		}
 
@@ -41,10 +43,11 @@
 		 * @return void
 		 */
 		protected function showNextSteps(): void {
-			$this->output->writeLn("1. canvas-eloquent does not bundle a migration generator — create the");
-			$this->output->writeLn("   'users' and 'password_reset_tokens' tables (see src/Entities/UserEntity.php");
-			$this->output->writeLn("   and src/Entities/PasswordResetTokenEntity.php for the expected columns)");
-			$this->output->writeLn("   with your own migration tooling.");
+			$this->output->writeLn("1. Migrations for the 'users' and 'password_reset_tokens' tables were created");
+			$this->output->writeLn("   under migrations/ — the users table includes a unique index on username,");
+			$this->output->writeLn("   required so two concurrent registrations can never create duplicate accounts.");
+			$this->output->writeLn("   Run them with:");
+			$this->output->writeLn("   <yellow>php ./vendor/bin/sculpt eloquent:migrate</yellow>");
 			$this->output->writeLn("");
 			$this->output->writeLn("2. Protect a controller by extending AuthenticatedController instead of BaseController:");
 			$this->output->writeLn("   <yellow>class DashboardController extends App\\Controllers\\AuthenticatedController</yellow>");
