@@ -9,7 +9,7 @@
 	use App\Notifiers\LogPasswordResetNotifier;
 	use Quellabs\Canvas\Annotations\Route;
 	use Quellabs\DependencyInjection\Container;
-	use Quellabs\ObjectQuel\ObjectQuel\QuelException;
+	use Quellabs\ObjectQuel\Exception\QuelException;
 	use Quellabs\ObjectQuel\OrmException;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
@@ -156,8 +156,8 @@
 				], $request);
 			}
 
-			$username = $request->request->get('username');
-			$password = $request->request->get('password');
+			$username = (string)$request->request->get('username');
+			$password = (string)$request->request->get('password');
 			$user = $this->findUser($username);
 
 			// Always run password_verify(), even when no user matched, against
@@ -223,10 +223,10 @@
 				], $request);
 			}
 
-			$name = $request->request->get('name');
-			$username = $request->request->get('username');
-			$password = $request->request->get('password');
-			$confirmPassword = $request->request->get('confirm_password');
+			$name = (string)$request->request->get('name');
+			$username = (string)$request->request->get('username');
+			$password = (string)$request->request->get('password');
+			$confirmPassword = (string)$request->request->get('confirm_password');
 
 			if ($password !== $confirmPassword) {
 				return $this->renderWithCsrf('registration_form.{{ template_ext }}', [
@@ -328,15 +328,17 @@
 				], $request);
 			}
 
-			$username = $request->request->get('username');
+			$username = (string)$request->request->get('username');
 			$user = $this->findUser($username);
 
-			if ($user !== null) {
+			$userId = $user?->getId();
+
+			if ($userId !== null) {
 				$rawToken = bin2hex(random_bytes(32));
 
 				$token = new PasswordResetTokenEntity();
 				$token
-					->setUserId($user->getId())
+					->setUserId($userId)
 					->setTokenHash($this->hashResetToken($rawToken))
 					->setExpiresAt(new \DateTime('+' . self::RESET_TOKEN_TTL_SECONDS . ' seconds'));
 
@@ -413,8 +415,8 @@
 				], $request);
 			}
 
-			$password = $request->request->get('password');
-			$confirmPassword = $request->request->get('confirm_password');
+			$password = (string)$request->request->get('password');
+			$confirmPassword = (string)$request->request->get('confirm_password');
 
 			if ($password !== $confirmPassword) {
 				return $this->renderWithCsrf('reset_password.{{ template_ext }}', [
@@ -474,7 +476,7 @@
 		 * every route in this controller) always publishes a fresh token here,
 		 * whether or not CSRF validation itself passed.
 		 * @param string $template
-		 * @param array $data
+		 * @param array<string, mixed> $data
 		 * @param Request $request
 		 * @return Response
 		 * @throws TemplateRenderException

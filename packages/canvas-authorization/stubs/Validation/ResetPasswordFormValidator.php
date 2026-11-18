@@ -3,6 +3,7 @@
 	namespace App\Validation;
 
 	use Quellabs\Canvas\Validation\Contracts\ValidationInterface;
+	use Quellabs\Canvas\Validation\Contracts\ValidationRuleInterface;
 	use Quellabs\Canvas\Validation\Rules\Length;
 	use Quellabs\Canvas\Validation\Rules\NotBlank;
 
@@ -13,7 +14,7 @@
 
 		/**
 		 * Define validation rules for reset-password form fields
-		 * @return array Array of validation rules keyed by field name
+		 * @return array<string, ValidationRuleInterface|array<int, ValidationRuleInterface>>
 		 */
 		public function getRules(): array {
 			return [
