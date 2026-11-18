@@ -180,7 +180,7 @@
         @endif
 
         <form action="/forgot-password" method="post">
-            @csrf
+            <input type="hidden" name="{{ $csrf_token_name ?? '_csrf_token' }}" value="{{ $csrf_token ?? '' }}">
             <div class="form-group">
                 <label for="username" class="form-label">Email address</label>
                 <input type="text"

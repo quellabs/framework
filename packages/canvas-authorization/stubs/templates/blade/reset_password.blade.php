@@ -155,7 +155,7 @@
     @endif
 
     <form action="/reset-password" method="post">
-        @csrf
+        <input type="hidden" name="{{ $csrf_token_name ?? '_csrf_token' }}" value="{{ $csrf_token ?? '' }}">
         <input type="hidden" name="token" value="{{ $token ?? '' }}">
 
         <div class="form-group">

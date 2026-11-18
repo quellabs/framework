@@ -431,7 +431,7 @@
       "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/",
       "Quellabs\\CanvasAuthorization\\Doctrine\\Tests\\": "packages/canvas-authorization-doctrine/tests/",
       "Quellabs\\CanvasAuthorization\\Eloquent\\Tests\\": "packages/canvas-authorization-eloquent/tests/",
-      "Quellabs\\CanvasAuthorization\\ObjectQuel\\Tests\\": "packages/canvas-authorization-objectquel/tests/"
+      "Quellabs\\CanvasAuthorization\\ObjectQuel\\Tests\\": "packages/canvas-authorization-objectquel/tests/",
       "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
       "Quellabs\\Payments\\Mollie\\Tests\\": "packages/canvas-payments-mollie/tests/",
       "Quellabs\\Payments\\Adyen\\Tests\\": "packages/canvas-payments-adyen/tests/",

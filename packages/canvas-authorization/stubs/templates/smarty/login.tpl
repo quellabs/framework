@@ -219,6 +219,7 @@
     {/if}
 
     <form action="{$form_action|default:'/login'}" method="post">
+        <input type="hidden" name="{$csrf_token_name|default:'_csrf_token'}" value="{$csrf_token|default:''}">
         <div class="form-group">
             <label for="username" class="form-label">Username or email address</label>
             <input type="text"

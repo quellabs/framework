@@ -219,7 +219,7 @@
     @endif
 
     <form action="{{ $form_action ?? '/login' }}" method="post">
-        @csrf
+        <input type="hidden" name="{{ $csrf_token_name ?? '_csrf_token' }}" value="{{ $csrf_token ?? '' }}">
         <div class="form-group">
             <label for="username" class="form-label">Username or email address</label>
             <input type="text"

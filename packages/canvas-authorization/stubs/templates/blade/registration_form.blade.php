@@ -215,7 +215,7 @@
     @endif
 
     <form action="/register" method="post" id="registerForm">
-        @csrf
+        <input type="hidden" name="{{ $csrf_token_name ?? '_csrf_token' }}" value="{{ $csrf_token ?? '' }}">
         <div class="form-group">
             <label for="name" class="form-label">Full name</label>
             <input type="text"
