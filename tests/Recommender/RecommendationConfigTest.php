@@ -18,32 +18,32 @@
 		
 		public function testDefaultCategory(): void {
 			$config = new RecommendationConfig();
-			$this->assertSame(1, $config->getCategory());
+			$this->assertSame(1, $config->category());
 		}
 		
 		public function testDefaultThresholdNrCommonRatings(): void {
 			$config = new RecommendationConfig();
-			$this->assertSame(30, $config->getThresholdNrCommonRatings());
+			$this->assertSame(30, $config->thresholdNrCommonRatings());
 		}
 		
 		public function testDefaultThresholdMult(): void {
 			$config = new RecommendationConfig();
-			$this->assertSame(2, $config->getThresholdMult());
+			$this->assertSame(2, $config->thresholdMult());
 		}
 		
 		public function testDefaultThresholdRating(): void {
 			$config = new RecommendationConfig();
-			$this->assertEqualsWithDelta(0.66, $config->getThresholdRating(), 0.0001);
+			$this->assertEqualsWithDelta(0.66, $config->thresholdRating(), 0.0001);
 		}
 		
 		public function testDefaultCost(): void {
 			$config = new RecommendationConfig();
-			$this->assertEqualsWithDelta(5.0, $config->getCost(), 0.0001);
+			$this->assertEqualsWithDelta(5.0, $config->cost(), 0.0001);
 		}
 		
 		public function testDefaultNotInterested(): void {
 			$config = new RecommendationConfig();
-			$this->assertEqualsWithDelta(-1.0, $config->getNotInterested(), 0.0001);
+			$this->assertEqualsWithDelta(-1.0, RecommendationConfig::NOT_INTERESTED, 0.0001);
 		}
 		
 		public function testDefaultDirectLinksIsFalse(): void {
@@ -62,12 +62,12 @@
 		
 		public function testCustomCategory(): void {
 			$config = new RecommendationConfig(category: 5);
-			$this->assertSame(5, $config->getCategory());
+			$this->assertSame(5, $config->category());
 		}
 		
 		public function testCustomThresholdRating(): void {
 			$config = new RecommendationConfig(thresholdRating: 0.5);
-			$this->assertEqualsWithDelta(0.5, $config->getThresholdRating(), 0.0001);
+			$this->assertEqualsWithDelta(0.5, $config->thresholdRating(), 0.0001);
 		}
 		
 		public function testCustomDirectLinks(): void {
@@ -107,11 +107,27 @@
 			new RecommendationConfig(thresholdRating: NAN);
 		}
 
-		/** The internal absence marker requires the fixed disinterest sentinel.
+		/** The disinterest sentinel is fixed at -1.0 and is not configurable.
 		 * @return void
 		 */
-		public function testRejectsDifferentDisinterestSentinel(): void {
-			$this->expectException(\InvalidArgumentException::class);
-			new RecommendationConfig(notInterested: -0.5);
+		public function testDisinterestSentinelIsFixed(): void {
+			$this->assertSame(-1.0, RecommendationConfig::NOT_INTERESTED);
+		}
+
+		/** Numeric strings are coerced, string booleans are parsed, and invalid values fall back to defaults.
+		 * @return void
+		 */
+		public function testFromArrayCoercesScalarsAndFallsBackToDefaults(): void {
+			$config = RecommendationConfig::fromArray([
+				'threshold_mult' => '3',
+				'threshold_rating' => 'not-a-number',
+				'direct_links' => 'false',
+				'direct_slope' => 'maybe',
+			]);
+
+			$this->assertSame(3, $config->thresholdMult());
+			$this->assertSame(0.66, $config->thresholdRating());
+			$this->assertFalse($config->isDirectLinks());
+			$this->assertTrue($config->isDirectSlope());
 		}
 	}
