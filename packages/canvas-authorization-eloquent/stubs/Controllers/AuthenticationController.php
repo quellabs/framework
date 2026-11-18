@@ -25,6 +25,14 @@
 		private const RESET_TOKEN_TTL_SECONDS = 3600;
 
 		/**
+		 * A valid-format bcrypt hash of no real password, verified against
+		 * when processLogin() finds no matching user — so password_verify()
+		 * always runs and a nonexistent username can't be told apart from a
+		 * wrong password by response timing.
+		 */
+		private const DUMMY_PASSWORD_HASH = '$2y$12$yCzG6WC409nHl3GoKzdPO.iQSR9WNdLWuNiiqXF9kS6eJXlgMdRta';
+
+		/**
 		 * @var PasswordResetNotifierInterface
 		 */
 		private PasswordResetNotifierInterface $passwordResetNotifier;
@@ -70,13 +78,25 @@
 		}
 
 		/**
-		 * Log out the current user
-		 * @Route("/logout", methods={"POST", "GET"})
+		 * Log out the current user. POST-only and CSRF-checked, so a
+		 * third-party page can't force a visitor's session to end with a bare
+		 * <img>/<a> tag. The logout form needs a current CSRF token wherever
+		 * it's rendered (your shared layout, not this controller) — apply
+		 * CsrfProtectionAspect to whatever route renders that layout so
+		 * 'csrf_token' is on the request there too; the default intention is
+		 * shared across routes, so that token also validates here.
+		 * @Route("/logout", methods={"POST"})
+		 * @InterceptWith(Quellabs\Canvas\Security\CsrfProtectionAspect::class)
 		 * @param Request $request
 		 * @return Response
 		 */
-		#[Route("/logout", methods: ["POST", "GET"])]
+		#[Route("/logout", methods: ["POST"])]
+		#[InterceptWith(\Quellabs\Canvas\Security\CsrfProtectionAspect::class)]
 		public function logout(Request $request): Response {
+			if (!$request->attributes->get('csrf_validation_succeeded', true)) {
+				return new RedirectResponse('/');
+			}
+
 			$session = $request->getSession();
 
 			// invalidate() no-ops without a started session, so a logout
@@ -142,7 +162,13 @@
 			$password = $request->request->get('password');
 			$user = $this->findUser($username);
 
-			if (!$user || !$this->checkPassword($password, $user)) {
+			// Always run password_verify(), even when no user matched, against
+			// DUMMY_PASSWORD_HASH — a nonexistent username must cost the same
+			// time as a wrong password for a real one, or the two become
+			// distinguishable by response time despite the identical message below
+			$hash = $user !== null ? $user->getPassword() : self::DUMMY_PASSWORD_HASH;
+
+			if ($user === null || !$this->checkPassword($password, $hash)) {
 				// Generic message: don't reveal whether username or password was wrong
 				return $this->renderWithCsrf('login.{{ template_ext }}', [
 					'errors' => [
@@ -486,13 +512,13 @@
 		}
 
 		/**
-		 * Verify password against user's stored hash
+		 * Verify a password against a stored hash.
 		 * @param string $password
-		 * @param UserEntity $user
+		 * @param string $hash
 		 * @return bool
 		 */
-		private function checkPassword(string $password, UserEntity $user): bool {
-			return password_verify($password, $user->getPassword());
+		private function checkPassword(string $password, string $hash): bool {
+			return password_verify($password, $hash);
 		}
 
 		/**
