@@ -6,6 +6,7 @@
 	use Quellabs\Discover\Discover;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
+	use Quellabs\DependencyInjection\Exception\UnresolvableParameterException;
 	
 	class DefaultServiceProvider extends ServiceProvider {
 		
@@ -46,11 +47,19 @@
 		 * @param array<string, mixed> $metadata
 		 * @param MethodContextInterface|null $methodContext
 		 * @return object
+		 * @throws UnresolvableParameterException If $className does not exist, or exists only as an
+		 *         interface/abstract class with no registered provider to build it
 		 */
 		public function createInstance(string $className, array $dependencies, array $metadata=[], ?MethodContextInterface $methodContext=null): object {
-			// Check if the class exists
-			if (!class_exists($className)) {
-				throw new \RuntimeException("Class '$className' does not exist");
+			// This fallback provider supports every class-string (see supports() below), so an
+			// interface or abstract class reaching here means no specific provider is registered
+			// for it. new $className(...) can only ever build a concrete class, so report that as
+			// an unresolvable parameter rather than letting a non-existent-class RuntimeException or
+			// a raw PHP "Cannot instantiate" Error escape — Autowirer already treats
+			// UnresolvableParameterException as this one candidate failing, falling back to the
+			// parameter's own default (or null, for a nullable parameter) instead of a hard failure.
+			if (!class_exists($className) || !(new \ReflectionClass($className))->isInstantiable()) {
+				throw new UnresolvableParameterException("Class '$className' does not exist or cannot be instantiated");
 			}
 			
 			// Check if this class implements ProviderInterface

@@ -232,10 +232,34 @@
 	}
 
 	/**
+	 * Interface with no registered provider at all, used to prove the
+	 * DefaultServiceProvider fallback treats "nothing supports this" the
+	 * same as any other unresolvable candidate, instead of crashing.
+	 */
+	interface AutowirerResolutionUnboundInterface {
+	}
+
+	/**
 	 * Controller-shaped fixture whose methods exercise each resolution
 	 * scenario under test.
 	 */
 	class AutowirerResolutionController {
+
+		/**
+		 * @param AutowirerResolutionUnboundInterface|null $target
+		 * @return AutowirerResolutionUnboundInterface|null
+		 */
+		public function unboundInterfaceWithDefault(?AutowirerResolutionUnboundInterface $target = null): ?AutowirerResolutionUnboundInterface {
+			return $target;
+		}
+
+		/**
+		 * @param AutowirerResolutionUnboundInterface $target
+		 * @return AutowirerResolutionUnboundInterface
+		 */
+		public function unboundInterfaceRequired(AutowirerResolutionUnboundInterface $target): AutowirerResolutionUnboundInterface {
+			return $target;
+		}
 
 		/**
 		 * @param AutowirerResolutionNullableTarget $target
@@ -423,6 +447,34 @@
 			$consumer = $container->make(AutowirerResolutionPlainConsumer::class);
 
 			$this->assertInstanceOf(AutowirerResolutionPlainDependency::class, $consumer->getDependency());
+		}
+
+		public function testUnboundInterfaceFallsBackToTheParameterDefaultInsteadOfCrashing(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			// No provider supports AutowirerResolutionUnboundInterface, so this falls
+			// through DefaultServiceProvider — which must report the candidate as
+			// unresolvable (letting Strategy 3 supply the default) rather than
+			// letting a raw "class does not exist" RuntimeException escape for
+			// what is, in fact, an existing interface.
+			$args = $autowirer->getMethodArguments($controller, 'unboundInterfaceWithDefault');
+
+			$this->assertSame([null], $args);
+		}
+
+		public function testUnboundInterfaceForARequiredParameterThrowsAClearDIError(): void {
+			$container = $this->makeContainer();
+			$autowirer = new Autowirer($container);
+			$controller = new AutowirerResolutionController();
+
+			try {
+				$autowirer->getMethodArguments($controller, 'unboundInterfaceRequired');
+				$this->fail('Expected UnresolvableParameterException was not thrown');
+			} catch (UnresolvableParameterException $e) {
+				$this->assertStringContainsString('target', $e->getMessage());
+			}
 		}
 
 		public function testParameterNameIsResetAfterResolutionThrows(): void {
