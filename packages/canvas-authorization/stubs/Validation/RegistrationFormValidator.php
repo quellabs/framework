@@ -3,6 +3,7 @@
 	namespace App\Validation;
 	
 	use Quellabs\Canvas\Validation\Contracts\ValidationInterface;
+	use Quellabs\Canvas\Validation\Contracts\ValidationRuleInterface;
 	use Quellabs\Canvas\Validation\Rules\Email;
 	use Quellabs\Canvas\Validation\Rules\Length;
 	use Quellabs\Canvas\Validation\Rules\NotBlank;
@@ -14,7 +15,7 @@
 		
 		/**
 		 * Define validation rules for register form fields
-		 * @return array Array of validation rules keyed by field name
+		 * @return array<string, ValidationRuleInterface|array<int, ValidationRuleInterface>>
 		 */
 		public function getRules(): array {
 			return [
@@ -32,7 +33,7 @@
 					new NotBlank(),     // Ensure password is not empty
 					new Length(min: 8), // Match the client-side minimum shown on the form
 				],
-				// Connfirm password field validation
+				// Confirm password field validation
 				'confirm_password' => [
 					new NotBlank(),  // Ensure password is not empty
 				]
