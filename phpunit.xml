@@ -71,6 +71,20 @@
         <testsuite name="CanvasObjectQuel">
             <directory>packages/canvas-objectquel/tests</directory>
         </testsuite>
+        <testsuite name="CanvasAuthorization">
+            <directory>packages/canvas-authorization/tests</directory>
+            <exclude>packages/canvas-authorization/tests/Fixtures</exclude>
+        </testsuite>
+        <testsuite name="CanvasAuthorizationDoctrine">
+            <directory>packages/canvas-authorization-doctrine/tests</directory>
+        </testsuite>
+        <testsuite name="CanvasAuthorizationEloquent">
+            <directory>packages/canvas-authorization-eloquent/tests</directory>
+        </testsuite>
+        <testsuite name="CanvasAuthorizationObjectQuel">
+            <directory>packages/canvas-authorization-objectquel/tests</directory>
+            <exclude>packages/canvas-authorization-objectquel/tests/Fixtures</exclude>
+        </testsuite>
         <testsuite name="CanvasPayments">
             <directory>packages/canvas-payments-mollie/tests</directory>
             <directory>packages/canvas-payments-adyen/tests</directory>
