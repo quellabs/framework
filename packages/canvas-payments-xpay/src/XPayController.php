@@ -159,7 +159,7 @@
 				$operationId = isset($operation['operationId']) ? $this->normalizeString($operation['operationId']) : null;
 				$state       = $this->xpay->exchange($orderId, [
 					'action'      => 'push',
-					'operationId' => $operationId,
+					'operationId' => $operationId
 				]);
 				
 				// Notify listeners of the updated payment state

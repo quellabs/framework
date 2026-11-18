@@ -140,8 +140,8 @@
 				$options = [
 					'headers' => [
 						'Accept'        => 'application/json',
-						'Authorization' => $this->authHeader,
-					],
+						'Authorization' => $this->authHeader
+					]
 				];
 				
 				// Attach the JSON body and content-type header for write operations.
@@ -169,8 +169,8 @@
 						'request' => [
 							'result'       => 0,
 							'errorId'      => (string)$statusCode,
-							'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg(),
-						],
+							'errorMessage' => 'Invalid JSON response: ' . json_last_error_msg()
+						]
 					];
 				}
 				
@@ -182,7 +182,7 @@
 				if ($statusCode >= 200 && $statusCode < 300) {
 					return [
 						'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
-						'response' => $body ?? [],
+						'response' => $body ?? []
 					];
 				}
 				
@@ -194,8 +194,8 @@
 					'request' => [
 						'result'       => 0,
 						'errorId'      => (string)$statusCode,
-						'errorMessage' => $errorMessage,
-					],
+						'errorMessage' => $errorMessage
+					]
 				];
 			} catch (\Throwable $e) {
 				// Catch network-level exceptions (DNS failure, connection refused, TLS error)
@@ -204,8 +204,8 @@
 					'request' => [
 						'result'       => 0,
 						'errorId'      => $e->getCode(),
-						'errorMessage' => $e->getMessage(),
-					],
+						'errorMessage' => $e->getMessage()
+					]
 				];
 			}
 		}

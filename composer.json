@@ -270,6 +270,34 @@
       "options": {
         "symlink": true
       }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-doctrine",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-eloquent",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "./packages/canvas-authorization-objectquel",
+      "options": {
+        "symlink": true
+      }
     }
   ],
   "require": {
@@ -282,7 +310,7 @@
     "dragonmantank/cron-expression": "*",
     "cakephp/database": "*",
     "composer-plugin-api": "^2.0",
-    "quellabs/canvas-authorization": "^1.0"
+    "quellabs/canvas-authorization": "dev-main as 1.999.999"
   },
   "suggest": {
     "ext-redis": "Required for Redis cache driver",
@@ -309,6 +337,9 @@
     "quellabs/canvas-database": "dev-main as 1.999.999",
     "quellabs/canvas-eloquent": "dev-main as 1.999.999",
     "quellabs/canvas-doctrine": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-doctrine": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-eloquent": "dev-main as 1.999.999",
+    "quellabs/canvas-authorization-objectquel": "dev-main as 1.999.999",
     "quellabs/dependency-injection": "dev-main as 1.999.999",
     "quellabs/discover": "dev-main as 1.999.999",
     "quellabs/objectquel": "dev-main as 2.999.999",
@@ -398,7 +429,22 @@
       "Quellabs\\CanvasEloquent\\Tests\\": "packages/canvas-eloquent/tests/",
       "Quellabs\\CanvasDoctrine\\Tests\\": "packages/canvas-doctrine/tests/",
       "Quellabs\\SignalHub\\Tests\\": "packages/signal-hub/tests/",
-      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/"
+      "Quellabs\\CanvasAuthorization\\Tests\\": "packages/canvas-authorization/tests/",
+      "Quellabs\\CanvasAuthorization\\Doctrine\\Tests\\": "packages/canvas-authorization-doctrine/tests/",
+      "Quellabs\\CanvasAuthorization\\Eloquent\\Tests\\": "packages/canvas-authorization-eloquent/tests/",
+      "Quellabs\\CanvasAuthorization\\ObjectQuel\\Tests\\": "packages/canvas-authorization-objectquel/tests/",
+      "Quellabs\\CanvasObjectQuel\\Tests\\": "packages/canvas-objectquel/tests/",
+      "Quellabs\\Payments\\Mollie\\Tests\\": "packages/canvas-payments-mollie/tests/",
+      "Quellabs\\Payments\\Adyen\\Tests\\": "packages/canvas-payments-adyen/tests/",
+      "Quellabs\\Payments\\Buckaroo\\Tests\\": "packages/canvas-payments-buckaroo/tests/",
+      "Quellabs\\Payments\\Klarna\\Tests\\": "packages/canvas-payments-klarna/tests/",
+      "Quellabs\\Payments\\MultiSafepay\\Tests\\": "packages/canvas-payments-multisafepay/tests/",
+      "Quellabs\\Payments\\PayNL\\Tests\\": "packages/canvas-payments-paynl/tests/",
+      "Quellabs\\Payments\\Paypal\\Tests\\": "packages/canvas-payments-paypal/tests/",
+      "Quellabs\\Payments\\PaypalExpress\\Tests\\": "packages/canvas-payments-paypal-express/tests/",
+      "Quellabs\\Payments\\RaboSmartPay\\Tests\\": "packages/canvas-payments-rabosmartpay/tests/",
+      "Quellabs\\Payments\\Stripe\\Tests\\": "packages/canvas-payments-stripe/tests/",
+      "Quellabs\\Payments\\XPay\\Tests\\": "packages/canvas-payments-xpay/tests/"
     }
   },
   "scripts": {

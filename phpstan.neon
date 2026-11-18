@@ -40,6 +40,10 @@ parameters:
         - packages/canvas-scheduler-rabbitmq
         - packages/canvas-eloquent/src
         - packages/canvas-doctrine/src
+        - packages/canvas-authorization/src
+        - packages/canvas-authorization-doctrine/src
+        - packages/canvas-authorization-eloquent/src
+        - packages/canvas-authorization-objectquel/src
         - packages/recommender
     excludePaths:
         # bind_param()'s override is flagged against mysqli_stmt's bundled

@@ -17,6 +17,9 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Support\Tools;
 	
@@ -44,6 +47,7 @@
 	 * @see https://docs.klarna.com/acquirer/klarna/web-payments/integrate-with-klarna-payments/integrate-via-hpp/
 	 *
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -82,21 +86,18 @@
 			'klarna_multi'    => 'klarna',          // All Klarna payment methods (default)
 			'klarna_paynow'   => 'pay_now',         // Pay immediately (debit/card)
 			'klarna_paylater' => 'pay_later',       // Pay after delivery (invoice)
-			'klarna_sliceit'  => 'pay_over_time',   // Installment financing
+			'klarna_sliceit'  => 'pay_over_time'    // Installment financing
 		];
 		
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
 				'driver'  => self::DRIVER_NAME,
-				'modules' => array_keys(self::MODULE_TYPE_MAP),
+				'modules' => array_keys(self::MODULE_TYPE_MAP)
 			];
 		}
 		
@@ -142,7 +143,7 @@
 				'default_currency'  => 'EUR',
 				'default_country'   => 'NL',
 				'locale'            => 'nl-NL',
-				'place_order_mode'  => 'CAPTURE_ORDER', // Change to PLACE_ORDER for physical goods
+				'place_order_mode'  => 'CAPTURE_ORDER'  // Change to PLACE_ORDER for physical goods
 			];
 		}
 		
@@ -197,7 +198,7 @@
 				redirectUrl: $redirectUrl,
 				metadata: [
 					'kpSessionId'  => $kpSessionId,
-					'hppSessionId' => $hppSessionId,
+					'hppSessionId' => $hppSessionId
 				],
 			);
 		}
@@ -277,7 +278,7 @@
 				metadata: array_filter([
 					'paymentReference' => $orderId,       // Use this for refund calls
 					'fraudStatus'      => $fraudStatus ?: null,
-					'klarnaReference'  => $order['klarna_reference'] ?? null,
+					'klarnaReference'  => $order['klarna_reference'] ?? null
 				], fn($v) => $v !== null && $v !== ''),
 			);
 		}
@@ -415,6 +416,26 @@
 		}
 
 		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
 		 * Creates a Klarna Payments (KP) session and returns its session_id.
 		 * @param PaymentRequest $request
 		 * @return string KP session_id
@@ -437,7 +458,7 @@
 				'order_amount'      => $request->amount,
 				'order_tax_amount'  => 0,
 				'order_lines'       => $this->buildOrderLines($request),
-				'acquiring_channel' => 'ECOMMERCE',
+				'acquiring_channel' => 'ECOMMERCE'
 			];
 			
 			// Pre-filling the billing address improves Klarna's approval rate and
@@ -494,9 +515,9 @@
 					'success' => $successUrl . (str_contains($successUrl, '?') ? '&' : '?') . 'order_id={{order_id}}',
 					'failure' => $cancelUrl,
 					'cancel'  => $cancelUrl,
-					'error'   => $cancelUrl,
+					'error'   => $cancelUrl
 				],
-				'place_order_mode'    => $config['place_order_mode'],
+				'place_order_mode'    => $config['place_order_mode']
 			];
 			
 			// Call gateway to initiate a payment session
@@ -525,7 +546,7 @@
 			$streetLine = trim(implode(' ', array_filter([
 				$address->street,
 				$address->houseNumber,
-				$address->houseNumberSuffix,
+				$address->houseNumberSuffix
 			])));
 			
 			// Strip null and empty-string values — Klarna rejects unexpected empty fields.
@@ -538,7 +559,7 @@
 				'postal_code'    => $address->postalCode ?: null,
 				'city'           => $address->city ?: null,
 				'region'         => $address->region ?: null,
-				'country'        => $address->country,   // Non-nullable on PaymentAddress
+				'country'        => $address->country    // Non-nullable on PaymentAddress
 			], fn($v) => $v !== null && $v !== '');
 		}
 		
@@ -560,8 +581,8 @@
 					'tax_rate'              => 0,                  // 0 = no tax breakdown provided
 					'total_amount'          => $request->amount,
 					'total_discount_amount' => 0,
-					'total_tax_amount'      => 0,
-				],
+					'total_tax_amount'      => 0
+				]
 			];
 		}
 		

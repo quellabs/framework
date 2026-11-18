@@ -215,7 +215,7 @@
 				'payload'          => $payload,
 				'eventType'        => $eventType,
 				'paymentReference' => $captureId,
-				'orderId'          => $orderId,
+				'orderId'          => $orderId
 			];
 		}
 		
@@ -240,7 +240,7 @@
 				// Call the driver's exchange to convert raw data to PaymentState
 				$response = $this->paypal->exchange($orderId, [
 					'action'           => 'webhook',
-					'paymentReference' => $captureId,
+					'paymentReference' => $captureId
 				]);
 				
 				// Notify listeners (e.g. order management) of the updated payment state

@@ -16,6 +16,21 @@
 	 */
 	final readonly class InitiateResult {
 
+		/** Identifier of the payment provider that created this session (e.g. 'mollie', 'stripe') */
+		public string $provider;
+
+		/** Provider-assigned transaction ID, used for status checks and refunds */
+		public string $transactionId;
+
+		/** URL to redirect the customer to in order to complete the payment. Null for recurring charges. */
+		public ?string $redirectUrl;
+
+		/** @var array<string, mixed> Optional provider-specific metadata */
+		public array $metadata;
+
+		/** Provider-assigned customer id, populated when a customer was created or used for this payment */
+		public ?string $customerReference;
+
 		/**
 		 * InitiateResponse constructor
 		 * @param string $provider Identifier of the payment provider that created this session (e.g. 'mollie', 'stripe').
@@ -27,12 +42,17 @@
 		 *                                   created or used for this payment (mainly First/Recurring).
 		 */
 		public function __construct(
-			public string  $provider,
-			public string  $transactionId,
-			public ?string $redirectUrl = null,
-			public array   $metadata = [],
-			public ?string $customerReference = null,
+			string  $provider,
+			string  $transactionId,
+			?string $redirectUrl = null,
+			array   $metadata = [],
+			?string $customerReference = null,
 		) {
+			$this->provider = $provider;
+			$this->transactionId = $transactionId;
+			$this->redirectUrl = $redirectUrl;
+			$this->metadata = $metadata;
+			$this->customerReference = $customerReference;
 		}
 
 		/**
@@ -45,7 +65,7 @@
 				'transaction_id'      => $this->transactionId,
 				'redirect_url'        => $this->redirectUrl,
 				'customer_reference'  => $this->customerReference,
-				'metadata'            => $this->metadata,
+				'metadata'            => $this->metadata
 			];
 		}
 	}

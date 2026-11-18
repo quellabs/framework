@@ -90,4 +90,20 @@
 		 */
 		public function revokeMandate(string $driver, string $customerReference, string $mandateId): void;
 
+		/**
+		 * Returns settlement/payout batch information.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 */
+		public function getSettlement(string $driver, string $settlementId): SettlementInfo;
+
+		/**
+		 * Returns the individual payments included in a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 */
+		public function getSettlementPayments(string $driver, string $settlementId): array;
+
 	}

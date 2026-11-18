@@ -8,12 +8,16 @@
 	 * without encoding HTTP semantics inside the parser itself.
 	 */
 	class WebhookValidationException extends \RuntimeException {
-		
+
+		/** HTTP status code to return to the caller (typically 400) */
+		private readonly int $statusCode;
+
 		/**
 		 * @param string $message    Human-readable reason for rejection
 		 * @param int    $statusCode HTTP status code to return to the caller (typically 400)
 		 */
-		public function __construct(string $message, private readonly int $statusCode = 400) {
+		public function __construct(string $message, int $statusCode = 400) {
+			$this->statusCode = $statusCode;
 			parent::__construct($message);
 		}
 		

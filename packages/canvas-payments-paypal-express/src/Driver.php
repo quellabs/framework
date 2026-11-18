@@ -17,11 +17,15 @@
 	use Quellabs\Payments\Contracts\RecurringChargeRequest;
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * Paypal Express driver
 	 * @phpstan-import-type GatewayResponse from GatewayInterface
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -47,10 +51,7 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -93,7 +94,7 @@
 				'verify_ssl'        => true,
 				'return_url'        => '',
 				'cancel_return_url' => '',
-				'ipn_url'           => '',
+				'ipn_url'           => ''
 			];
 		}
 		
@@ -344,7 +345,7 @@
 				metadata: [
 					"correlationId" => $response["CORRELATIONID"],
 					"refundStatus"  => $response["REFUNDSTATUS"],
-					"pendingReason" => $response["PENDINGREASON"],
+					"pendingReason" => $response["PENDINGREASON"]
 				],
 			);
 		}
@@ -474,6 +475,26 @@
 		}
 
 		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
 		 * Verifies a PayPal IPN message by delegating to the gateway and returning
 		 * PayPal's verification verdict as a normalized string.
 		 *
@@ -593,7 +614,7 @@
 						metadata: [
 							"paymentReference" => $paymentReference,
 							"correlationId"    => $response["CORRELATIONID"],
-							"paymentType"      => $response["PAYMENTINFO_0_PAYMENTTYPE"],
+							"paymentType"      => $response["PAYMENTINFO_0_PAYMENTTYPE"]
 						],
 					);
 				

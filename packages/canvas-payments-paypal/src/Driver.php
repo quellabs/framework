@@ -17,10 +17,14 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
 	 * PayPal Driver
 	 * @phpstan-import-type IssuerOption from PaymentInterface
+	 * @phpstan-import-type ProviderMetadata from PaymentProviderInterface
 	 */
 	class Driver implements PaymentProviderInterface {
 		
@@ -46,10 +50,7 @@
 		/**
 		 * Returns discovery metadata for this provider, including all supported payment modules.
 		 * Called statically during discovery — no instantiation required.
-		 * @return array{
-		 *     driver: string,
-		 *     modules: list<string>
-		 * }
+		 * @return ProviderMetadata
 		 */
 		public static function getMetadata(): array {
 			return [
@@ -317,7 +318,7 @@
 						valueRefunded: 0,
 						internalState: "PAYER_ACTION_REQUIRED",
 						metadata: [
-							"redirectUrl" => $redirectUrl,
+							"redirectUrl" => $redirectUrl
 						],
 					);
 				
@@ -391,7 +392,7 @@
 				currency: $refundCurrency,
 				metadata: [
 					"status"     => isset($response["status"]) && is_string($response["status"]) ? $response["status"] : null,
-					"sellerNote" => $this->normalizeString($totalRefunded["value"] ?? null),
+					"sellerNote" => $this->normalizeString($totalRefunded["value"] ?? null)
 				],
 			);
 		}
@@ -502,6 +503,26 @@
 		}
 
 		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return SettlementInfo
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlement(string $settlementId): SettlementInfo {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementPaymentInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
 		 * Verifies a PayPal webhook notification by delegating signature validation to the gateway.
 		 * @param array<string, mixed> $headers The request headers (lowercased keys)
 		 * @param string $rawBody The raw, unmodified request body string
@@ -591,7 +612,7 @@
 						valueRefunded: 0,
 						internalState: "INSTRUMENT_DECLINED",
 						metadata: [
-							"redirectUrl" => $redirectUrl,
+							"redirectUrl" => $redirectUrl
 						],
 					);
 				}
@@ -622,7 +643,7 @@
 					valueRefunded: 0,
 					internalState: "COMPLETED",
 					metadata: [
-						"captureId" => $captureId,
+						"captureId" => $captureId
 					],
 				),
 				
@@ -648,7 +669,7 @@
 					valueRefunded: 0,
 					internalState: $captureStatus,
 					metadata: [
-						"captureId" => $captureId,
+						"captureId" => $captureId
 					],
 				),
 			};
@@ -726,7 +747,7 @@
 				valueRefunded: $refundedAmount,
 				internalState: $captureStatus,
 				metadata: [
-					"paymentReference" => $captureId,
+					"paymentReference" => $captureId
 				],
 			);
 		}

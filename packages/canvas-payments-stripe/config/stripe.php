@@ -32,5 +32,5 @@
 		// Must be publicly accessible and registered in the Stripe Dashboard under Developers > Webhooks.
 		// Localhost will not work — use a tunnel (e.g. Stripe CLI, ngrok) for local development.
 		// @see https://stripe.com/docs/stripe-cli for local webhook forwarding
-		'webhook_url' => 'https://example.com/webhooks/stripe',
+		'webhook_url' => 'https://example.com/webhooks/stripe'
 	];

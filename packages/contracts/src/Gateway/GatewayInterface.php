@@ -9,7 +9,7 @@
 	 *
 	 * @phpstan-type GatewayResponse array{
 	 *     request: array{result: int, errorId: string, errorMessage: string},
-	 *     response?: array<string, mixed>
+	 *     response?: array<array-key, mixed>
 	 * }
 	 */
 	interface GatewayInterface {
