@@ -106,4 +106,13 @@
 		 */
 		public function getSettlementPayments(string $driver, string $settlementId): array;
 
+		/**
+		 * Returns one page of the organization's settlements.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param ?string $cursor Opaque pagination cursor, or null for the first page.
+		 * @param int $limit Maximum settlements to return in this page.
+		 * @return SettlementListResult
+		 */
+		public function listSettlements(string $driver, ?string $cursor = null, int $limit = 50): SettlementListResult;
+
 	}

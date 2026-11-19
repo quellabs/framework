@@ -19,6 +19,7 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
 	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
@@ -446,6 +447,17 @@
 		 * @throws PaymentSettlementException
 		 */
 		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param ?string $cursor
+		 * @param int $limit
+		 * @return SettlementListResult
+		 * @throws PaymentSettlementException
+		 */
+		public function listSettlements(?string $cursor = null, int $limit = 50): SettlementListResult {
 			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 
