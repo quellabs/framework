@@ -22,6 +22,7 @@
 	use Quellabs\Payments\Contracts\SequenceType;
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
 	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	use Quellabs\Payments\Contracts\SettlementStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
@@ -356,8 +357,44 @@
 				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
 			}
 
-			$r = $response["response"] ?? [];
+			return $this->mapSettlement($response["response"] ?? []);
+		}
 
+		/**
+		 * Returns one page of the organization's settlements.
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/list-settlements
+		 * @param ?string $cursor
+		 * @param int $limit
+		 * @return SettlementListResult
+		 * @throws PaymentSettlementException
+		 */
+		public function listSettlements(?string $cursor = null, int $limit = 50): SettlementListResult {
+			$response = $this->getGateway()->listSettlements($cursor, $limit);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			$body = $response["response"] ?? [];
+
+			/** @var array<int, array<string, mixed>> $items */
+			$items    = $this->arrayGetArray($body, '_embedded.settlements') ?? [];
+			$nextHref = $this->arrayGet($body, '_links.next.href');
+
+			return new SettlementListResult(
+				settlements: array_map(fn(array $r): SettlementInfo => $this->mapSettlement($r), $items),
+				nextCursor: is_string($nextHref) && $nextHref !== '' ? $nextHref : null,
+			);
+		}
+
+		/**
+		 * Maps one Mollie settlement object (from either getSettlement() or a
+		 * listSettlements() page — both use the identical object shape) to the
+		 * driver-agnostic DTO.
+		 * @param array<string, mixed> $r
+		 * @return SettlementInfo
+		 */
+		private function mapSettlement(array $r): SettlementInfo {
 			// Map Mollie statuses to internal states
 			$stateMap = [
 				'OPEN'               => SettlementStatus::Open,

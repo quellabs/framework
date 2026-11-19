@@ -107,4 +107,16 @@
 		 */
 		public function getSettlementPayments(string $settlementId): array;
 
+		/**
+		 * Returns one page of the organization's settlements. Pass the previous
+		 * call's SettlementListResult::$nextCursor to fetch the next page, or
+		 * null to start from the first page. Sort order is provider-specific
+		 * and not guaranteed by this contract (unconfirmed for Mollie today —
+		 * do not assume newest-first or oldest-first).
+		 * @param ?string $cursor Opaque pagination cursor, or null for the first page.
+		 * @param int $limit Maximum settlements to return in this page (provider-specific upper bound).
+		 * @return SettlementListResult
+		 */
+		public function listSettlements(?string $cursor = null, int $limit = 50): SettlementListResult;
+
 	}

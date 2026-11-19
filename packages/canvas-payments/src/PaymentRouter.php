@@ -14,6 +14,7 @@
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Payments\Contracts\SettlementInfo;
+	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
 	
 	/**
@@ -240,5 +241,16 @@
 		 */
 		public function getSettlementPayments(string $driver, string $settlementId): array {
 			return $this->resolveDriver($driver)->getSettlementPayments($settlementId);
+		}
+
+		/**
+		 * Returns one page of the organization's settlements.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param ?string $cursor Opaque pagination cursor, or null for the first page.
+		 * @param int $limit Maximum settlements to return in this page.
+		 * @return SettlementListResult
+		 */
+		public function listSettlements(string $driver, ?string $cursor = null, int $limit = 50): SettlementListResult {
+			return $this->resolveDriver($driver)->listSettlements($cursor, $limit);
 		}
 	}
