@@ -615,7 +615,12 @@
 			
 			/** @var array<string, mixed> $metadata */
 			$metadata = isset($r["metadata"]) && is_array($r["metadata"]) ? $r["metadata"] : [];
-			
+
+			// Mollie reports why a payment failed/expired/was canceled under details.failureReason,
+			// and which mandate a recurring charge was made against under mandateId
+			$failureReason = $this->normalizeString($this->arrayGet($r, 'details.failureReason'));
+			$mandateId     = $this->normalizeString($r["mandateId"] ?? null);
+
 			// Return response
 			return new PaymentState(
 				provider: self::DRIVER_NAME,
@@ -625,7 +630,9 @@
 				valuePaid: $valuePaid,
 				valueRefunded: $amountRefundedValue,
 				internalState: $mollieStatus,
-				metadata: $metadata
+				metadata: $metadata,
+				failureReason: $failureReason !== '' ? $failureReason : null,
+				mandateId: $mandateId !== '' ? $mandateId : null
 			);
 		}
 		

@@ -37,6 +37,12 @@
 		/** @var array<string, mixed> Additional provider-specific metadata attached to the payment */
 		public array $metadata;
 
+		/** The provider's own failure reason for a non-successful payment, or null if not applicable/unknown */
+		public ?string $failureReason;
+
+		/** The mandate id this payment was charged against, or null if not a mandate-based charge/unknown */
+		public ?string $mandateId;
+
 		/**
 		 * @param string $provider The provider that owns this payment (e.g. 'mollie', 'stripe').
 		 * @param string $transactionId The provider's unique identifier for this payment.
@@ -46,6 +52,8 @@
 		 * @param int $valueRefunded Total amount refunded so far, in the smallest currency unit.
 		 * @param ?string $internalState Raw status string returned by the provider, before normalization.
 		 * @param array<string, mixed> $metadata Additional provider-specific metadata attached to the payment.
+		 * @param ?string $failureReason The provider's own failure reason for a non-successful payment, or null if not applicable/unknown.
+		 * @param ?string $mandateId The mandate id this payment was charged against, or null if not a mandate-based charge/unknown.
 		 */
 		public function __construct(
 			string        $provider,
@@ -56,6 +64,8 @@
 			int           $valueRefunded = 0,
 			?string       $internalState = null,
 			array         $metadata = [],
+			?string       $failureReason = null,
+			?string       $mandateId = null,
 		) {
 			$this->provider = $provider;
 			$this->transactionId = $transactionId;
@@ -65,6 +75,8 @@
 			$this->valueRefunded = $valueRefunded;
 			$this->internalState = $internalState;
 			$this->metadata = $metadata;
+			$this->failureReason = $failureReason;
+			$this->mandateId = $mandateId;
 		}
 		
 		/**
@@ -91,7 +103,9 @@
 				'valuePaid'     => $this->valuePaid,
 				'valueRefunded' => $this->valueRefunded,
 				'internalState' => $this->internalState,
-				'metadata'      => $this->normalizeMeta($this->metadata)
+				'metadata'      => $this->normalizeMeta($this->metadata),
+				'failureReason' => $this->failureReason,
+				'mandateId'     => $this->mandateId
 			];
 		}
 		
