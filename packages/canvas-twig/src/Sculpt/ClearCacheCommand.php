@@ -35,10 +35,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// clearCache() needs caching enabled and cache_dir set at construction;
-			// template_dir is read unconditionally too. Defaults mirror Twig's
-			// ServiceProvider::getDefaults() without importing it.
-			$configuration = $this->loadMergedConfig(['config/twig.php', 'config/app.php']);
+			// getProvider() is already configured from this package's own
+			// composer.json "sculpt" discovery entry (config/twig.php), so
+			// it's already the settings a user published — no need to reload
+			// anything from disk. clearCache() needs caching enabled and
+			// cache_dir set at construction; template_dir is read
+			// unconditionally too.
+			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 
 			$twig = new TwigTemplate([

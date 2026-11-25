@@ -2,7 +2,6 @@
 
 	namespace Quellabs\Canvas\Handlebars\Sculpt;
 
-	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -36,9 +35,13 @@
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Default mirrors Handlebars' ServiceProvider::getDefaults() without
-			// importing it — note it's package-relative, not project-root-relative.
-			$configuration = $this->loadMergedConfig(['config/handlebars.php', 'config/app.php']);
+			// getProvider() is already configured from this package's own
+			// composer.json "sculpt" discovery entry (config/handlebars.php),
+			// so it's already the settings a user published — no need to
+			// reload anything from disk. The default mirrors
+			// ServiceProvider::getDefaults() and is package-relative, not
+			// project-root-relative.
+			$configuration = $this->getProvider()->getConfig();
 			$compileDir = is_string($configuration['compile_dir'] ?? null) ? $configuration['compile_dir'] : dirname(__FILE__) . '/../../Cache/Compile/';
 
 			if (!is_dir($compileDir)) {

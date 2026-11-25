@@ -35,10 +35,12 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Only cache_dir matters to clearCache(); the rest just satisfies
-			// BladeTemplate's declared config shape. Defaults mirror Blade's
-			// ServiceProvider::getDefaults() without importing it.
-			$configuration = $this->loadMergedConfig(['config/blade.php', 'config/app.php']);
+			// getProvider() is already configured from this package's own
+			// composer.json "sculpt" discovery entry (config/blade.php), so
+			// it's already the settings a user published — no need to reload
+			// anything from disk. Only cache_dir matters to clearCache(); the
+			// rest just satisfies BladeTemplate's declared config shape.
+			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 
 			$blade = new BladeTemplate([

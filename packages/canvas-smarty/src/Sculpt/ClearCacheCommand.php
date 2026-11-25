@@ -35,8 +35,11 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Defaults mirror Smarty's ServiceProvider::getDefaults() without importing it.
-			$configuration = $this->loadMergedConfig(['config/smarty.php', 'config/app.php']);
+			// getProvider() is already configured from this package's own
+			// composer.json "sculpt" discovery entry (config/smarty.php), so
+			// it's already the settings a user published — no need to reload
+			// anything from disk. Defaults mirror ServiceProvider::getDefaults().
+			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 
 			$templateDir = is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/';
