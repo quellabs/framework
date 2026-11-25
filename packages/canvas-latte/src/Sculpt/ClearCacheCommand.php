@@ -1,10 +1,9 @@
 <?php
-
+	
 	namespace Quellabs\Canvas\Latte\Sculpt;
-
+	
 	use Quellabs\Canvas\Latte\LatteTemplate;
 	use Quellabs\Canvas\Latte\ServiceProvider;
-	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -13,9 +12,6 @@
 	 * Extends the base command contract to provide cache clearing functionality
 	 */
 	class ClearCacheCommand extends CommandBase {
-
-		/** @var ServiceProvider */
-		protected ProviderInterface $provider;
 
 		/**
 		 * Define the command signature/name that will be used to invoke this command
@@ -39,13 +35,14 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Validate that the provider is of the correct type
-			if (!$this->provider instanceof ServiceProvider) {
-				throw new \RuntimeException('Expected ' . ServiceProvider::class);
-			}
+			// $this->provider (see CommandBase::getProvider()) is the "sculpt"
+			// category provider, not the "di" category one this command needs
+			// for the actual Latte configuration — resolve that one instead.
+			$provider = $this->resolveDiProvider(ServiceProvider::class)
+				?? throw new \RuntimeException('Could not resolve ' . ServiceProvider::class . ' via discovery');
 
 			// Create Latte instance with merged configuration and clear cache
-			$latte = new LatteTemplate($this->provider->mergeConfig());
+			$latte = new LatteTemplate($provider->mergeConfig());
 			$latte->clearCache();
 
 			// Display a success message to the user

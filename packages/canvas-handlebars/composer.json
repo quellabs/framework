@@ -52,8 +52,8 @@
         "config": ["config/handlebars.php", "config/app.php"]
       },
       "sculpt": {
-        "provider": "Quellabs\\Canvas\\Handlebars\\ServiceProvider",
-        "config": ["config/handlebars.php", "config/app.php"]
+        "provider": "Quellabs\\Canvas\\Handlebars\\Sculpt\\ServiceProvider",
+        "config": "config/handlebars.php"
       }
     }
   }

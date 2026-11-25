@@ -1,10 +1,9 @@
 <?php
-
+	
 	namespace Quellabs\Canvas\Smarty\Sculpt;
-
+	
 	use Smarty\Smarty;
 	use Quellabs\Canvas\Smarty\ServiceProvider;
-	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -13,9 +12,6 @@
 	 * Extends the base command contract to provide cache clearing functionality
 	 */
 	class ClearCacheCommand extends CommandBase {
-
-		/** @var ServiceProvider */
-		protected ProviderInterface $provider;
 
 		/**
 		 * Define the command signature/name that will be used to invoke this command
@@ -39,13 +35,14 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Validate that the provider is of the correct type
-			if (!$this->provider instanceof ServiceProvider) {
-				throw new \RuntimeException('Expected ' . ServiceProvider::class);
-			}
+			// $this->provider (see CommandBase::getProvider()) is the "sculpt"
+			// category provider, not the "di" category one this command needs
+			// for the actual Smarty configuration — resolve that one instead.
+			$provider = $this->resolveDiProvider(ServiceProvider::class)
+				?? throw new \RuntimeException('Could not resolve ' . ServiceProvider::class . ' via discovery');
 
 			// Fetch config
-			$mergedConfig = $this->provider->mergeConfig();
+			$mergedConfig = $provider->mergeConfig();
 
 			// Create Smarty instance with configured directories
 			$smarty = new Smarty();
