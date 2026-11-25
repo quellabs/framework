@@ -1,11 +1,11 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Twig\Sculpt;
 
 	use Quellabs\Canvas\Twig\ServiceProvider as TwigServiceProvider;
 	use Quellabs\Sculpt\Application;
+	use Quellabs\Sculpt\Contracts\CommandInterface;
 	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
-	use Quellabs\Sculpt\RegistersCommandsTrait;
 
 	/**
 	 * Service Provider for Twig template engine integration
@@ -17,8 +17,6 @@
 	 * injected provider directly instead of resolving a separate instance.
 	 */
 	class ServiceProvider extends TwigServiceProvider implements SculptProviderInterface {
-
-		use RegistersCommandsTrait;
 
 		/**
 		 * Register services and commands with the application
@@ -33,5 +31,20 @@
 				InitCommand::class,        // Publish twig config
 				ClearCacheCommand::class,  // Register the twig:clear_cache command
 			]);
+		}
+
+		/**
+		 * Helper method to register multiple commands at once
+		 * @param Application $app The application instance
+		 * @param list<class-string<CommandInterface>> $commands Array of command class names to register
+		 */
+		private function registerCommands(Application $app, array $commands): void {
+			foreach ($commands as $command) {
+				$instance = new $command($app->getInput(), $app->getOutput(), $this);
+
+				if ($instance instanceof CommandInterface) {
+					$app->registerCommand($instance);
+				}
+			}
 		}
 	}

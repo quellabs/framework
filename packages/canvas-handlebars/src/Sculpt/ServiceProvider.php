@@ -1,13 +1,13 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Handlebars\Sculpt;
 
 	use Quellabs\Canvas\Handlebars\ServiceProvider as HandlebarsServiceProvider;
 	use Quellabs\Sculpt\Application;
 	use Quellabs\Canvas\Handlebars\Sculpt\InitCommand;
 	use Quellabs\Canvas\Handlebars\Sculpt\ClearCacheCommand;
+	use Quellabs\Sculpt\Contracts\CommandInterface;
 	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
-	use Quellabs\Sculpt\RegistersCommandsTrait;
 
 	/**
 	 * Service Provider for Handlebars template engine integration
@@ -21,8 +21,6 @@
 	 */
 	class ServiceProvider extends HandlebarsServiceProvider implements SculptProviderInterface {
 
-		use RegistersCommandsTrait;
-
 		/**
 		 * Register services and commands with the application
 		 * @param Application $application The Sculpt application instance
@@ -33,5 +31,20 @@
 				InitCommand::class,        // Publish the config file
 				ClearCacheCommand::class,  // Register the handlebars:clear-cache command
 			]);
+		}
+
+		/**
+		 * Helper method to register multiple commands at once
+		 * @param Application $app The application instance
+		 * @param list<class-string<CommandInterface>> $commands Array of command class names to register
+		 */
+		private function registerCommands(Application $app, array $commands): void {
+			foreach ($commands as $command) {
+				$instance = new $command($app->getInput(), $app->getOutput(), $this);
+
+				if ($instance instanceof CommandInterface) {
+					$app->registerCommand($instance);
+				}
+			}
 		}
 	}

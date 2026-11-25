@@ -1,11 +1,11 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Smarty\Sculpt;
 
 	use Quellabs\Canvas\Smarty\ServiceProvider as SmartyServiceProvider;
 	use Quellabs\Sculpt\Application;
+	use Quellabs\Sculpt\Contracts\CommandInterface;
 	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
-	use Quellabs\Sculpt\RegistersCommandsTrait;
 
 	/**
 	 * Service Provider for Smarty template engine integration
@@ -18,8 +18,6 @@
 	 * separate instance.
 	 */
 	class ServiceProvider extends SmartyServiceProvider implements SculptProviderInterface {
-
-		use RegistersCommandsTrait;
 
 		/**
 		 * Register services and commands with the application
@@ -34,5 +32,20 @@
 				InitCommand::class,        // Publish the config file
 				ClearCacheCommand::class,  // Register the smarty:clear_cache command
 			]);
+		}
+
+		/**
+		 * Helper method to register multiple commands at once
+		 * @param Application $app The application instance
+		 * @param list<class-string<CommandInterface>> $commands Array of command class names to register
+		 */
+		private function registerCommands(Application $app, array $commands): void {
+			foreach ($commands as $command) {
+				$instance = new $command($app->getInput(), $app->getOutput(), $this);
+
+				if ($instance instanceof CommandInterface) {
+					$app->registerCommand($instance);
+				}
+			}
 		}
 	}
