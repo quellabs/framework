@@ -1,13 +1,26 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Latte;
-	
+
+	use Quellabs\Canvas\Latte\Sculpt\InitCommand;
+	use Quellabs\Canvas\Latte\Sculpt\ClearCacheCommand;
+	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
-	
+	use Quellabs\Sculpt\Application;
+
 	/**
 	 * Latte Template Engine Service Provider for Canvas Framework
+	 *
+	 * Serves both the "di" and "sculpt" discovery categories declared in
+	 * composer.json — it builds the real Latte instance for the DI container
+	 * and registers this package's CLI commands with Sculpt. Extends
+	 * Quellabs\Sculpt\ServiceProvider (for registerCommands()/register()) and
+	 * implements ServiceProviderInterface directly instead of extending
+	 * Quellabs\DependencyInjection\Provider\ServiceProvider, since PHP doesn't
+	 * allow extending both — the DI Container only requires the interface
+	 * (see Container::register()), not descent from that concrete class.
 	 *
 	 * @phpstan-type LatteConfig array{
 	 *     template_dir: string,
@@ -20,13 +33,13 @@
 	 *     globals: array<string, mixed>
 	 * }
 	 */
-	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
-		
+	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider implements ServiceProviderInterface {
+
 		/**
 		 * @var LatteTemplate|null Cached singleton instance
 		 */
 		private static ?LatteTemplate $instance = null;
-		
+
 		/**
 		 * Returns the provider's metadata for service discovery
 		 * @return array<string, mixed> Associative array containing provider metadata
@@ -40,44 +53,44 @@
 				'version'      => '1.0.0',
 			];
 		}
-		
+
 		/**
 		 * Returns the default configuration settings for Latte
 		 * @return LatteConfig
 		 */
 		public static function getDefaults(): array {
 			$projectRoot = ComposerUtils::getProjectRoot();
-			
+
 			return [
 				// Directory where Latte template files (.latte) are stored
 				'template_dir' => $projectRoot . '/templates/',
-				
+
 				// Directory where Latte stores compiled PHP templates
 				'cache_dir'    => $projectRoot . '/storage/cache/latte/',
-				
+
 				// Enable/disable template caching
 				'caching'      => true,
-				
+
 				// Custom Latte filters to register (name => callable)
 				// Used in templates as: {$value|filterName}
 				'filters'      => [],
-				
+
 				// Custom Latte functions to register (name => callable)
 				// Used in templates as: {functionName(...)}
 				'functions'    => [],
-				
+
 				// Latte\Extension instances to register
 				'extensions'   => [],
-				
+
 				// Additional template directories with optional namespaces
 				// Keyed entries use the key as namespace: ['admin' => '/path/to/admin/templates']
 				'paths'        => [],
-				
+
 				// Global variables available in all templates
 				'globals'      => [],
 			];
 		}
-		
+
 		/**
 		 * Merges user-provided configuration over the defaults
 		 * @return LatteConfig
@@ -85,22 +98,22 @@
 		public function mergeConfig(): array {
 			$defaults = self::getDefaults();
 			$configuration = $this->getConfig();
-			
+
 			/** @var array<string, callable> $filters */
 			$filters = is_array($configuration['filters'] ?? null) ? $configuration['filters'] : $defaults['filters'];
-			
+
 			/** @var array<string, callable> $functions */
 			$functions = is_array($configuration['functions'] ?? null) ? $configuration['functions'] : $defaults['functions'];
-			
+
 			/** @var array<\Latte\Extension> $extensions */
 			$extensions = is_array($configuration['extensions'] ?? null) ? $configuration['extensions'] : $defaults['extensions'];
-			
+
 			/** @var array<int|string, string> $paths */
 			$paths = is_array($configuration['paths'] ?? null) ? $configuration['paths'] : $defaults['paths'];
-			
+
 			/** @var array<string, mixed> $globals */
 			$globals = is_array($configuration['globals'] ?? null) ? $configuration['globals'] : $defaults['globals'];
-			
+
 			return [
 				'template_dir' => $this->normalizeString($configuration['template_dir'] ?? null, $defaults['template_dir']),
 				'cache_dir'    => $this->normalizeString($configuration['cache_dir'] ?? null, $defaults['cache_dir']),
@@ -112,7 +125,7 @@
 				'globals'      => $globals,
 			];
 		}
-		
+
 		/**
 		 * Determines if this provider can handle the requested service
 		 * @param string $className The interface/class name being requested
@@ -123,20 +136,20 @@
 			if ($className !== TemplateEngineInterface::class) {
 				return false;
 			}
-			
+
 			// Priority 1: Explicit provider request via context/metadata
 			if (!empty($metadata['context'])) {
 				return $metadata['context'] === 'latte';
 			}
-			
+
 			// Priority 2: Check app.php configuration
 			if ($this->hasConfigValue('template_engine')) {
 				return $this->getConfigValue('template_engine') === 'latte';
 			}
-			
+
 			return true;
 		}
-		
+
 		/**
 		 * Creates and configures a new Latte template engine instance
 		 * @param string $className The requested interface (TemplateEngineInterface)
@@ -149,9 +162,51 @@
 			if (self::$instance !== null) {
 				return self::$instance;
 			}
-			
+
 			self::$instance = new LatteTemplate($this->mergeConfig());
-			
+
 			return self::$instance;
+		}
+
+		/**
+		 * Register this package's commands with the Sculpt application
+		 * @param Application $application The Sculpt application instance
+		 * @return void
+		 */
+		public function register(Application $application): void {
+			$this->registerCommands($application, [
+				InitCommand::class,        // Publish the config file
+				ClearCacheCommand::class,  // Register the latte:clear-cache command
+			]);
+		}
+
+		/**
+		 * Normalizes a config value to bool, accepting bool or int (0/1) as valid input
+		 * @param mixed $value The raw value from user configuration
+		 * @param bool $default Fallback when the value is absent or an unrecognized type
+		 * @return bool
+		 */
+		private function normalizeBool(mixed $value, bool $default): bool {
+			if (is_bool($value)) {
+				return $value;
+			} elseif (is_int($value)) {
+				return (bool)$value;
+			} else {
+				return $default;
+			}
+		}
+
+		/**
+		 * Normalizes a config value to string
+		 * @param mixed $value The raw value from user configuration
+		 * @param string $default Fallback when the value is absent or an unrecognized type
+		 * @return string
+		 */
+		private function normalizeString(mixed $value, string $default): string {
+			if (is_string($value)) {
+				return $value;
+			} else {
+				return $default;
+			}
 		}
 	}

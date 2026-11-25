@@ -56,8 +56,8 @@
         "config": ["config/blade.php", "config/app.php"]
       },
       "sculpt": {
-        "provider": "Quellabs\\Canvas\\Blade\\Sculpt\\ServiceProvider",
-        "config": "config/blade.php"
+        "provider": "Quellabs\\Canvas\\Blade\\ServiceProvider",
+        "config": ["config/blade.php", "config/app.php"]
       }
     }
   }

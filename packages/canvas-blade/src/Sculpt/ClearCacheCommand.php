@@ -3,6 +3,7 @@
 	namespace Quellabs\Canvas\Blade\Sculpt;
 
 	use Quellabs\Canvas\Blade\BladeTemplate;
+	use Quellabs\Canvas\Blade\ServiceProvider;
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;

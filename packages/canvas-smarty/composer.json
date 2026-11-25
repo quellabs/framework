@@ -51,8 +51,8 @@
         "config": ["config/smarty.php", "config/app.php"]
       },
       "sculpt": {
-        "provider": "Quellabs\\Canvas\\Smarty\\Sculpt\\ServiceProvider",
-        "config": "config/smarty.php"
+        "provider": "Quellabs\\Canvas\\Smarty\\ServiceProvider",
+        "config": ["config/smarty.php", "config/app.php"]
       }
     }
   }

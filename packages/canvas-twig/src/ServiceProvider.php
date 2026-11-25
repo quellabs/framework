@@ -1,21 +1,34 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Twig;
-	
+
+	use Quellabs\Canvas\Twig\Sculpt\InitCommand;
+	use Quellabs\Canvas\Twig\Sculpt\ClearCacheCommand;
+	use Quellabs\Contracts\DependencyInjection\ServiceProviderInterface;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Contracts\Context\MethodContextInterface;
 	use Quellabs\Contracts\Templates\TemplateEngineInterface;
-	
+	use Quellabs\Sculpt\Application;
+
 	/**
 	 * Twig Template Engine Service Provider for Canvas Framework
+	 *
+	 * Serves both the "di" and "sculpt" discovery categories declared in
+	 * composer.json — it builds the real Twig instance for the DI container
+	 * and registers this package's CLI commands with Sculpt. Extends
+	 * Quellabs\Sculpt\ServiceProvider (for registerCommands()/register()) and
+	 * implements ServiceProviderInterface directly instead of extending
+	 * Quellabs\DependencyInjection\Provider\ServiceProvider, since PHP doesn't
+	 * allow extending both — the DI Container only requires the interface
+	 * (see Container::register()), not descent from that concrete class.
 	 */
-	class ServiceProvider extends \Quellabs\DependencyInjection\Provider\ServiceProvider {
-		
+	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider implements ServiceProviderInterface {
+
 		/**
 		 * @var TwigTemplate|null Instance of TwigTemplate
 		 */
 		private static ?TwigTemplate $instance = null;
-		
+
 		/**
 		 * Returns the provider's metadata for service discovery
 		 * @return array<string, mixed> Associative array containing provider metadata
@@ -29,47 +42,47 @@
 				'version'      => '1.0.0'                         // Provider version
 			];
 		}
-		
+
 		/**
 		 * Returns the default configuration settings for Twig
 		 * @return array<string, mixed> Default configuration array
 		 */
 		public static function getDefaults(): array {
 			$projectRoot = ComposerUtils::getProjectRoot();
-			
+
 			return [
 				// Directory where Twig template files (.twig) are stored
 				'template_dir'     => $projectRoot . '/templates/',
-				
+
 				// Directory where Twig stores cached compiled templates
 				'cache_dir'        => $projectRoot . '/storage/cache/twig/',
-				
+
 				// Enable/disable Twig's debug mode
 				'debugging'        => false,
-				
+
 				// Enable/disable template caching for better performance
 				'caching'          => true,
-				
+
 				// Auto-reload templates when they change (useful in development)
 				'auto_reload'      => true,
-				
+
 				// Throw errors when undefined variables are accessed
 				'strict_variables' => false,
-				
+
 				// Character set for template output
 				'charset'          => 'UTF-8',
-				
+
 				// Enable/disable automatic HTML escaping
 				'autoescape'       => 'html',
-				
+
 				// Custom Twig extensions to load
 				'extensions'       => [],
-				
+
 				// Additional template directories with optional namespaces
 				'paths'            => [],
 			];
 		}
-		
+
 		/**
 		 * Determines if this provider can handle the requested service
 		 * @param string $className The interface/class name being requested
@@ -81,22 +94,22 @@
 			if ($className !== TemplateEngineInterface::class) {
 				return false;
 			}
-			
+
 			// Priority 1: Explicit provider request via context/metadata
 			if (!empty($metadata['context'])) {
 				return $metadata['context'] === 'twig';
 			}
-			
+
 			// Priority 2: Check app.php configuration
 			if ($this->hasConfigValue('template_engine')) {
 				return $this->getConfigValue('template_engine') === 'twig';
 			}
-			
+
 			// Return true to indicate this provider is available
 			// The discovery system should handle "first encountered" logic
 			return true;
 		}
-		
+
 		/**
 		 * Creates and configures a new Twig template engine instance
 		 * @param string $className The requested interface (TemplateEngineInterface)
@@ -110,13 +123,13 @@
 			if (self::$instance !== null) {
 				return self::$instance;
 			}
-			
+
 			// Get default configuration values
 			$defaults = $this->getDefaults();
-			
+
 			// Get user-provided configuration (from config/twig.php or similar)
 			$configuration = $this->getConfig();
-			
+
 			// Create TwigTemplate with merged configuration
 			// User config takes precedence over defaults using null coalescing
 			$instance = new TwigTemplate([
@@ -131,14 +144,14 @@
 				'extensions'       => $configuration['extensions'] ?? $defaults['extensions'],
 				'paths'            => $configuration['paths'] ?? $defaults['paths'],
 			]);
-			
+
 			// Add additional paths if configured
 			if (!empty($configuration['paths']) && is_array($configuration['paths'])) {
 				foreach ($configuration['paths'] as $namespace => $path) {
 					if (!is_string($path)) {
 						continue;
 					}
-					
+
 					if (is_string($namespace)) {
 						$instance->addPath($path, $namespace);
 					} else {
@@ -146,7 +159,7 @@
 					}
 				}
 			}
-			
+
 			// Register custom functions if configured
 			if (!empty($configuration['functions']) && is_array($configuration['functions'])) {
 				foreach ($configuration['functions'] as $name => $callback) {
@@ -155,7 +168,7 @@
 					}
 				}
 			}
-			
+
 			// Register custom filters if configured
 			if (!empty($configuration['filters']) && is_array($configuration['filters'])) {
 				foreach ($configuration['filters'] as $name => $callback) {
@@ -164,7 +177,7 @@
 					}
 				}
 			}
-			
+
 			// Add global variables if configured
 			if (!empty($configuration['globals']) && is_array($configuration['globals'])) {
 				foreach ($configuration['globals'] as $key => $value) {
@@ -173,8 +186,20 @@
 					}
 				}
 			}
-			
+
 			// Cache and return instance
 			return self::$instance = $instance;
+		}
+
+		/**
+		 * Register this package's commands with the Sculpt application
+		 * @param Application $application The Sculpt application instance
+		 * @return void
+		 */
+		public function register(Application $application): void {
+			$this->registerCommands($application, [
+				InitCommand::class,        // Publish twig config
+				ClearCacheCommand::class,  // Register the twig:clear-cache command
+			]);
 		}
 	}
