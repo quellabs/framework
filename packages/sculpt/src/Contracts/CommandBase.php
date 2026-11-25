@@ -5,6 +5,7 @@
 	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Contracts\IO\ConsoleInput;
 	use Quellabs\Contracts\IO\ConsoleOutput;
+	use Quellabs\Support\ComposerUtils;
 	
 	/**
 	 * Abstract base class for all command implementations
@@ -78,5 +79,32 @@
 		 */
 		public function getProvider(): ProviderInterface {
 			return $this->provider;
+		}
+
+		/**
+		 * Loads config files relative to the project root and merges them in
+		 * order, applying each file's own .local.php override when present.
+		 * @param array<int, string> $configFiles
+		 * @return array<string, mixed>
+		 */
+		protected function loadMergedConfig(array $configFiles): array {
+			$projectRoot = ComposerUtils::getProjectRoot();
+			$result = [];
+
+			foreach ($configFiles as $configFile) {
+				$path = $projectRoot . DIRECTORY_SEPARATOR . $configFile;
+
+				if (file_exists($path)) {
+					$result = array_replace_recursive($result, require $path);
+				}
+
+				$localPath = preg_replace('/\.php$/', '.local.php', $path);
+
+				if ($localPath !== null && file_exists($localPath)) {
+					$result = array_replace_recursive($result, require $localPath);
+				}
+			}
+
+			return $result;
 		}
 	}
