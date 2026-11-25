@@ -1,9 +1,8 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Blade\Sculpt;
-	
+
 	use Quellabs\Canvas\Blade\BladeTemplate;
-	use Quellabs\Canvas\Blade\ServiceProvider;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -36,16 +35,27 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider is the "sculpt" category provider (registered
-			// separately in composer.json's extra.discover.sculpt key) and has
-			// no mergeConfig() — it is a different class from the "di" category
-			// provider this command actually needs. Build the latter directly,
-			// loading the same config files its discovery entry declares.
-			$provider = new ServiceProvider();
-			$provider->setConfig($this->loadMergedConfig(['config/blade.php', 'config/app.php']));
+			// BladeTemplate::clearCache() only reads 'cache_dir', but its
+			// constructor's declared type requires the full shape. Defaults
+			// below match Blade's own ServiceProvider::getDefaults(), duplicated
+			// here rather than referencing that provider, since clearing a cache
+			// is unrelated to resolving TemplateEngineInterface for the DI
+			// container, which is that provider's actual job.
+			$configuration = $this->loadMergedConfig(['config/blade.php', 'config/app.php']);
+			$projectRoot = ComposerUtils::getProjectRoot();
 
-			// Create Blade instance with configured directories
-			$blade = new BladeTemplate($provider->mergeConfig());
+			// Create Blade instance with the directories that matter for clearing
+			// its cache. paths/directives/if_directives/globals are irrelevant to
+			// that operation, so they're left empty rather than read from config.
+			$blade = new BladeTemplate([
+				'template_dir'  => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/',
+				'cache_dir'     => is_string($configuration['cache_dir'] ?? null) ? $configuration['cache_dir'] : $projectRoot . '/storage/cache/blade/',
+				'caching'       => is_bool($configuration['caching'] ?? null) ? $configuration['caching'] : true,
+				'paths'         => [],
+				'directives'    => [],
+				'if_directives' => [],
+				'globals'       => [],
+			]);
 
 			// Clear all cached templates and compiled files
 			$blade->clearCache();

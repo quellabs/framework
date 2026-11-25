@@ -1,9 +1,8 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Latte\Sculpt;
-	
+
 	use Quellabs\Canvas\Latte\LatteTemplate;
-	use Quellabs\Canvas\Latte\ServiceProvider;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -36,16 +35,29 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider is the "sculpt" category provider (registered
-			// separately in composer.json's extra.discover.sculpt key) and has
-			// no mergeConfig() — it is a different class from the "di" category
-			// provider this command actually needs. Build the latter directly,
-			// loading the same config files its discovery entry declares.
-			$provider = new ServiceProvider();
-			$provider->setConfig($this->loadMergedConfig(['config/latte.php', 'config/app.php']));
+			// LatteTemplate::clearCache() only reads 'cache_dir', but its
+			// constructor's declared type requires the full shape, and reads
+			// 'template_dir'/'caching' unconditionally. Defaults below match
+			// Latte's own ServiceProvider::getDefaults(), duplicated here rather
+			// than referencing that provider, since clearing a cache is unrelated
+			// to resolving TemplateEngineInterface for the DI container, which is
+			// that provider's actual job. filters/functions/extensions/paths/
+			// globals are irrelevant to clearing the cache, so they're left empty
+			// rather than read from config.
+			$configuration = $this->loadMergedConfig(['config/latte.php', 'config/app.php']);
+			$projectRoot = ComposerUtils::getProjectRoot();
 
-			// Create Latte instance with merged configuration and clear cache
-			$latte = new LatteTemplate($provider->mergeConfig());
+			$latte = new LatteTemplate([
+				'template_dir' => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/',
+				'cache_dir'    => is_string($configuration['cache_dir'] ?? null) ? $configuration['cache_dir'] : $projectRoot . '/storage/cache/latte/',
+				'caching'      => is_bool($configuration['caching'] ?? null) ? $configuration['caching'] : true,
+				'filters'      => [],
+				'functions'    => [],
+				'extensions'   => [],
+				'paths'        => [],
+				'globals'      => [],
+			]);
+
 			$latte->clearCache();
 
 			// Display a success message to the user

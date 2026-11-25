@@ -3,7 +3,6 @@
 	namespace Quellabs\Canvas\Smarty\Sculpt;
 	
 	use Smarty\Smarty;
-	use Quellabs\Canvas\Smarty\ServiceProvider;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
@@ -36,22 +35,23 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider is the "sculpt" category provider (registered
-			// separately in composer.json's extra.discover.sculpt key) and has
-			// no mergeConfig() — it is a different class from the "di" category
-			// provider this command actually needs. Build the latter directly,
-			// loading the same config files its discovery entry declares.
-			$provider = new ServiceProvider();
-			$provider->setConfig($this->loadMergedConfig(['config/smarty.php', 'config/app.php']));
+			// This command only needs three directory paths, each with a
+			// default matching Smarty's own ServiceProvider::getDefaults() —
+			// duplicated here rather than referencing that provider, since
+			// clearing a cache is unrelated to resolving TemplateEngineInterface
+			// for the DI container, which is that provider's actual job.
+			$configuration = $this->loadMergedConfig(['config/smarty.php', 'config/app.php']);
+			$projectRoot = ComposerUtils::getProjectRoot();
 
-			// Fetch config
-			$mergedConfig = $provider->mergeConfig();
+			$templateDir = is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/';
+			$compileDir = is_string($configuration['compile_dir'] ?? null) ? $configuration['compile_dir'] : $projectRoot . '/storage/smarty/compile/';
+			$cacheDir = is_string($configuration['cache_dir'] ?? null) ? $configuration['cache_dir'] : $projectRoot . '/storage/smarty/cache/';
 
 			// Create Smarty instance with configured directories
 			$smarty = new Smarty();
-			$smarty->setTemplateDir($mergedConfig['template_dir']);
-			$smarty->setCompileDir($mergedConfig['compile_dir']);
-			$smarty->setCacheDir($mergedConfig['cache_dir']);
+			$smarty->setTemplateDir($templateDir);
+			$smarty->setCompileDir($compileDir);
+			$smarty->setCacheDir($cacheDir);
 
 			// Clear all cached templates and compiled files
 			$smarty->clearAllCache();
