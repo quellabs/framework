@@ -64,7 +64,7 @@
 				'className'   => $this->definition->className,
 				'family'      => $this->definition->family,
 				'configFiles' => $this->definition->configFiles,
-				'metadata'    => $this->definition->metadata,
+				'metadata'    => $this->definition->metadata
 			];
 		}
 	}

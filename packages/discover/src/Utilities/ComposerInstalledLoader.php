@@ -53,8 +53,13 @@
 			
 			if ($mappingPath !== null) {
 				try {
-					$this->installedDataCache[$mappingPath] = include $mappingPath;
-					return $this->installedDataCache[$mappingPath];
+					$included = include $mappingPath;
+
+					if (!is_array($included)) {
+						throw new \RuntimeException('Discovery mapping file did not return an array');
+					}
+
+					return $this->installedDataCache[$mappingPath] = $included;
 				} catch (\Throwable $e) {
 					$this->logger->warning('Failed to include discovery mapping file', [
 						'scanner'       => 'ComposerScanner',

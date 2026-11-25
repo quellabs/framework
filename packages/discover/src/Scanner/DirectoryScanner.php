@@ -144,7 +144,7 @@
 					[
 						'directory' => $directory,
 						'exists'    => $exists,
-						'readable'  => $readable,
+						'readable'  => $readable
 					]
 				);
 				
@@ -168,7 +168,7 @@
 				if (isset($this->discoveredClasses[$className])) {
 					$this->logger->debug('Duplicate provider class skipped: {class}', [
 						'scanner' => 'DirectoryScanner',
-						'class'   => $className,
+						'class'   => $className
 					]);
 					continue;
 				}
@@ -195,7 +195,7 @@
 						'Failed to create provider definition for class: {class}',
 						[
 							'class' => $className,
-							'error' => $e->getMessage(),
+							'error' => $e->getMessage()
 						],
 						$e
 					);
@@ -240,7 +240,7 @@
 				if ($realPath === false) {
 					$this->logger->warning('Directory does not exist, will be skipped during scan: {directory}', [
 						'scanner'   => 'DirectoryScanner',
-						'directory' => $directory,
+						'directory' => $directory
 					]);
 					
 					continue;

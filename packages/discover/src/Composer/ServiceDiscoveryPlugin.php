@@ -81,7 +81,7 @@
 		public static function getSubscribedEvents(): array {
 			return [
 				'post-install-cmd' => 'onPostInstall',  // After composer install
-				'post-update-cmd'  => 'onPostUpdate',   // After composer update
+				'post-update-cmd'  => 'onPostUpdate'    // After composer update
 			];
 		}
 		

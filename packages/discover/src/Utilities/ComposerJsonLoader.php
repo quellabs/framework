@@ -100,7 +100,7 @@
 					'reason'          => 'Invalid JSON syntax in composer.json',
 					'file_path'       => $filePath,
 					'json_error'      => json_last_error_msg(),
-					'json_error_code' => json_last_error(),
+					'json_error_code' => json_last_error()
 				]);
 				
 				return [];
