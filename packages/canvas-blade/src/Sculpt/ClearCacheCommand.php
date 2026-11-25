@@ -1,21 +1,18 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Blade\Sculpt;
-	
+
 	use Quellabs\Canvas\Blade\BladeTemplate;
-	use Quellabs\Contracts\Discovery\ProviderInterface;
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
-	
+
 	/**
 	 * Command class for clearing Blade template cache
 	 * Extends the base command contract to provide cache clearing functionality
 	 */
 	class ClearCacheCommand extends CommandBase {
-		
-		/** @var ServiceProvider */
-		protected ProviderInterface $provider;
-		
+
 		/**
 		 * Define the command signature/name that will be used to invoke this command
 		 * @return string The command signature
@@ -23,7 +20,7 @@
 		public function getSignature(): string {
 			return "blade:clear-cache";
 		}
-		
+
 		/**
 		 * Provide a human-readable description of what this command does
 		 * @return string The command description
@@ -31,27 +28,35 @@
 		public function getDescription(): string {
 			return "Clears the blade cache";
 		}
-		
+
 		/**
 		 * Execute the cache clearing operation
 		 * @param ConfigurationManager $config Configuration manager instance
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Validate that provider is of the correct type
-			if (!$this->provider instanceof \Quellabs\Canvas\Blade\ServiceProvider) {
-				throw new \RuntimeException('Expected Quellabs\Canvas\Blade\ServiceProvider');
-			}
-			
-			// Create Blade instance with configured directories
-			$blade = new BladeTemplate($this->provider->mergeConfig());
-			
+			// getProvider() is already configured from config/blade.php. Only
+			// cache_dir matters to clearCache(); the rest just satisfies
+			// BladeTemplate's declared config shape.
+			$configuration = $this->getProvider()->getConfig();
+			$projectRoot = ComposerUtils::getProjectRoot();
+
+			$blade = new BladeTemplate([
+				'template_dir'  => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/',
+				'cache_dir'     => is_string($configuration['cache_dir'] ?? null) ? $configuration['cache_dir'] : $projectRoot . '/storage/cache/blade/',
+				'caching'       => is_bool($configuration['caching'] ?? null) ? $configuration['caching'] : true,
+				'paths'         => [],
+				'directives'    => [],
+				'if_directives' => [],
+				'globals'       => [],
+			]);
+
 			// Clear all cached templates and compiled files
 			$blade->clearCache();
-			
+
 			// Display a success message to the user
 			$this->getOutput()->success("Cleared the blade cache");
-			
+
 			// Return success exit code
 			return 0;
 		}

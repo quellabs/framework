@@ -3,8 +3,8 @@
 	namespace Quellabs\Canvas\Handlebars\Sculpt;
 	
 	use Quellabs\Sculpt\Application;
-	use Quellabs\Canvas\Latte\Sculpt\InitCommand;
-	use Quellabs\Canvas\Latte\Sculpt\ClearCacheCommand;
+	use Quellabs\Canvas\Handlebars\Sculpt\InitCommand;
+	use Quellabs\Canvas\Handlebars\Sculpt\ClearCacheCommand;
 	
 	/**
 	 * Service Provider for Handlebars template engine integration
