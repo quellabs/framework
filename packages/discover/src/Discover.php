@@ -306,10 +306,12 @@
 			// Store the provider definition using its key for fast lookup
 			// This allows efficient retrieval of providers by their unique identifier
 			$this->providerDefinitions[$key] = $definition;
-			
-			// Also index by class name for O(1) lookup by class
-			// Enables fast retrieval when searching for specific provider classes
-			$this->providerDefinitionsByClass[$definition->className] = $definition;
+
+			// Also index by class name for O(1) lookup by class. The same class can be
+			// registered under more than one family; keep the first one seen so this
+			// index stays consistent with the first-wins dedup above instead of silently
+			// flipping to whichever family happened to be scanned last.
+			$this->providerDefinitionsByClass[$definition->className] ??= $definition;
 		}
 		
 		/**
