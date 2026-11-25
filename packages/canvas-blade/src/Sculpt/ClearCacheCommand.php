@@ -4,6 +4,7 @@
 	
 	use Quellabs\Canvas\Blade\BladeTemplate;
 	use Quellabs\Canvas\Blade\ServiceProvider;
+	use Quellabs\Support\ComposerUtils;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -35,11 +36,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider (see CommandBase::getProvider()) is the "sculpt"
-			// category provider, not the "di" category one this command needs
-			// for the actual Blade configuration — resolve that one instead.
-			$provider = $this->resolveDiProvider(ServiceProvider::class)
-				?? throw new \RuntimeException('Could not resolve ' . ServiceProvider::class . ' via discovery');
+			// $this->provider is the "sculpt" category provider (registered
+			// separately in composer.json's extra.discover.sculpt key) and has
+			// no mergeConfig() — it is a different class from the "di" category
+			// provider this command actually needs. Build the latter directly,
+			// loading the same config files its discovery entry declares.
+			$provider = new ServiceProvider();
+			$provider->setConfig($this->loadMergedConfig(['config/blade.php', 'config/app.php']));
 
 			// Create Blade instance with configured directories
 			$blade = new BladeTemplate($provider->mergeConfig());
@@ -52,5 +55,32 @@
 
 			// Return success exit code
 			return 0;
+		}
+
+		/**
+		 * Loads config files relative to the project root and merges them in
+		 * order, applying each file's own .local.php override when present.
+		 * @param array<int, string> $configFiles
+		 * @return array<string, mixed>
+		 */
+		private function loadMergedConfig(array $configFiles): array {
+			$projectRoot = ComposerUtils::getProjectRoot();
+			$result = [];
+
+			foreach ($configFiles as $configFile) {
+				$path = $projectRoot . DIRECTORY_SEPARATOR . $configFile;
+
+				if (file_exists($path)) {
+					$result = array_replace_recursive($result, require $path);
+				}
+
+				$localPath = preg_replace('/\.php$/', '.local.php', $path);
+
+				if ($localPath !== null && file_exists($localPath)) {
+					$result = array_replace_recursive($result, require $localPath);
+				}
+			}
+
+			return $result;
 		}
 	}
