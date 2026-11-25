@@ -35,15 +35,9 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// LatteTemplate::clearCache() only reads 'cache_dir', but its
-			// constructor's declared type requires the full shape, and reads
-			// 'template_dir'/'caching' unconditionally. Defaults below match
-			// Latte's own ServiceProvider::getDefaults(), duplicated here rather
-			// than referencing that provider, since clearing a cache is unrelated
-			// to resolving TemplateEngineInterface for the DI container, which is
-			// that provider's actual job. filters/functions/extensions/paths/
-			// globals are irrelevant to clearing the cache, so they're left empty
-			// rather than read from config.
+			// clearCache() reads cache_dir; the constructor also needs
+			// template_dir/caching unconditionally. Defaults mirror Latte's
+			// ServiceProvider::getDefaults() without importing it.
 			$configuration = $this->loadMergedConfig(['config/latte.php', 'config/app.php']);
 			$projectRoot = ComposerUtils::getProjectRoot();
 

@@ -36,12 +36,8 @@
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// Only 'compile_dir' matters here. Its default matches Handlebars'
-			// own ServiceProvider::getDefaults() — package-relative, not
-			// project-root-relative — duplicated here rather than referencing
-			// that provider, since clearing a cache is unrelated to resolving
-			// TemplateEngineInterface for the DI container, which is that
-			// provider's actual job.
+			// Default mirrors Handlebars' ServiceProvider::getDefaults() without
+			// importing it — note it's package-relative, not project-root-relative.
 			$configuration = $this->loadMergedConfig(['config/handlebars.php', 'config/app.php']);
 			$compileDir = is_string($configuration['compile_dir'] ?? null) ? $configuration['compile_dir'] : dirname(__FILE__) . '/../../Cache/Compile/';
 

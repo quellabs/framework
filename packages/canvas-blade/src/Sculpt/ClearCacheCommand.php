@@ -35,18 +35,12 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// BladeTemplate::clearCache() only reads 'cache_dir', but its
-			// constructor's declared type requires the full shape. Defaults
-			// below match Blade's own ServiceProvider::getDefaults(), duplicated
-			// here rather than referencing that provider, since clearing a cache
-			// is unrelated to resolving TemplateEngineInterface for the DI
-			// container, which is that provider's actual job.
+			// Only cache_dir matters to clearCache(); the rest just satisfies
+			// BladeTemplate's declared config shape. Defaults mirror Blade's
+			// ServiceProvider::getDefaults() without importing it.
 			$configuration = $this->loadMergedConfig(['config/blade.php', 'config/app.php']);
 			$projectRoot = ComposerUtils::getProjectRoot();
 
-			// Create Blade instance with the directories that matter for clearing
-			// its cache. paths/directives/if_directives/globals are irrelevant to
-			// that operation, so they're left empty rather than read from config.
 			$blade = new BladeTemplate([
 				'template_dir'  => is_string($configuration['template_dir'] ?? null) ? $configuration['template_dir'] : $projectRoot . '/templates/',
 				'cache_dir'     => is_string($configuration['cache_dir'] ?? null) ? $configuration['cache_dir'] : $projectRoot . '/storage/cache/blade/',

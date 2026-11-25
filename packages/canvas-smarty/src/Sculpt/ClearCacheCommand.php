@@ -35,11 +35,7 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// This command only needs three directory paths, each with a
-			// default matching Smarty's own ServiceProvider::getDefaults() —
-			// duplicated here rather than referencing that provider, since
-			// clearing a cache is unrelated to resolving TemplateEngineInterface
-			// for the DI container, which is that provider's actual job.
+			// Defaults mirror Smarty's ServiceProvider::getDefaults() without importing it.
 			$configuration = $this->loadMergedConfig(['config/smarty.php', 'config/app.php']);
 			$projectRoot = ComposerUtils::getProjectRoot();
 

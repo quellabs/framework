@@ -35,13 +35,9 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// TwigTemplate::clearCache() only operates when caching was enabled
-			// and a cache_dir was set at construction time; 'template_dir' is
-			// also read unconditionally in the constructor. Defaults below match
-			// Twig's own ServiceProvider::getDefaults(), duplicated here rather
-			// than referencing that provider, since clearing a cache is unrelated
-			// to resolving TemplateEngineInterface for the DI container, which is
-			// that provider's actual job.
+			// clearCache() needs caching enabled and cache_dir set at construction;
+			// template_dir is read unconditionally too. Defaults mirror Twig's
+			// ServiceProvider::getDefaults() without importing it.
 			$configuration = $this->loadMergedConfig(['config/twig.php', 'config/app.php']);
 			$projectRoot = ComposerUtils::getProjectRoot();
 
