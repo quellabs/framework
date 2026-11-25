@@ -35,11 +35,9 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// getProvider() is already configured from this package's own
-			// composer.json "sculpt" discovery entry (config/latte.php), so
-			// it's already the settings a user published — no need to reload
-			// anything from disk. clearCache() reads cache_dir; the constructor
-			// also needs template_dir/caching unconditionally.
+			// getProvider() is already configured from config/latte.php.
+			// clearCache() reads cache_dir; the constructor also needs
+			// template_dir/caching unconditionally.
 			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 

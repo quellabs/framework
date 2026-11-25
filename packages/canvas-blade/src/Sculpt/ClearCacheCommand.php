@@ -35,11 +35,9 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// getProvider() is already configured from this package's own
-			// composer.json "sculpt" discovery entry (config/blade.php), so
-			// it's already the settings a user published — no need to reload
-			// anything from disk. Only cache_dir matters to clearCache(); the
-			// rest just satisfies BladeTemplate's declared config shape.
+			// getProvider() is already configured from config/blade.php. Only
+			// cache_dir matters to clearCache(); the rest just satisfies
+			// BladeTemplate's declared config shape.
 			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 

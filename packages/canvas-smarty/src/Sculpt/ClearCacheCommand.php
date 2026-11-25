@@ -35,10 +35,7 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// getProvider() is already configured from this package's own
-			// composer.json "sculpt" discovery entry (config/smarty.php), so
-			// it's already the settings a user published — no need to reload
-			// anything from disk. Defaults mirror ServiceProvider::getDefaults().
+			// getProvider() is already configured from config/smarty.php; defaults below mirror ServiceProvider::getDefaults().
 			$configuration = $this->getProvider()->getConfig();
 			$projectRoot = ComposerUtils::getProjectRoot();
 
