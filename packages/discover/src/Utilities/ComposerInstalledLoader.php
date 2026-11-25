@@ -59,7 +59,20 @@
 						throw new \RuntimeException('Discovery mapping file did not return an array');
 					}
 
-					return $this->installedDataCache[$mappingPath] = $included;
+					// Validate the shape (package name => extra data array) rather than
+					// trusting the file blindly, since it may have been hand-edited.
+					$validated = [];
+
+					foreach ($included as $packageName => $packageData) {
+						if (!is_string($packageName) || !is_array($packageData)) {
+							continue;
+						}
+
+						$validated[$packageName] = array_filter($packageData, 'is_string', ARRAY_FILTER_USE_KEY);
+					}
+
+					$this->installedDataCache[$mappingPath] = $validated;
+					return $this->installedDataCache[$mappingPath];
 				} catch (\Throwable $e) {
 					$this->logger->warning('Failed to include discovery mapping file', [
 						'scanner'       => 'ComposerScanner',
