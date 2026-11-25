@@ -1,15 +1,25 @@
 <?php
 	
 	namespace Quellabs\Canvas\Twig\Sculpt;
-	
+
+	use Quellabs\Canvas\Twig\ServiceProvider as TwigServiceProvider;
 	use Quellabs\Sculpt\Application;
-	
+	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
+	use Quellabs\Sculpt\RegistersCommandsTrait;
+
 	/**
 	 * Service Provider for Twig template engine integration
-	 * Registers Twig-related commands with the Sculpt application
+	 * Registers Twig-related commands with the Sculpt application.
+	 *
+	 * Extends the "di" category ServiceProvider (rather than the generic
+	 * Quellabs\Sculpt\ServiceProvider) so this provider is itself a valid
+	 * TwigServiceProvider — letting commands like ClearCacheCommand use the
+	 * injected provider directly instead of resolving a separate instance.
 	 */
-	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
-		
+	class ServiceProvider extends TwigServiceProvider implements SculptProviderInterface {
+
+		use RegistersCommandsTrait;
+
 		/**
 		 * Register services and commands with the application
 		 * This method is called during the application bootstrap process

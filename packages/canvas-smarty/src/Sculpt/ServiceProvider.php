@@ -1,15 +1,26 @@
 <?php
 	
 	namespace Quellabs\Canvas\Smarty\Sculpt;
-	
+
+	use Quellabs\Canvas\Smarty\ServiceProvider as SmartyServiceProvider;
 	use Quellabs\Sculpt\Application;
-	
+	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
+	use Quellabs\Sculpt\RegistersCommandsTrait;
+
 	/**
 	 * Service Provider for Smarty template engine integration
-	 * Registers Smarty-related commands with the Sculpt application
+	 * Registers Smarty-related commands with the Sculpt application.
+	 *
+	 * Extends the "di" category ServiceProvider (rather than the generic
+	 * Quellabs\Sculpt\ServiceProvider) so this provider is itself a valid
+	 * SmartyServiceProvider — letting commands like ClearCacheCommand use the
+	 * injected provider directly for mergeConfig() instead of resolving a
+	 * separate instance.
 	 */
-	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
-		
+	class ServiceProvider extends SmartyServiceProvider implements SculptProviderInterface {
+
+		use RegistersCommandsTrait;
+
 		/**
 		 * Register services and commands with the application
 		 * This method is called during the application bootstrap process

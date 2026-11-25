@@ -1,15 +1,26 @@
 <?php
 	
 	namespace Quellabs\Canvas\Blade\Sculpt;
-	
+
+	use Quellabs\Canvas\Blade\ServiceProvider as BladeServiceProvider;
 	use Quellabs\Sculpt\Application;
-	
+	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
+	use Quellabs\Sculpt\RegistersCommandsTrait;
+
 	/**
 	 * Service Provider for Blade template engine integration
-	 * Registers Blade-related commands with the Sculpt application
+	 * Registers Blade-related commands with the Sculpt application.
+	 *
+	 * Extends the "di" category ServiceProvider (rather than the generic
+	 * Quellabs\Sculpt\ServiceProvider) so this provider is itself a valid
+	 * BladeServiceProvider — letting commands like ClearCacheCommand use the
+	 * injected provider directly for mergeConfig() instead of resolving a
+	 * separate instance.
 	 */
-	class ServiceProvider extends \Quellabs\Sculpt\ServiceProvider {
-		
+	class ServiceProvider extends BladeServiceProvider implements SculptProviderInterface {
+
+		use RegistersCommandsTrait;
+
 		/**
 		 * Register services and commands with the application
 		 * This method is called during the application bootstrap process

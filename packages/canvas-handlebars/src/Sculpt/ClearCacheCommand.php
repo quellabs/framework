@@ -1,8 +1,9 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Handlebars\Sculpt;
-	
+
 	use Quellabs\Canvas\Handlebars\ServiceProvider;
+	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -14,6 +15,9 @@
 	 */
 	class ClearCacheCommand extends CommandBase {
 
+		/** @var ServiceProvider */
+		protected ProviderInterface $provider;
+
 		/**
 		 * Define the command signature used to invoke this command
 		 * @return string
@@ -21,7 +25,7 @@
 		public function getSignature(): string {
 			return "handlebars:clear-cache";
 		}
-		
+
 		/**
 		 * Human-readable description shown in the Sculpt command list
 		 * @return string
@@ -29,32 +33,31 @@
 		public function getDescription(): string {
 			return "Clears the Handlebars compiled template cache";
 		}
-		
+
 		/**
 		 * Execute the cache clearing operation
 		 * @param ConfigurationManager $config
 		 * @return int Exit code (0 for success, 1 for failure)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider (see CommandBase::getProvider()) is the "sculpt"
-			// category provider, not the "di" category one this command needs
-			// for the actual Handlebars configuration — resolve that one instead.
-			$provider = $this->resolveDiProvider(ServiceProvider::class)
-				?? throw new \RuntimeException('Could not resolve ' . ServiceProvider::class . ' via discovery');
+			// Validate that the provider is of the correct type
+			if (!$this->provider instanceof ServiceProvider) {
+				throw new \RuntimeException('Expected ' . ServiceProvider::class);
+			}
 
 			// Fetch compile directory
-			$compileDir = $provider->mergeConfig()['compile_dir'];
-			
+			$compileDir = $this->provider->mergeConfig()['compile_dir'];
+
 			if (!is_dir($compileDir)) {
 				$this->getOutput()->warning("Compile directory does not exist: {$compileDir}");
 				return 0;
 			}
-			
+
 			// Unlink php files
 			$files = glob($compileDir . '*.php') ?: [];
 			$count = 0;
 			$failed = 0;
-			
+
 			foreach ($files as $file) {
 				if (is_file($file)) {
 					if (unlink($file)) {
@@ -65,13 +68,13 @@
 					}
 				}
 			}
-			
+
 			// Error message
 			if ($failed > 0) {
 				$this->getOutput()->error("Cleared {$count} compiled template(s), {$failed} could not be deleted");
 				return 1;
 			}
-			
+
 			// Success message
 			$this->getOutput()->success("Cleared {$count} compiled Handlebars template(s)");
 			return 0;

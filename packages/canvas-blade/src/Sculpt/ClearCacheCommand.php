@@ -1,9 +1,9 @@
 <?php
-	
+
 	namespace Quellabs\Canvas\Blade\Sculpt;
-	
+
 	use Quellabs\Canvas\Blade\BladeTemplate;
-	use Quellabs\Canvas\Blade\ServiceProvider;
+	use Quellabs\Contracts\Discovery\ProviderInterface;
 	use Quellabs\Sculpt\ConfigurationManager;
 	use Quellabs\Sculpt\Contracts\CommandBase;
 
@@ -12,6 +12,9 @@
 	 * Extends the base command contract to provide cache clearing functionality
 	 */
 	class ClearCacheCommand extends CommandBase {
+
+		/** @var ServiceProvider */
+		protected ProviderInterface $provider;
 
 		/**
 		 * Define the command signature/name that will be used to invoke this command
@@ -35,14 +38,13 @@
 		 * @return int Exit code (0 for success)
 		 */
 		public function execute(ConfigurationManager $config): int {
-			// $this->provider (see CommandBase::getProvider()) is the "sculpt"
-			// category provider, not the "di" category one this command needs
-			// for the actual Blade configuration — resolve that one instead.
-			$provider = $this->resolveDiProvider(ServiceProvider::class)
-				?? throw new \RuntimeException('Could not resolve ' . ServiceProvider::class . ' via discovery');
+			// Validate that provider is of the correct type
+			if (!$this->provider instanceof \Quellabs\Canvas\Blade\ServiceProvider) {
+				throw new \RuntimeException('Expected Quellabs\Canvas\Blade\ServiceProvider');
+			}
 
 			// Create Blade instance with configured directories
-			$blade = new BladeTemplate($provider->mergeConfig());
+			$blade = new BladeTemplate($this->provider->mergeConfig());
 
 			// Clear all cached templates and compiled files
 			$blade->clearCache();

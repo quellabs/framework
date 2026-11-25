@@ -7,6 +7,7 @@
 	use Quellabs\Contracts\IO\ConsoleOutput;
 	use Quellabs\Discover\Scanner\ComposerScanner;
 	use Quellabs\Sculpt\Contracts\CommandInterface;
+	use Quellabs\Sculpt\Contracts\SculptProviderInterface;
 	
 	/**
 	 * This is the main entry point for the Sculpt CLI application, responsible for
@@ -149,10 +150,10 @@
 			
 			// Call register on all found providers
 			foreach($this->getServiceDiscoverer()->getProviders() as $provider) {
-				if (!$provider instanceof \Quellabs\Sculpt\ServiceProvider) {
+				if (!$provider instanceof SculptProviderInterface) {
 					continue;
 				}
-				
+
 				$provider->register($this);
 			}
 		}
