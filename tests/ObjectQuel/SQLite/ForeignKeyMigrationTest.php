@@ -174,13 +174,16 @@
 
 			$content = $this->buildMigrationContent(['fk_orders_scalar_action' => $changes]);
 
-			// up() drops the old constraint and adds the new one with the entity's
-			// rule, folded into one combined alter statement.
-			self::assertStringContainsString(
-				'alter fk_orders_scalar_action (drop foreign key (customer_id), ' .
-				'add foreign key (customer_id) references fk_customers (id) on delete cascade on update restrict)',
-				$content
-			);
+			$dropStatement = "\$this->query('alter fk_orders_scalar_action (drop foreign key (customer_id))');";
+
+			// up() drops the old constraint, then adds the new one with the
+			// entity's rule, as two statements: column changes run in between.
+			$upBody = substr($content, 0, (int)strpos($content, 'public function down'));
+			$upDropPos = strpos($upBody, $dropStatement);
+			$upAddPos = strpos($upBody, "alter fk_orders_scalar_action (add foreign key (customer_id) references fk_customers (id) on delete cascade on update restrict)");
+			self::assertNotFalse($upDropPos);
+			self::assertNotFalse($upAddPos);
+			self::assertLessThan($upAddPos, $upDropPos);
 
 			// down() must restore the database's original rule, not just repeat
 			// the entity's rule under a different name — invertForeignKeyModifications()
@@ -192,11 +195,11 @@
 			self::assertNotFalse($downPos);
 
 			$downBody = substr($content, $downPos);
-			self::assertStringContainsString(
-				'alter fk_orders_scalar_action (drop foreign key (customer_id), ' .
-				'add foreign key (customer_id) references fk_customers (id) on delete restrict on update no action)',
-				$downBody
-			);
+			$downDropPos = strpos($downBody, $dropStatement);
+			$downAddPos = strpos($downBody, "alter fk_orders_scalar_action (add foreign key (customer_id) references fk_customers (id) on delete restrict on update no action)");
+			self::assertNotFalse($downDropPos);
+			self::assertNotFalse($downAddPos);
+			self::assertLessThan($downAddPos, $downDropPos);
 		}
 
 		// -------------------------------------------------------------------------
