@@ -3,6 +3,7 @@
 	namespace Quellabs\Payments\Buckaroo;
 	
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\PaymentAddress;
@@ -186,9 +187,8 @@
 			$config  = $this->getConfig();
 			$service = self::MODULE_TYPE_MAP[$request->paymentModule] ?? strtolower($request->paymentModule);
 			
-			// Buckaroo uses decimal amounts (€10.00 = 10.00), not minor units (€10.00 = 1000).
-			// PaymentRequest::$amount is in minor units, so divide by 100.
-			$amount = round($request->amount / 100, 2);
+			// Buckaroo uses decimal amounts (€10.00 = 10.00); PaymentRequest::$amount is in minor units.
+			$amount = CurrencyDecimals::toMajorUnits($request->amount, $request->currency);
 			
 			// Build the service parameter list.
 			$serviceParams = [];
@@ -338,7 +338,7 @@
 			$isRefund      = isset($data['AmountCredit']) && !isset($data['AmountDebit']);
 			$amountRaw     = $data['AmountDebit'] ?? $data['AmountCredit'] ?? 0;
 			$amountDecimal = $this->toFloat($amountRaw);
-			$amount        = (int)round($amountDecimal * 100);
+			$amount        = CurrencyDecimals::toMinorUnits($amountDecimal, $currency);
 			
 			// Map Buckaroo status codes to our internal PaymentStatus enum.
 			// For refund transactions a successful 190 maps to Refunded, not Paid.
@@ -375,7 +375,7 @@
 			if (!$isRefund) {
 				// Determine the refund value
 				$relatedRaw    = $data['RelatedTransactions'] ?? [];
-				$valueRefunded = $this->sumRelatedRefunds(is_array($relatedRaw) ? $relatedRaw : []);
+				$valueRefunded = $this->sumRelatedRefunds(is_array($relatedRaw) ? $relatedRaw : [], $currency);
 				
 				// If the total refunded equals or exceeds the paid amount, the payment is fully
 				// refunded. Upgrade the state — Buckaroo never changes the original transaction's
@@ -443,7 +443,7 @@
 			// Only include AmountCredit when a specific partial amount is requested.
 			// Buckaroo interprets the absence of AmountCredit as a full refund.
 			if ($request->amount !== null) {
-				$payload['AmountCredit'] = round($request->amount / 100, 2);
+				$payload['AmountCredit'] = CurrencyDecimals::toMajorUnits($request->amount, $request->currency);
 			}
 			
 			// Add description if passed
@@ -465,9 +465,9 @@
 			$refundKey      = is_string($refundKeyRaw) ? $refundKeyRaw : '';
 			
 			// AmountCredit in the refund response is the decimal refunded amount
-			$amountCreditRaw = $refundResponse['AmountCredit'] ?? ($request->amount !== null ? $request->amount / 100 : 0);
+			$amountCreditRaw = $refundResponse['AmountCredit'] ?? ($request->amount !== null ? CurrencyDecimals::toMajorUnits($request->amount, $request->currency) : 0);
 			$refundedDecimal = $this->toFloat($amountCreditRaw);
-			$refundedMinor   = (int)round($refundedDecimal * 100);
+			$refundedMinor   = CurrencyDecimals::toMinorUnits($refundedDecimal, $request->currency);
 			
 			// Return the result
 			return new RefundResult(
@@ -551,7 +551,7 @@
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refundKey,
-					value: (int)round($amountDecimal * 100),
+					value: CurrencyDecimals::toMinorUnits($amountDecimal, $refundCurrency),
 					currency: $refundCurrency,
 				);
 			}
@@ -646,9 +646,10 @@
 		 * Returns 0 if no refunds exist or if all lookups fail.
 		 * Used internally by exchange() to populate valueRefunded.
 		 * @param array<string, mixed> $relatedTransactions From the Status response
+		 * @param string $currency ISO 4217 currency of the original payment, which its refunds share
 		 * @return int Total refunded amount in minor units
 		 */
-		private function sumRelatedRefunds(array $relatedTransactions): int {
+		private function sumRelatedRefunds(array $relatedTransactions, string $currency): int {
 			$total = 0;
 			
 			foreach ($relatedTransactions as $related) {
@@ -685,7 +686,7 @@
 				$refundData    = $refundResult['response'] ?? [];
 				$amountRaw     = $refundData['AmountCredit'] ?? 0;
 				$amountDecimal = $this->toFloat($amountRaw);
-				$total         += (int)round($amountDecimal * 100);
+				$total         += CurrencyDecimals::toMinorUnits($amountDecimal, $currency);
 			}
 			
 			return $total;

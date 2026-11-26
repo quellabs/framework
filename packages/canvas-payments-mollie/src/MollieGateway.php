@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Support\Resources;
 	use Symfony\Component\HttpClient\HttpClient;
@@ -448,7 +449,7 @@
 				return [
 					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 					'response' => [
-						'amount'   => MollieCurrency::formatMinorUnits($amount, $currency),
+						'amount'   => CurrencyDecimals::formatMajorUnits($amount, $currency),
 						'currency' => $currency
 					]
 				];

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\MandateStatus;
@@ -174,7 +175,7 @@
 			$payload = array_filter([
 				'amount'          => [
 					'currency' => $request->currency,
-					'value'    => MollieCurrency::formatMinorUnits($request->amount, $request->currency)
+					'value'    => CurrencyDecimals::formatMajorUnits($request->amount, $request->currency)
 				],
 				'description'     => $request->description,
 				'redirectUrl'     => $request->redirectUrl,
@@ -249,7 +250,7 @@
 			$payload = array_filter([
 				'amount'       => [
 					'currency' => $request->currency,
-					'value'    => MollieCurrency::formatMinorUnits($request->amount, $request->currency)
+					'value'    => CurrencyDecimals::formatMajorUnits($request->amount, $request->currency)
 				],
 				'description'  => $request->description,
 				'customerId'   => $request->customerReference,
@@ -563,7 +564,7 @@
 		private function toMinorUnits(array $amount): int {
 			$currency = $this->normalizeString($amount["currency"] ?? null);
 
-			return MollieCurrency::toMinorUnits($this->toFloat($amount["value"] ?? null), $currency);
+			return CurrencyDecimals::toMinorUnits($this->toFloat($amount["value"] ?? null), $currency);
 		}
 
 		/**

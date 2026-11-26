@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Paypal;
 	
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\PaymentInterface;
@@ -37,7 +38,13 @@
 		 * Driver name
 		 */
 		const string DRIVER_NAME = "paypal";
-		
+
+		/**
+		 * Currencies PayPal accepts only without decimals, although ISO 4217 gives HUF and TWD 2 digits.
+		 * @see https://developer.paypal.com/reference/currency-codes/
+		 */
+		private const ZERO_DECIMAL_CURRENCIES = ['HUF', 'JPY', 'TWD'];
+
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array<string, mixed>
@@ -128,9 +135,16 @@
 			// validate the type explicitly rather than casting.
 			$brandName = isset($config['brand_name']) && is_string($config['brand_name']) ? $config['brand_name'] : '';
 			
+			// PayPal rejects fractions of a zero-decimal currency
+			try {
+				$value = $this->formatAmount($request->amount, $request->currency);
+			} catch (\InvalidArgumentException $e) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 'invalid_amount', $e->getMessage());
+			}
+
 			// Use the gateway to create a new order
 			$result = $this->getGateway()->createOrder(
-				$request->amount / 100,
+				$value,
 				$request->description,
 				$request->currency,
 				$brandName,
@@ -350,8 +364,17 @@
 		 * @throws PaymentRefundException
 		 */
 		public function refund(RefundRequest $request): RefundResult {
-			$value    = $request->amount !== null ? $request->amount / 100 : null;
+			$value    = null;
 			$currency = $request->amount !== null ? $request->currency : null;
+
+			// PayPal rejects fractions of a zero-decimal currency
+			if ($request->amount !== null) {
+				try {
+					$value = $this->formatAmount($request->amount, $request->currency);
+				} catch (\InvalidArgumentException $e) {
+					throw new PaymentRefundException(self::DRIVER_NAME, 'invalid_amount', $e->getMessage());
+				}
+			}
 			
 			// Deterministic key derived from capture ID + amount — retrying the same refund
 			// request always produces the same key, so a timeout cannot cause a double-refund.
@@ -383,7 +406,7 @@
 			
 			$refundAmountBlock = isset($response["amount"]) && is_array($response["amount"]) ? $response["amount"] : [];
 			$refundCurrency    = $this->normalizeString($refundAmountBlock["currency_code"] ?? null, $request->currency);
-			$refundValue       = (int)round($this->toFloat($refundAmountBlock["value"] ?? null) * 100);
+			$refundValue       = $this->toMinorUnits($refundAmountBlock["value"] ?? null, $refundCurrency);
 			$breakdown         = isset($response["seller_payable_breakdown"]) && is_array($response["seller_payable_breakdown"]) ? $response["seller_payable_breakdown"] : [];
 			$totalRefunded     = isset($breakdown["total_refunded_amount"]) && is_array($breakdown["total_refunded_amount"]) ? $breakdown["total_refunded_amount"] : [];
 			
@@ -462,12 +485,14 @@
 					continue;
 				}
 				
+				$refundCurrency = $this->normalizeString($refund["amount"]["currency_code"] ?? null);
+
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $refund["id"],
-					value: (int)round($this->toFloat($refund["amount"]["value"]) * 100),
-					currency: $this->normalizeString($refund["amount"]["currency_code"] ?? null),
+					value: $this->toMinorUnits($refund["amount"]["value"], $refundCurrency),
+					currency: $refundCurrency,
 				);
 			}
 			
@@ -663,8 +688,8 @@
 			$captureId          = isset($capture["id"]) && is_string($capture["id"]) ? $capture["id"] : null;
 			$captureStatus      = $this->normalizeString($capture["status"] ?? null, "UNKNOWN");
 			$captureAmountBlock = isset($capture["amount"]) && is_array($capture["amount"]) ? $capture["amount"] : [];
-			$captureAmount      = (int)round($this->toFloat($captureAmountBlock["value"] ?? null) * 100);
 			$captureCurrency    = $this->normalizeString($captureAmountBlock["currency_code"] ?? null, $currency);
+			$captureAmount      = $this->toMinorUnits($captureAmountBlock["value"] ?? null, $captureCurrency);
 			
 			return match ($captureStatus) {
 				// Payment was successfully captured and funds are being transferred.
@@ -757,11 +782,11 @@
 			
 			// A PENDING capture means PayPal has not yet settled the funds (e-cheque, held funds,
 			// manual review, etc.). Do not report this as Paid — the money has not arrived.
-			$capturedAmount  = (int)round($this->toFloat($response["amount"]["value"]) * 100);
 			$captureCurrency = $this->normalizeString($response["amount"]["currency_code"] ?? null, $currency);
+			$capturedAmount  = $this->toMinorUnits($response["amount"]["value"], $captureCurrency);
 			$breakdown       = isset($response["seller_receivable_breakdown"]) && is_array($response["seller_receivable_breakdown"]) ? $response["seller_receivable_breakdown"] : [];
 			$totalRefunded   = isset($breakdown["total_refunded_amount"]) && is_array($breakdown["total_refunded_amount"]) ? $breakdown["total_refunded_amount"] : [];
-			$refundedAmount  = (int)round($this->toFloat($totalRefunded["value"] ?? null) * 100);
+			$refundedAmount  = $this->toMinorUnits($totalRefunded["value"] ?? null, $captureCurrency);
 			
 			// Turn Paypal status into our own status
 			$captureStatus = $this->normalizeString($response["status"] ?? null, $internalState);
@@ -792,5 +817,28 @@
 		 */
 		private function getGateway(): PaypalGateway {
 			return $this->gateway ??= new PaypalGateway($this);
+		}
+
+		/**
+		 * Formats a minor-unit amount as PayPal's amount string, without decimals for PayPal's zero-decimal currencies.
+		 * @param int $amount
+		 * @param string $currency ISO 4217 currency code
+		 * @return string
+		 * @throws \InvalidArgumentException When the amount has a fraction PayPal cannot accept
+		 */
+		private function formatAmount(int $amount, string $currency): string {
+			$decimals = in_array(strtoupper($currency), self::ZERO_DECIMAL_CURRENCIES, true) ? 0 : null;
+
+			return CurrencyDecimals::formatMajorUnits($amount, $currency, $decimals);
+		}
+
+		/**
+		 * Converts a PayPal major-unit amount value to ISO 4217 minor units.
+		 * @param mixed $value
+		 * @param string $currency ISO 4217 currency code
+		 * @return int
+		 */
+		private function toMinorUnits(mixed $value, string $currency): int {
+			return CurrencyDecimals::toMinorUnits($this->toFloat($value), $currency);
 		}
 	}
