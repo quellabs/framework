@@ -43,6 +43,9 @@
 		/** The mandate id this payment was charged against, or null if not a mandate-based charge/unknown */
 		public ?string $mandateId;
 
+		/** Total amount charged back by the customer's bank so far, in the smallest currency unit; 0 when none or unknown */
+		public int $valueChargedBack;
+
 		/**
 		 * @param string $provider The provider that owns this payment (e.g. 'mollie', 'stripe').
 		 * @param string $transactionId The provider's unique identifier for this payment.
@@ -54,6 +57,7 @@
 		 * @param array<string, mixed> $metadata Additional provider-specific metadata attached to the payment.
 		 * @param ?string $failureReason The provider's own failure reason for a non-successful payment, or null if not applicable/unknown.
 		 * @param ?string $mandateId The mandate id this payment was charged against, or null if not a mandate-based charge/unknown.
+		 * @param int $valueChargedBack Total amount charged back so far, in the smallest currency unit; 0 when none or the provider does not report it.
 		 */
 		public function __construct(
 			string        $provider,
@@ -66,6 +70,7 @@
 			array         $metadata = [],
 			?string       $failureReason = null,
 			?string       $mandateId = null,
+			int           $valueChargedBack = 0,
 		) {
 			$this->provider = $provider;
 			$this->transactionId = $transactionId;
@@ -77,6 +82,7 @@
 			$this->metadata = $metadata;
 			$this->failureReason = $failureReason;
 			$this->mandateId = $mandateId;
+			$this->valueChargedBack = $valueChargedBack;
 		}
 		
 		/**
@@ -96,16 +102,17 @@
 		 */
 		private function toStableArray(): array {
 			return [
-				'provider'      => $this->provider,
-				'transactionId' => $this->transactionId,
-				'state'         => $this->state->value,
-				'currency'      => $this->currency,
-				'valuePaid'     => $this->valuePaid,
-				'valueRefunded' => $this->valueRefunded,
-				'internalState' => $this->internalState,
-				'metadata'      => $this->normalizeMeta($this->metadata),
-				'failureReason' => $this->failureReason,
-				'mandateId'     => $this->mandateId
+				'provider'         => $this->provider,
+				'transactionId'    => $this->transactionId,
+				'state'            => $this->state->value,
+				'currency'         => $this->currency,
+				'valuePaid'        => $this->valuePaid,
+				'valueRefunded'    => $this->valueRefunded,
+				'internalState'    => $this->internalState,
+				'metadata'         => $this->normalizeMeta($this->metadata),
+				'failureReason'    => $this->failureReason,
+				'mandateId'        => $this->mandateId,
+				'valueChargedBack' => $this->valueChargedBack
 			];
 		}
 		
