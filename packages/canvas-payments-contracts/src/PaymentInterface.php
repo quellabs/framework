@@ -107,6 +107,22 @@
 		public function getSettlementPayments(string $driver, string $settlementId): array;
 
 		/**
+		 * Returns the refunds deducted from a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 */
+		public function getSettlementRefunds(string $driver, string $settlementId): array;
+
+		/**
+		 * Returns the chargebacks deducted from a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 */
+		public function getSettlementChargebacks(string $driver, string $settlementId): array;
+
+		/**
 		 * Returns one page of the organization's settlements.
 		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
 		 * @param ?string $cursor Opaque pagination cursor, or null for the first page.

@@ -23,6 +23,12 @@
 		/** @var GatewayResponse */
 		private array $settlementPaymentsResponse = ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => '']];
 
+		/** @var GatewayResponse */
+		private array $settlementRefundsResponse = ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => '']];
+
+		/** @var GatewayResponse */
+		private array $settlementChargebacksResponse = ['request' => ['result' => 0, 'errorId' => '', 'errorMessage' => '']];
+
 		/**
 		 * No network configuration needed for this test double.
 		 */
@@ -63,6 +69,42 @@
 		 */
 		public function listSettlementPayments(string $settlementId): array {
 			return $this->settlementPaymentsResponse;
+		}
+
+		/**
+		 * Sets the canned response returned by listSettlementRefunds().
+		 * @param GatewayResponse $response
+		 * @return void
+		 */
+		public function setSettlementRefundsResponse(array $response): void {
+			$this->settlementRefundsResponse = $response;
+		}
+
+		/**
+		 * Sets the canned response returned by listSettlementChargebacks().
+		 * @param GatewayResponse $response
+		 * @return void
+		 */
+		public function setSettlementChargebacksResponse(array $response): void {
+			$this->settlementChargebacksResponse = $response;
+		}
+
+		/**
+		 * Returns the canned settlement-refunds response set via setSettlementRefundsResponse().
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function listSettlementRefunds(string $settlementId): array {
+			return $this->settlementRefundsResponse;
+		}
+
+		/**
+		 * Returns the canned settlement-chargebacks response set via setSettlementChargebacksResponse().
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function listSettlementChargebacks(string $settlementId): array {
+			return $this->settlementChargebacksResponse;
 		}
 	}
 
@@ -203,5 +245,135 @@
 
 			$this->expectException(PaymentSettlementException::class);
 			$this->driverWithGateway($gateway)->getSettlementPayments('stl_unknown');
+		}
+
+		/**
+		 * getSettlementRefunds() maps each refund to a SettlementRefundInfo, using
+		 * the refunded `amount` (positive) and the refunded payment's id.
+		 * @return void
+		 */
+		public function testGetSettlementRefundsMapsRefunds(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementRefundsResponse([
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					[
+						'resource'         => 'refund',
+						'id'               => 're_4qqhO89gsT',
+						'amount'           => ['value' => '5.00', 'currency' => 'EUR'],
+						'settlementAmount' => ['value' => '-5.00', 'currency' => 'EUR'],
+						'description'      => 'Partial refund',
+						'status'           => 'refunded',
+						'createdAt'        => '2024-04-03T10:00:00+00:00',
+						'paymentId'        => 'tr_7UhSN1zuXS',
+						'settlementId'     => 'stl_jDk30akdN',
+						'metadata'         => ['order' => '1']
+					],
+					[
+						'resource'    => 'refund',
+						'id'          => 're_9aXpK1zuWQ',
+						'amount'      => ['value' => '19.75', 'currency' => 'EUR'],
+						'description' => null,
+						'status'      => 'failed',
+						'createdAt'   => '2024-04-04T10:00:00+00:00',
+						'paymentId'   => 'tr_WDqYK6vllg',
+						'metadata'    => null
+					]
+				]
+			]);
+
+			$refunds = $this->driverWithGateway($gateway)->getSettlementRefunds('stl_jDk30akdN');
+
+			$this->assertCount(2, $refunds);
+			$this->assertSame('re_4qqhO89gsT', $refunds[0]->refundId);
+			$this->assertSame('tr_7UhSN1zuXS', $refunds[0]->paymentReference);
+			$this->assertSame(500, $refunds[0]->amount);
+			$this->assertSame('EUR', $refunds[0]->currency);
+			$this->assertSame('Partial refund', $refunds[0]->description);
+			$this->assertSame('refunded', $refunds[0]->status);
+			$this->assertSame('stl_jDk30akdN', $refunds[0]->settlementId);
+			$this->assertSame(['order' => '1'], $refunds[0]->metadata);
+			$this->assertSame('2024-04-03', $refunds[0]->createdAt?->format('Y-m-d'));
+			$this->assertSame(1975, $refunds[1]->amount);
+			$this->assertSame('', $refunds[1]->description);
+			$this->assertSame('failed', $refunds[1]->status);
+			$this->assertSame([], $refunds[1]->metadata);
+		}
+
+		/**
+		 * getSettlementRefunds() throws PaymentSettlementException when the gateway reports an error.
+		 * @return void
+		 */
+		public function testGetSettlementRefundsThrowsOnGatewayError(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementRefundsResponse([
+				'request' => ['result' => 0, 'errorId' => '404', 'errorMessage' => 'Settlement not found']
+			]);
+
+			$this->expectException(PaymentSettlementException::class);
+			$this->driverWithGateway($gateway)->getSettlementRefunds('stl_unknown');
+		}
+
+		/**
+		 * getSettlementChargebacks() maps each chargeback, including the SEPA
+		 * reason when present and reversedAt when the chargeback was reversed.
+		 * @return void
+		 */
+		public function testGetSettlementChargebacksMapsChargebacks(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementChargebacksResponse([
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					[
+						'resource'         => 'chargeback',
+						'id'               => 'chb_n9z0tp',
+						'amount'           => ['value' => '19.00', 'currency' => 'EUR'],
+						'settlementAmount' => ['value' => '-19.00', 'currency' => 'EUR'],
+						'reason'           => ['code' => 'AC01', 'description' => 'Account identifier incorrect'],
+						'createdAt'        => '2024-04-05T10:00:00+00:00',
+						'reversedAt'       => null,
+						'paymentId'        => 'tr_7UhSN1zuXS',
+						'settlementId'     => 'stl_jDk30akdN'
+					],
+					[
+						'resource'   => 'chargeback',
+						'id'         => 'chb_x81kq',
+						'amount'     => ['value' => '43.38', 'currency' => 'USD'],
+						'reason'     => null,
+						'createdAt'  => '2024-04-06T10:00:00+00:00',
+						'reversedAt' => '2024-04-09T10:00:00+00:00',
+						'paymentId'  => 'tr_WDqYK6vllg'
+					]
+				]
+			]);
+
+			$chargebacks = $this->driverWithGateway($gateway)->getSettlementChargebacks('stl_jDk30akdN');
+
+			$this->assertCount(2, $chargebacks);
+			$this->assertSame('chb_n9z0tp', $chargebacks[0]->chargebackId);
+			$this->assertSame('tr_7UhSN1zuXS', $chargebacks[0]->paymentReference);
+			$this->assertSame(1900, $chargebacks[0]->amount);
+			$this->assertSame('AC01', $chargebacks[0]->reasonCode);
+			$this->assertSame('Account identifier incorrect', $chargebacks[0]->reasonDescription);
+			$this->assertNull($chargebacks[0]->reversedAt);
+			$this->assertSame('stl_jDk30akdN', $chargebacks[0]->settlementId);
+			$this->assertSame(4338, $chargebacks[1]->amount);
+			$this->assertSame('USD', $chargebacks[1]->currency);
+			$this->assertNull($chargebacks[1]->reasonCode);
+			$this->assertSame('2024-04-09', $chargebacks[1]->reversedAt?->format('Y-m-d'));
+		}
+
+		/**
+		 * getSettlementChargebacks() throws PaymentSettlementException when the gateway reports an error.
+		 * @return void
+		 */
+		public function testGetSettlementChargebacksThrowsOnGatewayError(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementChargebacksResponse([
+				'request' => ['result' => 0, 'errorId' => '404', 'errorMessage' => 'Settlement not found']
+			]);
+
+			$this->expectException(PaymentSettlementException::class);
+			$this->driverWithGateway($gateway)->getSettlementChargebacks('stl_unknown');
 		}
 	}

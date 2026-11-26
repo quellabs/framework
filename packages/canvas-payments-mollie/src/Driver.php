@@ -21,9 +21,11 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Payments\Contracts\SequenceType;
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	use Quellabs\Payments\Contracts\SettlementStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
@@ -459,6 +461,103 @@
 				},
 				$responseData
 			);
+		}
+
+		/**
+		 * Returns the refunds deducted from a settlement. Uses each refund's
+		 * own `amount` (what was refunded to the customer), not its
+		 * `settlementAmount`, which Mollie deprecates on refunds from 2027-01-01.
+		 * @url https://docs.mollie.com/reference/list-settlement-refunds
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementRefunds(string $settlementId): array {
+			$response = $this->getGateway()->listSettlementRefunds($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $refund */
+				function (array $refund) use ($settlementId): SettlementRefundInfo {
+					/** @var array<string, mixed> $amount */
+					$amount = $refund["amount"] ?? [];
+
+					return new SettlementRefundInfo(
+						provider: self::DRIVER_NAME,
+						settlementId: $settlementId,
+						refundId: $this->normalizeString($refund["id"] ?? null),
+						paymentReference: $this->normalizeString($refund["paymentId"] ?? null),
+						amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+						currency: $this->normalizeString($amount["currency"] ?? null),
+						description: $this->normalizeString($refund["description"] ?? null),
+						status: $this->normalizeString($refund["status"] ?? null),
+						createdAt: $this->parseOptionalDate($refund["createdAt"] ?? null),
+						metadata: is_array($refund["metadata"] ?? null) ? $refund["metadata"] : [],
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
+		 * Returns the chargebacks deducted from a settlement. Uses each
+		 * chargeback's own `amount` (what the customer charged back), not its
+		 * deprecated `settlementAmount`. `reason` is only present for SEPA
+		 * Direct Debit chargebacks.
+		 * @url https://docs.mollie.com/reference/list-settlement-chargebacks
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementChargebacks(string $settlementId): array {
+			$response = $this->getGateway()->listSettlementChargebacks($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $chargeback */
+				function (array $chargeback) use ($settlementId): SettlementChargebackInfo {
+					/** @var array<string, mixed> $amount */
+					$amount = $chargeback["amount"] ?? [];
+					$reason = is_array($chargeback["reason"] ?? null) ? $chargeback["reason"] : [];
+
+					return new SettlementChargebackInfo(
+						provider: self::DRIVER_NAME,
+						settlementId: $settlementId,
+						chargebackId: $this->normalizeString($chargeback["id"] ?? null),
+						paymentReference: $this->normalizeString($chargeback["paymentId"] ?? null),
+						amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+						currency: $this->normalizeString($amount["currency"] ?? null),
+						reasonCode: is_string($reason["code"] ?? null) ? $reason["code"] : null,
+						reasonDescription: is_string($reason["description"] ?? null) ? $reason["description"] : null,
+						createdAt: $this->parseOptionalDate($chargeback["createdAt"] ?? null),
+						reversedAt: $this->parseOptionalDate($chargeback["reversedAt"] ?? null),
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
+		 * Parses an ISO 8601 timestamp from a Mollie response, or null when absent or empty.
+		 * @param mixed $value
+		 * @return \DateTimeImmutable|null
+		 */
+		private function parseOptionalDate(mixed $value): ?\DateTimeImmutable {
+			$raw = $this->normalizeString($value);
+
+			return $raw !== '' ? new \DateTimeImmutable($raw) : null;
 		}
 
 		/**
