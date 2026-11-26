@@ -67,13 +67,13 @@
 		 * Creates a new PayPal order and returns its ID, which serves as the checkout token.
 		 * Equivalent to NVP SetExpressCheckout.
 		 * @see https://developer.paypal.com/docs/api/orders/v2/#orders_create
-		 * @param float $value Payment amount in major units (e.g. 12.50)
+		 * @param string $value Payment amount in major units, formatted for PayPal (e.g. "12.50")
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code (default: EUR)
 		 * @param string $brandName Optional brand name shown on the PayPal checkout page
 		 * @return GatewayResponse
 		 */
-		public function createOrder(float $value, string $description, string $currency = "EUR", string $brandName = ""): array {
+		public function createOrder(string $value, string $description, string $currency = "EUR", string $brandName = ""): array {
 			$experienceContext = array_filter([
 				'payment_method_preference' => $this->m_account_optional ? 'UNRESTRICTED' : 'IMMEDIATE_PAYMENT_REQUIRED',
 				'user_action'               => 'PAY_NOW',
@@ -92,7 +92,7 @@
 				'purchase_units' => [[
 					'amount'      => [
 						'currency_code' => $currency,
-						'value'         => number_format($value, 2, '.', '')
+						'value'         => $value
 					],
 					'description' => $description
 				]]
@@ -148,13 +148,13 @@
 		 * Equivalent to NVP RefundTransaction.
 		 * @see https://developer.paypal.com/docs/api/payments/v2/#captures_refund
 		 * @param string $captureId The capture ID to refund
-		 * @param float|null $value Refund amount in major units, or null for a full refund
+		 * @param string|null $value Refund amount in major units, formatted for PayPal, or null for a full refund
 		 * @param string|null $currencyType ISO 4217 currency code, required when $value is set
 		 * @param string $note Human-readable reason for the refund, shown to the buyer
 		 * @param string $idempotencyKey Unique key to make this request safely retryable
 		 * @return GatewayResponse
 		 */
-		public function refund(string $captureId, ?float $value, ?string $currencyType, string $note, string $idempotencyKey): array {
+		public function refund(string $captureId, ?string $value, ?string $currencyType, string $note, string $idempotencyKey): array {
 			// Add payment note
 			$body = [
 				'note_to_payer' => substr($note, 0, 255)
@@ -163,7 +163,7 @@
 			// Omitting the amount field triggers a full refund on PayPal's side
 			if ($value !== null && $currencyType !== null) {
 				$body['amount'] = [
-					'value'         => number_format($value, 2, '.', ''),
+					'value'         => $value,
 					'currency_code' => $currencyType
 				];
 			}

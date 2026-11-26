@@ -20,7 +20,9 @@
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	
 	/**
 	 * Stripe Driver
@@ -35,7 +37,13 @@
 		 * Driver name
 		 */
 		const string DRIVER_NAME = "stripe";
-		
+
+		/**
+		 * Currencies with 0 ISO 4217 digits that Stripe still takes as two-decimal values ending in "00".
+		 * @see https://docs.stripe.com/currencies#special-cases
+		 */
+		private const TWO_DECIMAL_REPRESENTED_CURRENCIES = ['ISK', 'UGX'];
+
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array<string, mixed>
@@ -132,7 +140,7 @@
 			
 			// Call the API for a new checkout session
 			$result = $this->getGateway()->createCheckoutSession(
-				$request->amount,
+				$this->toStripeAmount($request->amount, $request->currency),
 				$request->description,
 				$request->currency,
 				$paymentMethodTypes,
@@ -285,7 +293,7 @@
 			// Call the API
 			$result = $this->getGateway()->refund(
 				$request->paymentReference,
-				$request->amount,
+				$request->amount !== null ? $this->toStripeAmount($request->amount, $request->currency) : null,
 				$reason,
 				$idempotencyKey,
 			);
@@ -325,7 +333,7 @@
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $response['id'],
-				value: $response['amount'],
+				value: $this->fromStripeAmount($response['amount'], $response['currency']),
 				currency: strtoupper($response['currency']),
 				metadata: [
 					'status' => $response['status'],
@@ -383,12 +391,14 @@
 					continue;
 				}
 				
+				$refundCurrency = strtoupper($this->normalizeString($refundRaw['currency'] ?? null));
+
 				$refunds[] = new RefundResult(
 					provider: self::DRIVER_NAME,
 					paymentReference: $paymentReference,
 					refundId: $this->normalizeString($refundRaw['id'] ?? null),
-					value: $this->toInt($refundRaw['amount'] ?? null),
-					currency: strtoupper($this->normalizeString($refundRaw['currency'] ?? null)),
+					value: $this->fromStripeAmount($this->toInt($refundRaw['amount'] ?? null), $refundCurrency),
+					currency: $refundCurrency,
 					metadata: [
 						'status' => isset($refundRaw['status']) ? $this->normalizeString($refundRaw['status']) : null,
 						'reason' => isset($refundRaw['reason']) ? $this->normalizeString($refundRaw['reason']) : null
@@ -452,6 +462,26 @@
 
 		/**
 		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementRefunds(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementChargebacks(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
 		 * @param ?string $cursor
 		 * @param int $limit
 		 * @return SettlementListResult
@@ -478,7 +508,36 @@
 		private function getGateway(): StripeGateway {
 			return $this->gateway ??= new StripeGateway($this);
 		}
-		
+
+		/**
+		 * Converts ISO 4217 minor units to Stripe's amount, which adds "00" for ISK and UGX.
+		 * @param int $amount
+		 * @param string $currency ISO 4217 currency code
+		 * @return int
+		 */
+		private function toStripeAmount(int $amount, string $currency): int {
+			return $this->isTwoDecimalRepresented($currency) ? $amount * 100 : $amount;
+		}
+
+		/**
+		 * Converts a Stripe amount to ISO 4217 minor units, dropping the "00" Stripe adds for ISK and UGX.
+		 * @param int $amount
+		 * @param string $currency ISO 4217 currency code
+		 * @return int
+		 */
+		private function fromStripeAmount(int $amount, string $currency): int {
+			return $this->isTwoDecimalRepresented($currency) ? intdiv($amount, 100) : $amount;
+		}
+
+		/**
+		 * Returns whether Stripe represents this zero-decimal currency as a two-decimal value.
+		 * @param string $currency ISO 4217 currency code
+		 * @return bool
+		 */
+		private function isTwoDecimalRepresented(string $currency): bool {
+			return in_array(strtoupper($currency), self::TWO_DECIMAL_REPRESENTED_CURRENCIES, true);
+		}
+
 		/**
 		 * Maps a Stripe PaymentIntent object to a normalized PaymentState.
 		 * @param string $sessionId Used as transactionId on the returned state
@@ -489,8 +548,8 @@
 		 */
 		private function mapPaymentIntentToState(string $sessionId, array $intent, ?string $paymentIntentId, string $currency): PaymentState {
 			$intentStatus   = $this->normalizeString($intent['status'] ?? null, 'unknown');
-			$amountReceived = $this->toInt($intent['amount_received'] ?? null);
-			$amountRefunded = $this->toInt($intent['amount_refunded'] ?? null);
+			$amountReceived = $this->fromStripeAmount($this->toInt($intent['amount_received'] ?? null), $currency);
+			$amountRefunded = $this->fromStripeAmount($this->toInt($intent['amount_refunded'] ?? null), $currency);
 			
 			/** @noinspection PhpSwitchCanBeReplacedWithMatchExpressionInspection */
 			switch ($intentStatus) {

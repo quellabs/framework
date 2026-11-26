@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Support\Resources;
 	use Symfony\Component\HttpClient\HttpClient;
@@ -263,6 +264,26 @@
 		}
 
 		/**
+		 * Returns every refund deducted from a settlement, following pagination.
+		 * @url https://docs.mollie.com/reference/list-settlement-refunds
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function listSettlementRefunds(string $settlementId): array {
+			return $this->callHttpClientPaginated("GET", "settlements/{$settlementId}/refunds");
+		}
+
+		/**
+		 * Returns every chargeback deducted from a settlement, following pagination.
+		 * @url https://docs.mollie.com/reference/list-settlement-chargebacks
+		 * @param string $settlementId
+		 * @return GatewayResponse
+		 */
+		public function listSettlementChargebacks(string $settlementId): array {
+			return $this->callHttpClientPaginated("GET", "settlements/{$settlementId}/chargebacks");
+		}
+
+		/**
 		 * Returns one page of the organization's settlements.
 		 * @url https://docs.mollie.com/reference/v2/settlements-api/list-settlements
 		 * @param string|null $cursor Null for the first page, a bare settlement id to
@@ -428,7 +449,7 @@
 				return [
 					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 					'response' => [
-						'amount'   => number_format($amount / 100, 2, '.', ''),
+						'amount'   => CurrencyDecimals::formatMajorUnits($amount, $currency),
 						'currency' => $currency
 					]
 				];

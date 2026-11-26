@@ -20,7 +20,9 @@
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	
 	/**
 	 * Multisafepay driver
@@ -486,6 +488,26 @@
 		 * @throws PaymentSettlementException
 		 */
 		public function getSettlementPayments(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementRefunds(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementChargebacks(string $settlementId): array {
 			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
 		}
 

@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\Payments\Mollie;
 	
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\MandateStatus;
@@ -21,9 +22,11 @@
 	use Quellabs\Payments\Contracts\RefundResult;
 	use Quellabs\Payments\Contracts\SequenceType;
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	use Quellabs\Payments\Contracts\SettlementStatus;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
 	use Quellabs\Contracts\Gateway\GatewayInterface;
@@ -172,7 +175,7 @@
 			$payload = array_filter([
 				'amount'          => [
 					'currency' => $request->currency,
-					'value'    => number_format($request->amount / 100, 2, '.', '')
+					'value'    => CurrencyDecimals::formatMajorUnits($request->amount, $request->currency)
 				],
 				'description'     => $request->description,
 				'redirectUrl'     => $request->redirectUrl,
@@ -247,7 +250,7 @@
 			$payload = array_filter([
 				'amount'       => [
 					'currency' => $request->currency,
-					'value'    => number_format($request->amount / 100, 2, '.', '')
+					'value'    => CurrencyDecimals::formatMajorUnits($request->amount, $request->currency)
 				],
 				'description'  => $request->description,
 				'customerId'   => $request->customerReference,
@@ -416,7 +419,7 @@
 				settlementId: $this->normalizeString($r["id"] ?? null),
 				reference: $this->normalizeString($r["reference"] ?? null),
 				status: $stateMap[strtoupper($mollieStatus)] ?? SettlementStatus::Unknown,
-				amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+				amount: $this->toMinorUnits($amount),
 				currency: $this->normalizeString($amount["currency"] ?? null),
 				settledAt: $settledAtRaw !== '' ? new \DateTimeImmutable($settledAtRaw) : null,
 				internalState: $mollieStatus,
@@ -451,7 +454,7 @@
 						provider: self::DRIVER_NAME,
 						settlementId: $settlementId,
 						paymentReference: $this->normalizeString($payment["id"] ?? null),
-						amount: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+						amount: $this->toMinorUnits($amount),
 						currency: $this->normalizeString($amount["currency"] ?? null),
 						description: $this->normalizeString($payment["description"] ?? null),
 						createdAt: $createdAtRaw !== '' ? new \DateTimeImmutable($createdAtRaw) : null,
@@ -459,6 +462,122 @@
 				},
 				$responseData
 			);
+		}
+
+		/**
+		 * Returns the refunds deducted from a settlement, using each refund's `amount` (not the deprecated `settlementAmount`).
+		 * @url https://docs.mollie.com/reference/list-settlement-refunds
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementRefunds(string $settlementId): array {
+			$response = $this->getGateway()->listSettlementRefunds($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $refund */
+				function (array $refund) use ($settlementId): SettlementRefundInfo {
+					/** @var array<string, mixed> $amount */
+					$amount = $refund["amount"] ?? [];
+
+					return new SettlementRefundInfo(
+						provider: self::DRIVER_NAME,
+						settlementId: $settlementId,
+						refundId: $this->normalizeString($refund["id"] ?? null),
+						paymentReference: $this->normalizeString($refund["paymentId"] ?? null),
+						amount: $this->toMinorUnits($amount),
+						currency: $this->normalizeString($amount["currency"] ?? null),
+						description: $this->normalizeString($refund["description"] ?? null),
+						status: $this->normalizeString($refund["status"] ?? null),
+						createdAt: $this->parseOptionalDate($refund["createdAt"] ?? null),
+						metadata: $this->parseMetadata($refund["metadata"] ?? null),
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
+		 * Returns the chargebacks deducted from a settlement, using each chargeback's `amount` (not the deprecated `settlementAmount`).
+		 * @url https://docs.mollie.com/reference/list-settlement-chargebacks
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementChargebacks(string $settlementId): array {
+			$response = $this->getGateway()->listSettlementChargebacks($settlementId);
+
+			if ($response["request"]["result"] == 0) {
+				throw new PaymentSettlementException(self::DRIVER_NAME, $response["request"]["errorId"], $response["request"]["errorMessage"]);
+			}
+
+			/** @var array<int, array<string, mixed>> $responseData */
+			$responseData = $response["response"] ?? [];
+
+			return array_map(
+				/** @param array<string, mixed> $chargeback */
+				function (array $chargeback) use ($settlementId): SettlementChargebackInfo {
+					/** @var array<string, mixed> $amount */
+					$amount = $chargeback["amount"] ?? [];
+					$reason = is_array($chargeback["reason"] ?? null) ? $chargeback["reason"] : [];
+
+					return new SettlementChargebackInfo(
+						provider: self::DRIVER_NAME,
+						settlementId: $settlementId,
+						chargebackId: $this->normalizeString($chargeback["id"] ?? null),
+						paymentReference: $this->normalizeString($chargeback["paymentId"] ?? null),
+						amount: $this->toMinorUnits($amount),
+						currency: $this->normalizeString($amount["currency"] ?? null),
+						reasonCode: is_string($reason["code"] ?? null) ? $reason["code"] : null,
+						reasonDescription: is_string($reason["description"] ?? null) ? $reason["description"] : null,
+						createdAt: $this->parseOptionalDate($chargeback["createdAt"] ?? null),
+						reversedAt: $this->parseOptionalDate($chargeback["reversedAt"] ?? null),
+					);
+				},
+				$responseData
+			);
+		}
+
+		/**
+		 * Parses an ISO 8601 timestamp from a Mollie response, or null when absent or empty.
+		 * @param mixed $value
+		 * @return \DateTimeImmutable|null
+		 */
+		private function parseOptionalDate(mixed $value): ?\DateTimeImmutable {
+			$raw = $this->normalizeString($value);
+
+			return $raw !== '' ? new \DateTimeImmutable($raw) : null;
+		}
+
+		/**
+		 * Converts a Mollie amount object ({value, currency}) to minor units of its currency.
+		 * @param array<string, mixed> $amount
+		 * @return int
+		 */
+		private function toMinorUnits(array $amount): int {
+			$currency = $this->normalizeString($amount["currency"] ?? null);
+
+			return CurrencyDecimals::toMinorUnits($this->toFloat($amount["value"] ?? null), $currency);
+		}
+
+		/**
+		 * Returns Mollie metadata as an array, decoding a JSON-encoded string; any other value yields [].
+		 * @param mixed $value
+		 * @return array<string, mixed>
+		 */
+		private function parseMetadata(mixed $value): array {
+			if (is_string($value)) {
+				$value = json_decode($value, true);
+			}
+
+			return is_array($value) ? $value : [];
 		}
 
 		/**
@@ -544,7 +663,7 @@
 				provider: self::DRIVER_NAME,
 				paymentReference: $paymentReference,
 				refundId: $refundId,
-				value: (int)round($this->toFloat($amount["value"] ?? null) * 100),
+				value: $this->toMinorUnits($amount),
 				currency: $this->normalizeString($amount["currency"] ?? null) ?: $request->currency
 			);
 		}
@@ -600,7 +719,7 @@
 			
 			/** @var array<string, mixed> $amountRefunded */
 			$amountRefunded      = $r["amountRefunded"] ?? [];
-			$amountRefundedValue = (int)round($this->toFloat($amountRefunded["value"] ?? null) * 100);
+			$amountRefundedValue = $this->toMinorUnits($amountRefunded);
 			$paidStatuses        = [PaymentStatus::Paid, PaymentStatus::Refunded];
 			
 			// Determine the value the customer paid
@@ -608,7 +727,7 @@
 			$amount = $r["amount"] ?? [];
 			
 			if (in_array($currentStatus, $paidStatuses)) {
-				$valuePaid = (int)round($this->toFloat($amount["value"] ?? null) * 100);
+				$valuePaid = $this->toMinorUnits($amount);
 			} else {
 				$valuePaid = 0;
 			}
@@ -663,7 +782,7 @@
 						provider: self::DRIVER_NAME,
 						paymentReference: $paymentReference,
 						refundId: $refund["id"],
-						value: (int)round((float)$refund["amount"]["value"] * 100),
+						value: $this->toMinorUnits($refund["amount"]),
 						currency: $refund["amount"]["currency"],
 					);
 				},

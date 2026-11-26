@@ -109,13 +109,13 @@
 		/**
 		 * Initiates a new Express Checkout session.
 		 * @see https://developer.paypal.com/docs/archive/express-checkout/ec-initiate-payment/
-		 * @param float $value Payment amount in major units (e.g. 12.50)
+		 * @param string $value Payment amount in major units, formatted for PayPal (e.g. "12.50")
 		 * @param string $description Order description shown on the PayPal checkout page
 		 * @param string $currency ISO 4217 currency code
 		 * @param array<string, string|int|float> $data Additional NVP parameters to merge into the request
 		 * @return GatewayResponse
 		 */
-		public function setExpressCheckout(float $value, string $description, string $currency = "EUR", array $data = []): array {
+		public function setExpressCheckout(string $value, string $description, string $currency = "EUR", array $data = []): array {
 			return $this->sendTransactionToGateway(array_merge($data, [
 				"VERSION"                        => 112,
 				"METHOD"                         => "SetExpressCheckout",
@@ -175,12 +175,12 @@
 		 * Partially refunds a transaction.
 		 * @see https://developer.paypal.com/docs/classic/express-checkout/ht_basicRefund-curl-etc/
 		 * @param string $transactionId The payment transaction ID to refund
-		 * @param float $value Refund amount in major units (e.g. 12.50)
+		 * @param string $value Refund amount in major units, formatted for PayPal (e.g. "12.50")
 		 * @param string $currencyType ISO 4217 currency code
 		 * @param string $note Human-readable reason for the refund, shown to the buyer
 		 * @return GatewayResponse
 		 */
-		public function partialRefund(string $transactionId, float $value, string $currencyType, string $note): array {
+		public function partialRefund(string $transactionId, string $value, string $currencyType, string $note): array {
 			return $this->sendTransactionToGateway([
 				"VERSION"       => 94,
 				"METHOD"        => "RefundTransaction",
@@ -189,7 +189,7 @@
 				"SIGNATURE"     => $this->m_api_signature,
 				"TRANSACTIONID" => $transactionId,
 				"REFUNDTYPE"    => "Partial",
-				"AMT"           => round($value, 2),
+				"AMT"           => $value,
 				"CURRENCYCODE"  => $currencyType,
 				"NOTE"          => $note
 			]);

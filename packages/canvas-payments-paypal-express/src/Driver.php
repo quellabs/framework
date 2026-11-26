@@ -4,6 +4,7 @@
 	
 	use Quellabs\Contracts\Gateway\GatewayInterface;
 	use Quellabs\Contracts\Gateway\GatewayHelpers;
+	use Quellabs\Payments\Contracts\CurrencyDecimals;
 	use Quellabs\Payments\Contracts\InitiateResult;
 	use Quellabs\Payments\Contracts\MandateInfo;
 	use Quellabs\Payments\Contracts\PaymentInterface;
@@ -20,7 +21,9 @@
 	use Quellabs\Payments\Contracts\PaymentSettlementException;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	
 	/**
 	 * Paypal Express driver
@@ -36,7 +39,13 @@
 		 * Driver name
 		 */
 		const string DRIVER_NAME = "paypal_express";
-		
+
+		/**
+		 * Currencies PayPal accepts only without decimals, although ISO 4217 gives HUF and TWD 2 digits.
+		 * @see https://developer.paypal.com/api/nvp-soap/currency-codes/
+		 */
+		private const ZERO_DECIMAL_CURRENCIES = ['HUF', 'JPY', 'TWD'];
+
 		/**
 		 * Active configuration for this provider, applied by the discovery system after instantiation.
 		 * @var array<string, mixed>
@@ -122,9 +131,16 @@
 				$optionalParams["BRANDNAME"] = $brandName;
 			}
 			
+			// PayPal rejects fractions of a zero-decimal currency
+			try {
+				$value = $this->formatAmount($request->amount, $request->currency);
+			} catch (\InvalidArgumentException $e) {
+				throw new PaymentInitiationException(self::DRIVER_NAME, 'invalid_amount', $e->getMessage());
+			}
+
 			// Call gateway
 			$result = $this->getGateway()->setExpressCheckout(
-				round($request->amount / 100, 2),
+				$value,
 				$request->description,
 				$request->currency,
 				["NOSHIPPING" => 2, "ALLOWNOTE" => 0, ...$optionalParams]
@@ -300,11 +316,16 @@
 					$request->description,
 				);
 			} else {
-				// Partial refund — convert from minor units (cents) to major units (e.g. 1050 → 10.50)
-				// as required by the PayPal NVP API.
+				// Partial refund — PayPal NVP takes major units and rejects fractions of a zero-decimal currency
+				try {
+					$value = $this->formatAmount($request->amount, $request->currency);
+				} catch (\InvalidArgumentException $e) {
+					throw new PaymentRefundException(self::DRIVER_NAME, 'invalid_amount', $e->getMessage());
+				}
+
 				$result = $this->getGateway()->partialRefund(
 					$request->paymentReference,
-					$request->amount / 100,
+					$value,
 					$request->currency,
 					$request->description,
 				);
@@ -341,7 +362,7 @@
 				provider: self::DRIVER_NAME,
 				paymentReference: $request->paymentReference,
 				refundId: $refundId,
-				value: (int)round((float)$grossRefundAmt * 100),
+				value: CurrencyDecimals::toMinorUnits((float)$grossRefundAmt, $currencyCode),
 				currency: $currencyCode,
 				metadata: [
 					"correlationId" => $response["CORRELATIONID"],
@@ -433,7 +454,7 @@
 						provider: self::DRIVER_NAME,
 						paymentReference: $paymentReference,
 						refundId: $refundId,
-						value: (int)round(abs((float)$amt) * 100),
+						value: CurrencyDecimals::toMinorUnits(abs((float)$amt), $currency),
 						currency: $currency,
 					);
 				}
@@ -497,6 +518,26 @@
 
 		/**
 		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementRefunds(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 * @throws PaymentSettlementException
+		 */
+		public function getSettlementChargebacks(string $settlementId): array {
+			throw new PaymentSettlementException(self::DRIVER_NAME, 'not_supported', 'Settlements are not supported by the ' . self::DRIVER_NAME . ' provider.');
+		}
+
+		/**
+		 * Settlements are not supported by this provider.
 		 * @param ?string $cursor
 		 * @param int $limit
 		 * @return SettlementListResult
@@ -540,7 +581,20 @@
 		private function getGateway(): PaypalGateway {
 			return $this->gateway ??= new PaypalGateway($this);
 		}
-		
+
+		/**
+		 * Formats a minor-unit amount as PayPal's AMT string, without decimals for PayPal's zero-decimal currencies.
+		 * @param int $amount
+		 * @param string $currency ISO 4217 currency code
+		 * @return string
+		 * @throws \InvalidArgumentException When the amount has a fraction PayPal cannot accept
+		 */
+		private function formatAmount(int $amount, string $currency): string {
+			$decimals = in_array(strtoupper($currency), self::ZERO_DECIMAL_CURRENCIES, true) ? 0 : null;
+
+			return CurrencyDecimals::formatMajorUnits($amount, $currency, $decimals);
+		}
+
 		/**
 		 * Execute a DoExpressCheckoutPayment call and map the result to a PaymentState.
 		 * Called from exchange() when CHECKOUTSTATUS is PaymentActionNotInitiated — meaning
@@ -606,8 +660,8 @@
 				throw new PaymentInitiationException(self::DRIVER_NAME, "500", "Invalid gateway response: PAYMENTINFO_0_AMT is missing or non-numeric");
 			}
 			
-			$amountMinorUnits = (int)round((float)$rawAmt * 100);
 			$currency         = $this->normalizeString($response["PAYMENTINFO_0_CURRENCYCODE"] ?? $currency, $currency);
+			$amountMinorUnits = CurrencyDecimals::toMinorUnits((float)$rawAmt, $currency);
 			
 			switch ($paymentStatus) {
 				// Payment was accepted and funds have been added to your account balance.
@@ -689,8 +743,9 @@
 			// TOTALREFUNDEDAMOUNT and AMT are optional — absent means zero, which is the correct default.
 			$rawRefunded   = $r["TOTALREFUNDEDAMOUNT"] ?? null;
 			$rawAmt        = $r["AMT"] ?? null;
-			$valueRefunded = is_numeric($rawRefunded) ? (int)round((float)$rawRefunded * 100) : 0;
-			$valueCaptured = is_numeric($rawAmt) ? (int)round((float)$rawAmt * 100) : 0;
+			$currency      = $this->normalizeString($r["CURRENCYCODE"] ?? "");
+			$valueRefunded = is_numeric($rawRefunded) ? CurrencyDecimals::toMinorUnits((float)$rawRefunded, $currency) : 0;
+			$valueCaptured = is_numeric($rawAmt) ? CurrencyDecimals::toMinorUnits((float)$rawAmt, $currency) : 0;
 			
 			// Map NVP PAYMENTSTATUS to PaymentStatus. GetTransactionDetails can return statuses
 			// beyond Completed — do not assume Paid without checking.
@@ -711,7 +766,7 @@
 				provider: self::DRIVER_NAME,
 				transactionId: $token,
 				state: $state,
-				currency: $this->normalizeString($r["CURRENCYCODE"] ?? ""),
+				currency: $currency,
 				valuePaid: $state === PaymentStatus::Paid ? $valueCaptured : 0,
 				valueRefunded: $valueRefunded,
 				internalState: $paymentStatus,
