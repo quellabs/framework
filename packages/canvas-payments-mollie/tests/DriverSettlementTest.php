@@ -301,6 +301,52 @@
 		}
 
 		/**
+		 * getSettlementRefunds() converts a zero-decimal currency (JPY) without scaling by 100.
+		 * @return void
+		 */
+		public function testGetSettlementRefundsUsesCurrencyDecimals(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementRefundsResponse([
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					[
+						'id'        => 're_jpy',
+						'amount'    => ['value' => '1000', 'currency' => 'JPY'],
+						'status'    => 'refunded',
+						'paymentId' => 'tr_jpy'
+					]
+				]
+			]);
+
+			$refunds = $this->driverWithGateway($gateway)->getSettlementRefunds('stl_jDk30akdN');
+
+			$this->assertSame(1000, $refunds[0]->amount);
+			$this->assertSame('JPY', $refunds[0]->currency);
+		}
+
+		/**
+		 * getSettlementRefunds() decodes JSON-string metadata and drops metadata that is not JSON or not an object.
+		 * @return void
+		 */
+		public function testGetSettlementRefundsDecodesJsonStringMetadata(): void {
+			$gateway = new FakeSettlementGateway();
+			$gateway->setSettlementRefundsResponse([
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					['id' => 're_1', 'amount' => ['value' => '1.00', 'currency' => 'EUR'], 'metadata' => '{"order_id":"12345"}'],
+					['id' => 're_2', 'amount' => ['value' => '1.00', 'currency' => 'EUR'], 'metadata' => 'plain text'],
+					['id' => 're_3', 'amount' => ['value' => '1.00', 'currency' => 'EUR'], 'metadata' => 42]
+				]
+			]);
+
+			$refunds = $this->driverWithGateway($gateway)->getSettlementRefunds('stl_jDk30akdN');
+
+			$this->assertSame(['order_id' => '12345'], $refunds[0]->metadata);
+			$this->assertSame([], $refunds[1]->metadata);
+			$this->assertSame([], $refunds[2]->metadata);
+		}
+
+		/**
 		 * getSettlementRefunds() throws PaymentSettlementException when the gateway reports an error.
 		 * @return void
 		 */

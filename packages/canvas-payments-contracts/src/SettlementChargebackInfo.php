@@ -42,6 +42,7 @@
 		public array $metadata;
 
 		/**
+		 * Creates a settlement chargeback snapshot.
 		 * @param string $provider The provider that owns this settlement (e.g. 'mollie').
 		 * @param string $settlementId The settlement this chargeback was deducted from.
 		 * @param string $chargebackId The provider's unique identifier for the chargeback.

@@ -39,6 +39,7 @@
 		public array $metadata;
 
 		/**
+		 * Creates a settlement refund snapshot.
 		 * @param string $provider The provider that owns this settlement (e.g. 'mollie').
 		 * @param string $settlementId The settlement this refund was deducted from.
 		 * @param string $refundId The provider's unique identifier for the refund.

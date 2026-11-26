@@ -448,7 +448,7 @@
 				return [
 					'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
 					'response' => [
-						'amount'   => number_format($amount / 100, 2, '.', ''),
+						'amount'   => MollieCurrency::formatMinorUnits($amount, $currency),
 						'currency' => $currency
 					]
 				];

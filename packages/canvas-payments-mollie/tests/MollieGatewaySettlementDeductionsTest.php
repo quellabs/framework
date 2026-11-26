@@ -20,6 +20,7 @@
 		private array $embedded;
 
 		/**
+		 * Stores the `_embedded` block to return; skips the parent constructor's configuration.
 		 * @param array<string, mixed> $embedded The `_embedded` block of the single page returned
 		 */
 		public function __construct(array $embedded) {
