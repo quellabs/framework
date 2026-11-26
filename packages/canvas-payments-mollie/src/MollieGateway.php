@@ -263,6 +263,30 @@
 		}
 
 		/**
+		 * Returns one page of the organization's settlements.
+		 * @url https://docs.mollie.com/reference/v2/settlements-api/list-settlements
+		 * @param string|null $cursor Null for the first page, a bare settlement id to
+		 *                            use as Mollie's own `from` parameter, or an absolute
+		 *                            next-page URL (as returned by a previous call) to
+		 *                            follow directly.
+		 * @param int $limit 1-250; Mollie defaults to 50 when omitted.
+		 * @return MollieRawResponse
+		 */
+		public function listSettlements(?string $cursor, int $limit): array {
+			if ($cursor !== null && str_starts_with($cursor, 'http')) {
+				return $this->callHttpClientRaw("GET", $cursor);
+			}
+
+			$query = ['limit' => $limit];
+
+			if ($cursor !== null) {
+				$query['from'] = $cursor;
+			}
+
+			return $this->callHttpClientRaw("GET", "settlements?" . http_build_query($query));
+		}
+
+		/**
 		 * Returns true if Mollie is in test mode, false if not
 		 * @return bool
 		 */

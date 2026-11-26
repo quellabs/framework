@@ -413,6 +413,54 @@
 		}
 
 		/**
+		 * Engines that enforce named foreign keys reject dropping a column
+		 * a constraint still uses, so the constraint goes first on up() and
+		 * comes back only after its column on down().
+		 */
+		public function testDeletedForeignKeyIsDroppedBeforeItsColumnAndRestoredAfterIt(): void {
+			$changes = $this->emptyChangeSet();
+			$changes['deleted'] = ['customer_id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'nullable' => true])];
+			$changes['foreignKeys']['deleted'] = [
+				'fk_orders_customer_id' => $this->baseForeignKey(),
+			];
+
+			$content = $this->buildMigrationContent(['orders' => $changes]);
+			$up = substr($content, 0, strpos($content, 'public function down()'));
+			$down = substr($content, strlen($up));
+
+			$this->assertLessThan(strpos($up, 'alter orders (drop customer_id)'), strpos($up, 'alter orders (drop foreign key (customer_id))'));
+			$this->assertLessThan(strpos($down, 'add foreign key (customer_id)'), strpos($down, 'alter orders (add customer_id ='));
+		}
+
+		/**
+		 * A foreign key that moves to another referenced column is dropped
+		 * before the column it used to reference, and gets its new shape
+		 * only after the column changes; down() mirrors that.
+		 */
+		public function testModifiedForeignKeyIsDroppedBeforeAndReaddedAfterColumnChanges(): void {
+			$customers = $this->emptyChangeSet();
+			$customers['deleted'] = ['code' => $this->baseColumn(['limit' => 20])];
+
+			$orders = $this->emptyChangeSet();
+			$orders['foreignKeys']['modified'] = [
+				'fk_orders_customer_id' => [
+					'database' => $this->baseForeignKey(['referencedColumns' => ['code']]),
+					'entity'   => $this->baseForeignKey()
+				]
+			];
+
+			$content = $this->buildMigrationContent(['customers' => $customers, 'orders' => $orders]);
+			$up = substr($content, 0, strpos($content, 'public function down()'));
+			$down = substr($content, strlen($up));
+
+			$this->assertLessThan(strpos($up, 'alter customers (drop code)'), strpos($up, 'alter orders (drop foreign key (customer_id))'));
+			$this->assertLessThan(strpos($up, 'references customers (id)'), strpos($up, 'alter customers (drop code)'));
+
+			$this->assertLessThan(strpos($down, 'alter customers (add code ='), strpos($down, 'alter orders (drop foreign key (customer_id))'));
+			$this->assertLessThan(strpos($down, 'references customers (code)'), strpos($down, 'alter customers (add code ='));
+		}
+
+		/**
 		 * The sqlite counterpart: ALTER TABLE rejects adding a foreign key
 		 * outright, even to a table this migration just created, so the
 		 * new table embeds its own FK inline instead — no separate

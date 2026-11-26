@@ -15,7 +15,7 @@
 		 * Configuration settings for the provider.
 		 * @var array<string, mixed>
 		 */
-		private array $config;
+		private array $config = [];
 		
 		/**
 		 * Retrieves metadata associated with this provider.

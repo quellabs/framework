@@ -43,4 +43,20 @@
 				$this->assertSame('not_supported', $e->getErrorId());
 			}
 		}
+
+		/**
+		 * listSettlements() throws PaymentSettlementException with errorId 'not_supported'.
+		 * @return void
+		 */
+		public function testListSettlementsThrowsNotSupported(): void {
+			$driver = new Driver();
+
+			try {
+				$driver->listSettlements();
+				$this->fail('Expected PaymentSettlementException to be thrown.');
+			} catch (PaymentSettlementException $e) {
+				$this->assertSame('paypal_express', $e->getProvider());
+				$this->assertSame('not_supported', $e->getErrorId());
+			}
+		}
 	}
