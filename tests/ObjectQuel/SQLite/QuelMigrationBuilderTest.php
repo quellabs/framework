@@ -413,6 +413,26 @@
 		}
 
 		/**
+		 * Engines that enforce named foreign keys reject dropping a column
+		 * a constraint still uses, so the constraint goes first on up() and
+		 * comes back only after its column on down().
+		 */
+		public function testDeletedForeignKeyIsDroppedBeforeItsColumnAndRestoredAfterIt(): void {
+			$changes = $this->emptyChangeSet();
+			$changes['deleted'] = ['customer_id' => $this->baseColumn(['type' => 'integer', 'limit' => null, 'nullable' => true])];
+			$changes['foreignKeys']['deleted'] = [
+				'fk_orders_customer_id' => $this->baseForeignKey(),
+			];
+
+			$content = $this->buildMigrationContent(['orders' => $changes]);
+			$up = substr($content, 0, strpos($content, 'public function down()'));
+			$down = substr($content, strlen($up));
+
+			$this->assertLessThan(strpos($up, 'alter orders (drop customer_id)'), strpos($up, 'alter orders (drop foreign key (customer_id))'));
+			$this->assertLessThan(strpos($down, 'add foreign key (customer_id)'), strpos($down, 'alter orders (add customer_id ='));
+		}
+
+		/**
 		 * The sqlite counterpart: ALTER TABLE rejects adding a foreign key
 		 * outright, even to a table this migration just created, so the
 		 * new table embeds its own FK inline instead — no separate
