@@ -721,6 +721,11 @@
 			$amountRefunded      = $r["amountRefunded"] ?? [];
 			$amountRefundedValue = $this->toMinorUnits($amountRefunded);
 			$paidStatuses        = [PaymentStatus::Paid, PaymentStatus::Refunded];
+
+			// Mollie has no chargeback status (a charged-back payment keeps its status), so the
+			// only signal is amountChargedBack, which it omits while nothing is charged back
+			/** @var array<string, mixed> $amountChargedBack */
+			$amountChargedBack = $r["amountChargedBack"] ?? [];
 			
 			// Determine the value the customer paid
 			/** @var array<string, mixed> $amount */
@@ -751,7 +756,8 @@
 				internalState: $mollieStatus,
 				metadata: $metadata,
 				failureReason: $failureReason !== '' ? $failureReason : null,
-				mandateId: $mandateId !== '' ? $mandateId : null
+				mandateId: $mandateId !== '' ? $mandateId : null,
+				valueChargedBack: $this->toMinorUnits($amountChargedBack)
 			);
 		}
 		
