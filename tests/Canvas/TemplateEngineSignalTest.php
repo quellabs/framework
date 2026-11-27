@@ -69,8 +69,8 @@
 			$first = $this->make($factory);
 			$second = $this->make($factory);
 
-			$this->renderFile($first, 'first');
-			$this->renderFile($second, 'second');
+			$first->renderString('first');
+			$second->renderString('second');
 
 			$this->assertSame(['first', 'second'], $this->renderedTemplates($collector));
 		}
@@ -88,9 +88,9 @@
 			$second = $this->make($factory);
 
 			unset($first);
-			$this->renderFile($second, 'survivor');
+			$second->renderString('survivor');
 			$third = $this->make($factory);
-			$this->renderFile($third, 'third');
+			$third->renderString('third');
 
 			$this->assertSame(['survivor', 'third'], $this->renderedTemplates($collector));
 		}
@@ -138,8 +138,8 @@
 			$handlebars = $this->makeHandlebars();
 			$smarty = $this->makeSmarty();
 
-			$this->renderFile($handlebars, 'handlebars');
-			$this->renderFile($smarty, 'smarty');
+			$handlebars->renderString('handlebars');
+			$smarty->renderString('smarty');
 
 			$this->assertSame(['handlebars', 'smarty'], $this->renderedTemplates($collector));
 		}
@@ -192,28 +192,12 @@
 		}
 
 		/**
-		 * Writes a one-line template named $name for $engine and renders it.
-		 * Files rather than strings, because HandlebarsTemplate::renderString() fails to compile.
-		 * @param TemplateEngineInterface $engine
-		 * @param string $name Template name without extension
-		 * @return void
-		 */
-		private function renderFile(TemplateEngineInterface $engine, string $name): void {
-			$file = $name . ($engine instanceof SmartyTemplate ? '.tpl' : '.hbs');
-			file_put_contents($this->workDir . '/templates/' . $file, $name);
-
-			$engine->render($file);
-		}
-
-		/**
-		 * The names (without extension) of the templates the collector saw rendered, in order.
+		 * The template strings the collector saw rendered, in order.
 		 * @param EventCollector $collector
-		 * @return list<string>
+		 * @return list<mixed>
 		 */
 		private function renderedTemplates(EventCollector $collector): array {
-			$templates = array_column(array_column($collector->getEventsBySignal(self::SIGNAL_NAME), 'data'), 'template');
-
-			return array_map(static fn(mixed $template): string => is_string($template) ? pathinfo($template, PATHINFO_FILENAME) : '', $templates);
+			return array_column(array_column($collector->getEventsBySignal(self::SIGNAL_NAME), 'data'), 'template');
 		}
 
 		/**

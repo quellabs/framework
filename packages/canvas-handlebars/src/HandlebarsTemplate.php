@@ -348,9 +348,16 @@
 			}
 			
 			// eval is unavoidable here: LightnCandy outputs PHP source that must be executed.
+			// That source has no opening tag ("use ...; return function ..."), so it is evaluated as-is.
 			// String templates are never user-supplied in normal Canvas usage.
 			/** @noinspection PhpUseFunctionInsteadOfLanguageConstructShouldBeUsedInspection */
-			return eval('?>' . $compiled);
+			$renderer = eval($compiled);
+
+			if (!is_callable($renderer)) {
+				throw new \RuntimeException("LightnCandy's compiled template string did not return a renderer");
+			}
+
+			return $renderer;
 		}
 		
 		/**
