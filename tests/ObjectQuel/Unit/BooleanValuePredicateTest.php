@@ -191,6 +191,7 @@
 		 */
 		public function testBooleanFunctionComparedToOneIsFolded(): void {
 			$bare = $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where is_float(u.id)');
+
 			self::assertSame($bare, $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where is_float(u.id) = 1'));
 		}
 
