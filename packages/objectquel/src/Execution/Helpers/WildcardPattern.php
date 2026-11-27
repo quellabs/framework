@@ -13,6 +13,9 @@
 		/** Escape character in LIKE and regex forms; LIKE needs an explicit ESCAPE clause since SQLite and SQL Server have no default */
 		public const string ESCAPE_CHAR = '\\';
 
+		/** Characters LIKE treats as special; [ opens a class in T-SQL LIKE */
+		private const string LIKE_SPECIAL_CHARS = '%_[\\';
+
 		/** Characters escaped inside a bracket class, valid in T-SQL LIKE, ICU, PCRE and PostgreSQL regexes */
 		private const string CLASS_SPECIAL_CHARS = '\\]^-[';
 
@@ -28,7 +31,7 @@
 			return self::translate(
 				$string,
 				['*' => '%', '?' => '_'],
-				fn(string $byte): string => self::escape($byte, '%_[\\'),
+				fn(string $byte): string => self::escape($byte, self::LIKE_SPECIAL_CHARS),
 				fn(CharacterClass $class): string => '_'
 			);
 		}
@@ -42,7 +45,7 @@
 			return self::translate(
 				$string,
 				['*' => '%', '?' => '_'],
-				fn(string $byte): string => self::escape($byte, '%_[\\'),
+				fn(string $byte): string => self::escape($byte, self::LIKE_SPECIAL_CHARS),
 				fn(CharacterClass $class): string => self::bracketClass($class->getCharacters())
 			);
 		}

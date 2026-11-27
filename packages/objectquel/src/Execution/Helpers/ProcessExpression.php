@@ -47,7 +47,7 @@
 	 *
 	 * Key responsibilities:
 	 * - Convert binary operations to SQL operators
-	 * - Transform wildcard patterns (*,?) to SQL LIKE syntax (%,_)
+	 * - Translate string patterns (*, ?, [...]) to LIKE, GLOB or regex
 	 * - Handle type checking functions (is_numeric, is_integer, is_float)
 	 * - Process string concatenation, null checks, and parameter binding
 	 * - Support regular expression matching in SQL
@@ -127,7 +127,7 @@
 		 *
 		 * Processes standard binary operations (=, <>, +, -, etc.) between two AST nodes.
 		 * Includes special handling for:
-		 * - Wildcard string patterns (converted to SQL LIKE)
+		 * - String patterns (converted to LIKE, GLOB or regex)
 		 * - Regular expression patterns (converted to SQL REGEXP)
 		 * - Standard comparison and arithmetic operations
 		 *
