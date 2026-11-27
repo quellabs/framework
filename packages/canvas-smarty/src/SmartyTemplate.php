@@ -5,6 +5,7 @@
 	use Smarty\Smarty;
 	use Smarty\Exception;
 	use Quellabs\SignalHub\Signal;
+	use Quellabs\SignalHub\SignalHub;
 	use Quellabs\Support\ComposerUtils;
 	use Quellabs\SignalHub\SignalHubLocator;
 	use Quellabs\Contracts\Templates\TemplateRenderException;
@@ -30,11 +31,19 @@
 		 */
 		private array $globals = [];
 		
+		/** Name of the standalone signal that sends render data to the Canvas inspector. */
+		private const string TEMPLATE_SIGNAL_NAME = 'debug.template.query';
+
 		/**
 		 * @var Signal Signal used to send debug data to Canvas
 		 */
 		private Signal $templateSignal;
-		
+
+		/**
+		 * @var SignalHub Hub $templateSignal was taken from, so the destructor cleans up the same hub
+		 */
+		private SignalHub $signalHub;
+
 		/**
 		 * SmartyTemplate constructor
 		 * @param SmartyConfig $configuration
@@ -42,12 +51,11 @@
 		public function __construct(array $configuration) {
 			// Store the configuration
 			$this->config = $configuration;
-			
-			// Create signal
-			$signalHub = SignalHubLocator::getInstance();
-			$this->templateSignal = new Signal('debug.template.query');
-			$signalHub->registerSignal($this->templateSignal);
-			
+
+			// Share one signal between all instances: the hub allows a standalone signal name only once
+			$this->signalHub = SignalHubLocator::getInstance();
+			$this->templateSignal = $this->resolveTemplateSignal($this->signalHub);
+
 			// Create Smarty instance
 			$this->smarty = new Smarty();
 			$this->smarty->setTemplateDir($configuration['template_dir']);
@@ -81,11 +89,34 @@
 		}
 		
 		/**
-		 * Remove template signal from hub
+		 * Removes the template signal from the hub, unless the hub now holds
+		 * a different signal under that name (registered by someone else).
+		 * Other instances still sharing it keep emitting through the same
+		 * object, so listeners already connected to it keep receiving events.
+		 * @return void
 		 */
 		public function __destruct() {
-			$signalHub = SignalHubLocator::getInstance();
-			$signalHub->unregisterSignal($this->templateSignal);
+			if ($this->signalHub->getSignal(self::TEMPLATE_SIGNAL_NAME) === $this->templateSignal) {
+				$this->signalHub->unregisterSignal($this->templateSignal);
+			}
+		}
+
+		/**
+		 * Returns the hub's template signal, registering it first when absent.
+		 * @param SignalHub $signalHub
+		 * @return Signal
+		 */
+		private function resolveTemplateSignal(SignalHub $signalHub): Signal {
+			$existing = $signalHub->getSignal(self::TEMPLATE_SIGNAL_NAME);
+
+			if ($existing !== null) {
+				return $existing;
+			}
+
+			$signal = new Signal(self::TEMPLATE_SIGNAL_NAME);
+			$signalHub->registerSignal($signal);
+
+			return $signal;
 		}
 		
 		/**

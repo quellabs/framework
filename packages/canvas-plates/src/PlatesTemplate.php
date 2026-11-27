@@ -8,7 +8,10 @@
 	use Quellabs\Support\ComposerUtils;
 	
 	class PlatesTemplate implements TemplateEngineInterface {
-		
+
+		/** Plates folder renderString() resolves its temporary template files through. */
+		private const string STRING_TEMPLATE_FOLDER = '__canvas_string';
+
 		/**
 		 * @var Engine The Plates engine instance
 		 */
@@ -106,24 +109,25 @@
 			
 			try {
 				$mergedData = array_merge($this->globals, $data);
-				
-				// Write the template string to a uniquely named temp file inside a
-				// directory the engine can reach, then render it via a cloned engine
-				// that points at the system temp dir.
+
+				// Write the string to a uniquely named temp file with the engine's own
+				// extension, which Plates appends when it resolves a template name
 				$tmpDir  = sys_get_temp_dir();
 				$tmpName = 'plates_str_' . bin2hex(random_bytes(8));
-				$tmpFile = $tmpDir . DIRECTORY_SEPARATOR . $tmpName . '.php';
-				
+				$extension = $this->engine->getFileExtension();
+				$tmpFile = $tmpDir . DIRECTORY_SEPARATOR . $tmpName . ($extension !== null ? '.' . $extension : '');
+
 				if (file_put_contents($tmpFile, $templateString) === false) {
 					throw new \RuntimeException("Unable to write temporary template file.");
 				}
-				
-				// Clone the engine and point it at the temp directory so the existing
-				// folder registrations (namespaces) on $this->engine are not disturbed.
-				$tmpEngine = clone $this->engine;
-				$tmpEngine->setDirectory($tmpDir);
-				
-				return $tmpEngine->render($tmpName, $mergedData);
+
+				// Reach the temp dir through a folder of its own, so the engine's default
+				// directory (shared by every clone of the engine) is never changed
+				if (!$this->engine->getFolders()->exists(self::STRING_TEMPLATE_FOLDER)) {
+					$this->engine->addFolder(self::STRING_TEMPLATE_FOLDER, $tmpDir);
+				}
+
+				return $this->engine->render(self::STRING_TEMPLATE_FOLDER . '::' . $tmpName, $mergedData);
 			} catch (\Throwable $e) {
 				$snippet = strlen($templateString) > 50 ? substr($templateString, 0, 50) . '...' : $templateString;
 				throw new TemplateRenderException($snippet, "Failed to render template string: " . $e->getMessage(), $e);
