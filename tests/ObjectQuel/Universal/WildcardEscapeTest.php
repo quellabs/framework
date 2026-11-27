@@ -5,7 +5,9 @@
 	use PHPUnit\Framework\Attributes\DataProvider;
 	use Quellabs\ObjectQuel\Tests\ObjectQuelTestCase;
 
-	/** Wildcard comparisons: escaped * and ? match literally, and literal SQL wildcards in a pattern stay literal on every engine. */
+	/**
+	 * Wildcard comparisons: escaped * and ? match literally, and literal SQL wildcards in a pattern stay literal on every engine.
+	 */
 	class WildcardEscapeTest extends ObjectQuelTestCase {
 
 		/**
@@ -36,16 +38,16 @@
 		 */
 		public static function comparisons(): array {
 			return [
-				'unescaped star is a wildcard'       => ["u.username = 'a*b'", [1, 2, 3, 5, 6]],
-				'escaped star is literal'            => ["u.username = 'a\\*b'", [1]],
-				'escaped question mark is literal'   => ['u.username = "a\\?b"', [6]],
-				'escaped star negated'               => ["u.username <> 'a\\*b'", [2, 3, 4, 5, 6]],
+				'unescaped star is a wildcard'        => ["u.username = 'a*b'", [1, 2, 3, 5, 6]],
+				'escaped star is literal'             => ["u.username = 'a\\*b'", [1]],
+				'escaped question mark is literal'    => ['u.username = "a\\?b"', [6]],
+				'escaped star negated'                => ["u.username <> 'a\\*b'", [2, 3, 4, 5, 6]],
 				'partly escaped keeps other wildcard' => ["u.username = '?_b\\*'", [4]],
-				'partly escaped star with wildcard'  => ["u.username = '?\\*b'", [1]],
-				'literal percent in pattern'         => ["u.username = 'a%*'", [3]],
-				'literal underscore in pattern'      => ["u.username = 'a_b?'", [4]],
-				'literal backslash in pattern'       => ["u.username = 'a\\\\*'", [5]],
-				'unescaped wildcards negated'        => ["u.username <> 'a?b'", [4]]
+				'partly escaped star with wildcard'   => ["u.username = '?\\*b'", [1]],
+				'literal percent in pattern'          => ["u.username = 'a%*'", [3]],
+				'literal underscore in pattern'       => ["u.username = 'a_b?'", [4]],
+				'literal backslash in pattern'        => ["u.username = 'a\\\\*'", [5]],
+				'unescaped wildcards negated'         => ["u.username <> 'a?b'", [4]]
 			];
 		}
 
