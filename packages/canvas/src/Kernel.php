@@ -34,6 +34,8 @@
 	use Quellabs\Canvas\Discover\DependencyAwareDiscover;
 	use Quellabs\Canvas\Error\DefaultErrorHandler;
 	use Quellabs\Canvas\Error\ErrorHandlerInterface;
+	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
+	use Quellabs\Contracts\Http\HttpException;
 	use Quellabs\Canvas\Routing\RequestHandler;
 	use Quellabs\Canvas\Inspector\EventCollector;
 	use Quellabs\Canvas\Cache\CacheInterfaceProvider;
@@ -55,6 +57,7 @@
 	use Quellabs\SignalHub\SignalHub;
 	use Quellabs\SignalHub\SignalHubLocator;
 	use Quellabs\Support\ComposerUtils;
+	use Psr\Log\LoggerInterface;
 	use Symfony\Component\HttpFoundation\Request;
 	use Symfony\Component\HttpFoundation\Response;
 	use Symfony\Component\HttpFoundation\Session\SessionInterface;
@@ -427,7 +430,7 @@
 		}
 		
 		/**
-		 * Create an error response from an exception
+		 * Create an error response from an exception, logging server errors and failing custom handlers.
 		 * @param \Throwable $exception
 		 * @param Request $request
 		 * @return Response
@@ -444,14 +447,75 @@
 						return $handler->handle($exception, $request);
 					}
 				}
-			} catch (\Throwable) {
-				// Fall through to the default handler below
+			} catch (\Throwable $handlerFailure) {
+				// A handler rethrowing its own exception is logged once, below
+				if ($handlerFailure !== $exception) {
+					$this->logException('Error handler failed', $handlerFailure, $request);
+				}
 			}
 
 			// No custom handler found (or one of them failed). Show a generic message
 			$isDevelopment = $this->configuration->get('debug_mode', false);
 			$defaultHandler = new DefaultErrorHandler($this->defaultSecurityHeaderPolicy);
-			return $defaultHandler->handle($exception, $request, $isDevelopment);
+			$response = $defaultHandler->handle($exception, $request, $isDevelopment);
+
+			if (!$this->isClientError($exception)) {
+				$this->logException('Unhandled exception', $exception, $request);
+			}
+
+			return $response;
+		}
+
+		/**
+		 * True for an HttpException with a 4xx code; other exceptions' codes say nothing about HTTP status.
+		 * @param \Throwable $exception
+		 * @return bool
+		 */
+		private function isClientError(\Throwable $exception): bool {
+			if ($exception instanceof RouteNotFoundException) {
+				return true;
+			}
+
+			$code = $exception->getCode();
+			return $exception instanceof HttpException && $code >= 400 && $code <= 499;
+		}
+
+		/**
+		 * Logs $exception and its request to the app logger, falling back to error_log; never throws.
+		 * @param string $message
+		 * @param \Throwable $exception
+		 * @param Request $request
+		 * @return void
+		 */
+		private function logException(string $message, \Throwable $exception, Request $request): void {
+			$context = [
+				'exception' => $exception,
+				'method'    => $request->getMethod(),
+				'uri'       => $request->getBaseUrl() . $request->getPathInfo(),
+				'trace'     => $exception->getTraceAsString()
+			];
+
+			try {
+				$logger = $this->dependencyInjector->get(LoggerInterface::class);
+
+				if ($logger instanceof LoggerInterface) {
+					$logger->error($message, $context);
+					return;
+				}
+			} catch (\Throwable) {
+				// Fall back to error_log below
+			}
+
+			error_log(sprintf(
+				'%s: %s: %s in %s:%d (%s %s)',
+				$message,
+				$exception::class,
+				$exception->getMessage(),
+				$exception->getFile(),
+				$exception->getLine(),
+				$context['method'],
+				$context['uri'],
+			));
 		}
 		
 		/**
