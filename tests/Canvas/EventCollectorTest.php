@@ -58,6 +58,7 @@
 
 			$after = new Signal('app.shutdown');
 			$hub->registerSignal($after);
+
 			$before->emit(['x' => 1]);
 			$after->emit(['x' => 2]);
 

@@ -65,6 +65,7 @@
 			$secondEmitted = [];
 			$firstSlot = new Slot(function (object $entity) use (&$firstEmitted): void { $firstEmitted[] = $entity; });
 			$secondSlot = new Slot(function (object $entity) use (&$secondEmitted): void { $secondEmitted[] = $entity; });
+
 			$this->em->getUnitOfWork()->signalPrePersist->connect($firstSlot);
 			$second->getUnitOfWork()->signalPrePersist->connect($secondSlot);
 
