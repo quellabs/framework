@@ -177,6 +177,24 @@
 		}
 
 		/**
+		 * A literal 1 or 0 compared to a non-boolean literal stays a comparison instead of folding to the other side.
+		 * @return void
+		 */
+		public function testNonBooleanLiteralComparedToOneIsKept(): void {
+			self::assertStringEndsWith('WHERE `u`.`id` > 3 AND 1 = 2', $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where u.id > 3 and 1 = 2'));
+			self::assertStringEndsWith("WHERE `u`.`id` > 3 AND 'a' <> 0", $this->retrieveSql('mysql', "range of u is UserEntity retrieve (u.id) where u.id > 3 and 'a' <> 0"));
+		}
+
+		/**
+		 * A boolean function compared to 1 still folds into the function itself.
+		 * @return void
+		 */
+		public function testBooleanFunctionComparedToOneIsFolded(): void {
+			$bare = $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where is_float(u.id)');
+			self::assertSame($bare, $this->retrieveSql('mysql', 'range of u is UserEntity retrieve (u.id) where is_float(u.id) = 1'));
+		}
+
+		/**
 		 * Routine-body calls have no known return type, yet convert by position: compared to 1 as a condition, kept as a value.
 		 * @return void
 		 */
