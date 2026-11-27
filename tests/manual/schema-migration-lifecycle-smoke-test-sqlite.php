@@ -6,7 +6,7 @@
 	 * file — the SQLite counterpart to schema-migration-lifecycle-smoke-
 	 * test.php, which covers MySQL. Run as its own process for the same
 	 * reason that one is: a real EntityStore from real entity files on
-	 * disk, outside the shared PHPUnit suite's process-wide EntityManager.
+	 * disk.
 	 *
 	 * Not a re-run of the MySQL script's type matrix (already unit
 	 * tested) — this covers what's genuinely different on SQLite and was

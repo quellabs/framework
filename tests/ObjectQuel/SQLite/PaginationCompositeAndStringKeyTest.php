@@ -13,9 +13,7 @@
 	 * AstNumber literal, and a composite primary key must page by the full
 	 * key tuple rather than silently collapsing to its first component.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class PaginationCompositeAndStringKeyTest extends TestCase {
 

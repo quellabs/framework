@@ -3,12 +3,9 @@
 	/**
 	 * Standalone end-to-end lifecycle smoke test for the schema-migration
 	 * system (`make:migrations` + `quel:migrate`), run as its own PHP process
-	 * rather than through PHPUnit — for the same reason
-	 * quel-migrate-command-smoke-test.php is: MakeMigrationsCommand needs a
+	 * rather than through PHPUnit: MakeMigrationsCommand needs a
 	 * real EntityStore built from real entity files on disk (annotations are
-	 * read from actual docblocks, not in-memory strings), and the shared
-	 * PHPUnit suite (tests/bootstrap.php) already owns the process-wide
-	 * SignalHub/EntityManager.
+	 * read from actual docblocks, not in-memory strings).
 	 *
 	 * What this covers that no existing test does: a full round trip against
 	 * one evolving "kitchen sink" entity that declares every column type
@@ -52,7 +49,7 @@
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 
 	// -----------------------------------------------------------------------
-	// Tiny assertion harness — mirrors quel-migrate-command-smoke-test.php
+	// Tiny assertion harness — no PHPUnit involved
 	// -----------------------------------------------------------------------
 
 	$failures = [];

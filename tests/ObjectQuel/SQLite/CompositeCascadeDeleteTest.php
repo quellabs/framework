@@ -11,9 +11,7 @@
 	 * foreign key, not just its first component, when a Cascade(remove) parent
 	 * is deleted.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class CompositeCascadeDeleteTest extends TestCase {
 

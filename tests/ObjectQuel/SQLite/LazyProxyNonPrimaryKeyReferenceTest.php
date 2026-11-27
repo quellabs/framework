@@ -19,9 +19,7 @@
 	 * referenced value and queried the wrong column, so the relation resolved
 	 * to no data (or, by coincidence, the wrong row) with no error at all.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class LazyProxyNonPrimaryKeyReferenceTest extends TestCase {
 

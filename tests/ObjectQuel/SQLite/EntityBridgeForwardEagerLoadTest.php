@@ -18,8 +18,7 @@
 	 * bridge's own relations — the same chaining EntityBridgeEagerLoadTest proves
 	 * for the child-side (InverseOf) case, but reached from the parent side.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] (SignalHub allows only one
-	 * EntityManager per process) and its own table, created idempotently in
+	 * Uses the suite's shared $GLOBALS['test_em'] and its own table, created idempotently in
 	 * setUp() since another test class may have claimed the connection first.
 	 */
 	class EntityBridgeForwardEagerLoadTest extends TestCase {

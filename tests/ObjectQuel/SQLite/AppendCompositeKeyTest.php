@@ -16,9 +16,7 @@
 	 * single-row append's generated ID is a complete property-keyed map
 	 * rather than one scalar standing in for the whole key.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't
-	 * be constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class AppendCompositeKeyTest extends TestCase {
 

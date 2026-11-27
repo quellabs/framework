@@ -47,11 +47,7 @@
 	 * executeCanvasRoute() down — DI, autowiring, entity binding, and error
 	 * mapping — is real.
 	 *
-	 * EntityManager::find() itself is mocked rather than backed by a second
-	 * real EntityManager: ObjectQuel's UnitOfWork registers process-wide
-	 * SignalHub signals with no duplicate-registration guard, and
-	 * tests/bootstrap.php already creates the one EntityManager this PHPUnit
-	 * process is allowed to have (see its comments).
+	 * EntityManager::find() itself is mocked rather than backed by a real EntityManager.
 	 *
 	 * Also covers a narrower edge directly against Container::get(): its own
 	 * interface documentation says it returns null when a resource doesn't

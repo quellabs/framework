@@ -12,9 +12,7 @@
 	 * AstNumber, so a non-numeric primary key (e.g. a natural string key)
 	 * compiled to an unquoted, invalid SQL literal.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't
-	 * be constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class PaginationTransformerRegressionTest extends TestCase {
 
