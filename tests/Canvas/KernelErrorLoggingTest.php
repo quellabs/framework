@@ -14,10 +14,7 @@
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
-	 * Kernel::createErrorResponse() logs what the generic error page hides:
-	 * an exception that reaches the default handler as a server error, and a
-	 * custom error handler that fails. Client errors and exceptions a custom
-	 * handler answers are not logged.
+	 * Which exceptions Kernel::createErrorResponse() logs, and where.
 	 */
 	class KernelErrorLoggingTest extends TestCase {
 

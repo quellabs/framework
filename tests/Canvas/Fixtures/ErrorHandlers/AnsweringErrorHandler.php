@@ -7,9 +7,7 @@
 	use Symfony\Component\HttpFoundation\Response;
 
 	/**
-	 * A custom error handler that answers every exception itself, used to
-	 * prove that an exception a project's own handler deals with is left to
-	 * that handler and not logged by the Kernel.
+	 * A custom error handler that answers every exception itself.
 	 */
 	class AnsweringErrorHandler implements ErrorHandlerInterface {
 

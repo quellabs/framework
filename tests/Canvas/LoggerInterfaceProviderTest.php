@@ -207,7 +207,7 @@ declare(strict_types=1);
 				'windows drive, backslashes' => ['C:\\logs\\app.log', true],
 				'windows drive, slashes'     => ['C:/logs/app.log', true],
 				'stream'                     => ['php://stderr', true],
-				'relative'                   => ['app.log', false],
+				'relative'                   => ['app.log', false]
 			];
 		}
 
