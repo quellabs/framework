@@ -44,7 +44,9 @@
 				'\'' => "'",
 				'\\' => "\\",
 				'*'  => "*",
-				'?'  => "?"
+				'?'  => "?",
+				'['  => "[",
+				']'  => "]"
 			];
 
 			$this->escapeMapDoubleQuote = [
@@ -59,7 +61,9 @@
 				'\\' => "\\",
 				"'"  => "'",
 				'*'  => "*",
-				'?'  => "?"
+				'?'  => "?",
+				'['  => "[",
+				']'  => "]"
 			];
 	        
 	        $this->keywords = [
@@ -226,8 +230,7 @@
             // double quote or single quote = string
             if (($this->string[$this->pos] == '"') || ($this->string[$this->pos] == '\'')) {
 				$firstChar = $this->string[$this->pos];
-                $string = "";
-				$wildcardOffsets = [];
+				$scanner = new StringPatternScanner();
 
 				while (++$this->pos < $this->length && $this->string[$this->pos] !== $firstChar) {
 					
@@ -249,24 +252,19 @@
 								throw new LexerException("Invalid escape sequence '\\{$this->string[$this->pos + 1]}'");
 							}
 							
-							$string .= $this->escapeMapDoubleQuote[$this->string[++$this->pos]];
+							$scanner->appendEscaped($this->escapeMapDoubleQuote[$this->string[++$this->pos]]);
 							continue;
 						}
-						
+
 						// Afhandeling van escape sequences bij strings omgeven met single quotes
 						if (array_key_exists($this->string[$this->pos + 1], $this->escapeMapSingleQuote)) {
-							$string .= $this->escapeMapSingleQuote[$this->string[++$this->pos]];
+							$scanner->appendEscaped($this->escapeMapSingleQuote[$this->string[++$this->pos]]);
 							continue;
 						}
 					}
-					
-					// Unescaped * and ? are wildcards in comparisons; record where they sit in the value
-					if ($this->string[$this->pos] === '*' || $this->string[$this->pos] === '?') {
-						$wildcardOffsets[] = strlen($string);
-					}
 
-					// Voeg het karakter toe
-					$string .= $this->string[$this->pos];
+					// Unescaped *, ? and [...] are pattern syntax in comparisons; the scanner records them
+					$scanner->appendRaw($this->string[$this->pos]);
                 }
 
 				if ($this->pos >= $this->length) {
@@ -274,10 +272,13 @@
 				}
 
                 ++$this->pos;
+				$scanner->finish();
 
-				return new Token(Token::String, $string, $this->lineNumber, [
-					'char'            => $firstChar,
-					'wildcardOffsets' => $wildcardOffsets
+				return new Token(Token::String, $scanner->getValue(), $this->lineNumber, [
+					'char'             => $firstChar,
+					'wildcardOffsets'  => $scanner->getWildcardOffsets(),
+					'characterClasses' => $scanner->getCharacterClasses(),
+					'patternError'     => $scanner->getPatternError()
 				]);
             }
 

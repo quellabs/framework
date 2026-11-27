@@ -141,7 +141,7 @@
 				$rightAst = $ast->getRight();
 				
 				// Check if right side is a wildcard string pattern
-				if ($rightAst instanceof AstString && $rightAst->hasWildcards()) {
+				if ($rightAst instanceof AstString && $rightAst->isPattern()) {
 					return $this->handleWildcardString($rightAst, $ast, $operator);
 				}
 				
@@ -972,19 +972,60 @@
 		}
 		
 		/**
-		 * Converts a comparison against a string with unescaped * or ? wildcards into LIKE / NOT LIKE.
-		 * @param AstString $rightAst The string containing wildcards
+		 * Converts a comparison against a string pattern into LIKE, or into the engine's class-capable form when it has [...] classes.
+		 * @param AstString $rightAst The string pattern
 		 * @param NodeBinary $ast The full expression
 		 * @param string $operator The comparison operator (= or <>)
-		 * @return string The LIKE expression
+		 * @return string The SQL condition
 		 */
 		private function handleWildcardString(AstString $rightAst, NodeBinary $ast, string $operator): string {
 			$leftResult = $this->operandSql($ast->getLeft(), self::OPERATOR_PRECEDENCE[$operator] ?? null, false, false);
-			$likeOperator = $operator === '=' ? ' LIKE ' : ' NOT LIKE ';
-			$pattern = $this->identifierQuoter->quoteStringLiteral(WildcardPattern::toSqlLike($rightAst));
+			$not = $operator === '<>' ? 'NOT ' : '';
+
+			if (!$rightAst->hasCharacterClasses()) {
+				return $this->buildLike($leftResult, WildcardPattern::toSqlLike($rightAst), $not);
+			}
+
+			return match ($this->platform->getDatabaseType()) {
+				'sqlsrv' => $this->buildLike($leftResult, WildcardPattern::toSqlServerLike($rightAst), $not),
+				'sqlite' => "{$leftResult} {$not}GLOB " . $this->identifierQuoter->quoteStringLiteral(WildcardPattern::toGlob($rightAst)),
+				default  => $not . $this->buildClassRegexMatch($rightAst, $ast->getLeft(), $leftResult),
+			};
+		}
+
+		/**
+		 * Builds "expr [NOT ]LIKE 'pattern' ESCAPE '\'".
+		 * @param string $sqlExpression Already-generated SQL for the value being tested
+		 * @param string $pattern LIKE pattern
+		 * @param string $not 'NOT ' to negate, '' otherwise
+		 * @return string
+		 */
+		private function buildLike(string $sqlExpression, string $pattern, string $not): string {
+			$quotedPattern = $this->identifierQuoter->quoteStringLiteral($pattern);
 			$escapeChar = $this->identifierQuoter->quoteStringLiteral(WildcardPattern::ESCAPE_CHAR);
 
-			return "{$leftResult}{$likeOperator}{$pattern} ESCAPE {$escapeChar}";
+			return "{$sqlExpression} {$not}LIKE {$quotedPattern} ESCAPE {$escapeChar}";
+		}
+
+		/**
+		 * Matches a class pattern with an anchored regex; for a plain column, a LIKE with each class as _ is ANDed in front so an index can still narrow the scan.
+		 * @param AstString $pattern The string pattern
+		 * @param AstInterface $left The tested operand
+		 * @param string $leftResult Already-generated SQL for the tested operand
+		 * @return string Parenthesized SQL condition
+		 */
+		private function buildClassRegexMatch(AstString $pattern, AstInterface $left, string $leftResult): string {
+			$body = WildcardPattern::toRegexBody($pattern);
+
+			// PostgreSQL's $ only matches at the very end and . already matches newlines; ICU and PCRE need (?s) and \z for that
+			$regex = $this->platform->getDatabaseType() === 'pgsql' ? "^{$body}$" : "(?s)^{$body}\\z";
+			$regexMatch = $this->buildRegexMatch($leftResult, $regex);
+
+			if (!$left instanceof AstIdentifier) {
+				return "({$regexMatch})";
+			}
+
+			return '(' . $this->buildLike($leftResult, WildcardPattern::toSqlLike($pattern), '') . " AND {$regexMatch})";
 		}
 		
 		/**

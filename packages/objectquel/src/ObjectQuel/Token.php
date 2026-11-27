@@ -2,6 +2,7 @@
 	
 	namespace Quellabs\ObjectQuel\ObjectQuel;
 	
+	use Quellabs\ObjectQuel\ObjectQuel\Ast\CharacterClass;
 	use Quellabs\ObjectQuel\ReflectionManagement\BasicEnum;
 	
 	/**
@@ -182,6 +183,46 @@
 			}
 
 			return $result;
+		}
+
+		/**
+		 * Returns the [...] character classes in a String token's value.
+		 * @return list<CharacterClass>
+		 * @throws \LogicException if the lexer stored malformed classes
+		 */
+		public function getCharacterClasses(): array {
+			$classes = $this->extraData['characterClasses'] ?? [];
+
+			if (!is_array($classes)) {
+				throw new \LogicException('Token character classes must be a list of CharacterClass');
+			}
+
+			$result = [];
+
+			foreach ($classes as $class) {
+				if (!$class instanceof CharacterClass) {
+					throw new \LogicException('Token character classes must be a list of CharacterClass');
+				}
+
+				$result[] = $class;
+			}
+
+			return $result;
+		}
+
+		/**
+		 * Returns the pattern syntax error in a String token's value, or null when it has none.
+		 * @return string|null
+		 * @throws \LogicException if the lexer stored a malformed error
+		 */
+		public function getPatternError(): ?string {
+			$error = $this->extraData['patternError'] ?? null;
+
+			if ($error !== null && !is_string($error)) {
+				throw new \LogicException('Token pattern error must be a string or null');
+			}
+
+			return $error;
 		}
 
 		/**

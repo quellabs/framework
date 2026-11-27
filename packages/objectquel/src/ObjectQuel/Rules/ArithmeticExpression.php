@@ -85,7 +85,13 @@
 						$enclosingChar = '"';
 					}
 					
-					return new AstString($token->getStringValue(), $enclosingChar, $token->getWildcardOffsets());
+					return new AstString(
+						$token->getStringValue(),
+						$enclosingChar,
+						$token->getWildcardOffsets(),
+						$token->getCharacterClasses(),
+						$token->getPatternError()
+					);
 				
 				case Token::False :
 					$this->lexer->match($tokenType);
