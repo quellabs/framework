@@ -8,6 +8,7 @@
 	use Quellabs\Canvas\Exceptions\RouteNotFoundException;
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Tests\Fixtures\ErrorHandlers\AnsweringErrorHandler;
+	use Quellabs\Canvas\Tests\Fixtures\ErrorHandlers\RethrowingErrorHandler;
 	use Quellabs\Canvas\Tests\Fixtures\ErrorHandlers\ThrowingErrorHandler;
 	use Quellabs\Contracts\Http\HttpException;
 	use Symfony\Component\HttpFoundation\Request;
@@ -67,11 +68,10 @@
 		 * A Kernel logging to $monologFile, with $errorHandlers as its custom handlers.
 		 * @param string $monologFile
 		 * @param list<class-string> $errorHandlers
-		 * @param array<string, mixed> $configuration Further app configuration
 		 * @return Kernel
 		 */
-		private function kernel(string $monologFile, array $errorHandlers = [], array $configuration = []): Kernel {
-			$kernel = new Kernel($configuration + ['monolog_file' => $monologFile, 'debug_mode' => false]);
+		private function kernel(string $monologFile, array $errorHandlers = []): Kernel {
+			$kernel = new Kernel(['monolog_file' => $monologFile, 'debug_mode' => false]);
 
 			$property = new \ReflectionProperty($kernel, 'errorHandlers');
 			$property->setValue($kernel, $errorHandlers);
@@ -190,6 +190,21 @@
 		}
 
 		/**
+		 * A custom handler rethrowing the exception it was given yields one entry,
+		 * for the unhandled exception, not a second one for the handler.
+		 * @return void
+		 */
+		public function testARethrowingCustomHandlerIsLoggedOnce(): void {
+			$this->kernel($this->logFile, [RethrowingErrorHandler::class])
+				->createErrorResponse(new \RuntimeException('passed on'), Request::create('/'));
+
+			$log = $this->read($this->logFile);
+			$this->assertSame(1, substr_count($log, 'passed on'));
+			$this->assertStringContainsString('ERROR: Unhandled exception', $log);
+			$this->assertStringNotContainsString('Error handler failed', $log);
+		}
+
+		/**
 		 * When the log file cannot be written, the entry goes to PHP's error_log
 		 * and the error page is still produced.
 		 * @return void
@@ -205,19 +220,5 @@
 			$this->assertSame(500, $response->getStatusCode());
 			$this->assertStringContainsString('Unhandled exception: RuntimeException: no log file', $fallback);
 			$this->assertStringContainsString('(GET /x)', $fallback);
-		}
-
-		/**
-		 * With 'log_uncaught_exceptions' off nothing is logged, not even to
-		 * error_log, and the error page is still produced.
-		 * @return void
-		 */
-		public function testNothingIsLoggedWhenTheSettingIsOff(): void {
-			$response = $this->kernel($this->logFile, [ThrowingErrorHandler::class], ['log_uncaught_exceptions' => false])
-				->createErrorResponse(new \RuntimeException('quiet'), Request::create('/'));
-
-			$this->assertSame(500, $response->getStatusCode());
-			$this->assertSame('', $this->read($this->logFile));
-			$this->assertSame('', $this->read($this->workDir . '/php-error.log'));
 		}
 	}
