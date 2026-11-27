@@ -13,8 +13,6 @@
 	 */
 	class MultipleEntityManagerTest extends ObjectQuelTestCase {
 
-		protected array $truncateTables = ['posts', 'users'];
-
 		/**
 		 * Creates a second EntityManager sharing the suite's configuration and connection.
 		 * @return EntityManager
@@ -73,11 +71,15 @@
 			$user = new UserEntity();
 			$user->setUsername('carol');
 			$user->setPassword('hash3');
-			$second->persist($user);
-			$second->flush();
 
-			$this->em->getUnitOfWork()->signalPrePersist->disconnect($firstSlot);
-			$second->getUnitOfWork()->signalPrePersist->disconnect($secondSlot);
+			// Disconnect even on failure, since the first EntityManager is shared by the whole suite
+			try {
+				$second->persist($user);
+				$second->flush();
+			} finally {
+				$this->em->getUnitOfWork()->signalPrePersist->disconnect($firstSlot);
+				$second->getUnitOfWork()->signalPrePersist->disconnect($secondSlot);
+			}
 
 			$this->assertSame([], $firstEmitted);
 			$this->assertSame([$user], $secondEmitted);
@@ -92,9 +94,11 @@
 			$signalBefore = $globalHub->getSignal('debug.database.query');
 
 			$second = $this->createSecondEntityManager();
+			$secondReference = \WeakReference::create($second);
 			unset($second);
 			gc_collect_cycles();
 
+			$this->assertNull($secondReference->get(), 'Second EntityManager was destroyed');
 			$this->assertNotNull($signalBefore);
 			$this->assertSame($signalBefore, $globalHub->getSignal('debug.database.query'));
 		}
