@@ -9,6 +9,7 @@
 	use Quellabs\Canvas\Kernel;
 	use Quellabs\Canvas\Tests\Fixtures\ErrorHandlers\AnsweringErrorHandler;
 	use Quellabs\Canvas\Tests\Fixtures\ErrorHandlers\ThrowingErrorHandler;
+	use Quellabs\Contracts\Http\HttpException;
 	use Symfony\Component\HttpFoundation\Request;
 
 	/**
@@ -113,6 +114,52 @@
 
 			$this->assertSame(404, $response->getStatusCode());
 			$this->assertSame('', $this->read($this->logFile));
+		}
+
+		/**
+		 * An HttpException with a 4xx code is a client error and is not logged.
+		 * @return void
+		 */
+		public function testAnHttpExceptionWithAClientErrorCodeIsNotLogged(): void {
+			$response = $this->kernel($this->logFile)->createErrorResponse(new HttpException('Forbidden', 403), Request::create('/admin'));
+
+			$this->assertSame(403, $response->getStatusCode());
+			$this->assertSame('', $this->read($this->logFile));
+		}
+
+		/**
+		 * An HttpException with a 5xx code is a server error and is logged.
+		 * @return void
+		 */
+		public function testAnHttpExceptionWithAServerErrorCodeIsLogged(): void {
+			$response = $this->kernel($this->logFile)->createErrorResponse(new HttpException('Store down', 503), Request::create('/'));
+
+			$this->assertSame(503, $response->getStatusCode());
+			$this->assertStringContainsString('Store down', $this->read($this->logFile));
+		}
+
+		/**
+		 * Another exception's 4xx code says nothing about who is at fault, so it is
+		 * logged even though the response takes that code as its status.
+		 * @return void
+		 */
+		public function testAnInternalExceptionWithAClientErrorCodeIsLogged(): void {
+			$response = $this->kernel($this->logFile)->createErrorResponse(new \RuntimeException('Upstream API failed', 404), Request::create('/'));
+
+			$this->assertSame(404, $response->getStatusCode());
+			$this->assertStringContainsString('Upstream API failed', $this->read($this->logFile));
+		}
+
+		/**
+		 * The query string, which can carry tokens, is left out of the logged URI.
+		 * @return void
+		 */
+		public function testTheQueryStringIsNotLogged(): void {
+			$this->kernel($this->logFile)->createErrorResponse(new \RuntimeException('Reset failed'), Request::create('/password/reset?token=abc123'));
+
+			$log = $this->read($this->logFile);
+			$this->assertStringContainsString('"uri":"/password/reset"', $log);
+			$this->assertStringNotContainsString('abc123', $log);
 		}
 
 		/**
