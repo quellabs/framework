@@ -6,7 +6,6 @@
 	use Quellabs\Support\ComposerUtils;
 	use Twig\Environment;
 	use Twig\Loader\FilesystemLoader;
-	use Twig\Loader\ArrayLoader;
 	use Twig\Cache\FilesystemCache;
 	use Twig\Extension\DebugExtension;
 	use Twig\TwigFunction;
@@ -168,39 +167,20 @@
 		}
 		
 		/**
-		 * Renders a template string with the provided data
+		 * Renders a template string with the provided data, through the main
+		 * environment so its extensions, filters, functions and globals apply.
+		 * With caching on, Twig caches the compiled string keyed by its hash.
 		 * @param string $templateString The template content as a string
 		 * @param array<string, mixed> $data Associative array of variables to pass to the template
 		 * @return string The rendered template content
-		 * @throws \Exception If template rendering fails for any reason
+		 * @throws TemplateRenderException If template rendering fails for any reason
 		 */
 		public function renderString(string $templateString, array $data = []): string {
 			try {
-				// Create a temporary ArrayLoader for the string template
-				$arrayLoader = new ArrayLoader(['__string_template__' => $templateString]);
-				
-				// Create options without cache for string templates
-				$stringOptions = $this->twigOptions;
-				$stringOptions['cache'] = false; // Don't cache string templates
-				
-				// Create a new Twig environment with the array loader
-				$stringTwig = new Environment($arrayLoader, $stringOptions);
-				
-				// Copy extensions from main environment
-				foreach ($this->twig->getExtensions() as $extension) {
-					$stringTwig->addExtension($extension);
-				}
-				
-				// Copy global variables
-				foreach ($this->twig->getGlobals() as $key => $value) {
-					$stringTwig->addGlobal($key, $value);
-				}
-				
 				// Merge global variables with local data (local data takes precedence)
 				$mergedData = array_merge($this->globals, $data);
-				
-				// Render the template string
-				return $stringTwig->render('__string_template__', $mergedData);
+
+				return $this->twig->createTemplate($templateString)->render($mergedData);
 			} catch (LoaderError | RuntimeError | SyntaxError $e) {
 				$snippet = strlen($templateString) > 50 ? substr($templateString, 0, 50) . '...' : $templateString;
 				throw new TemplateRenderException("Failed to render template string '{$snippet}'", $e->getMessage(), $e);
