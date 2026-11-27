@@ -19,6 +19,16 @@
 		}
 
 		/**
+		 * A literal [ is escaped so T-SQL LIKE does not read it as a character class; ] stays as-is.
+		 * @return void
+		 */
+		public function testToSqlLikeEscapesOpeningBracket(): void {
+			$string = new AstString('a[b]*', "'", [4]);
+
+			$this->assertSame('a\\[b]%', WildcardPattern::toSqlLike($string));
+		}
+
+		/**
 		 * Wildcards stay as-is; literal *, ?, [, ] and backslash are escaped.
 		 * @return void
 		 */

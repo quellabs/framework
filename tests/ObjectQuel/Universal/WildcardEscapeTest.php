@@ -21,7 +21,8 @@
 				3 => 'a%b',
 				4 => 'a_b*',
 				5 => 'a\\b',
-				6 => 'a?b'
+				6 => 'a?b',
+				7 => 'a[b]'
 			];
 
 			foreach ($usernames as $id => $username) {
@@ -41,13 +42,14 @@
 				'unescaped star is a wildcard'        => ["u.username = 'a*b'", [1, 2, 3, 5, 6]],
 				'escaped star is literal'             => ["u.username = 'a\\*b'", [1]],
 				'escaped question mark is literal'    => ['u.username = "a\\?b"', [6]],
-				'escaped star negated'                => ["u.username <> 'a\\*b'", [2, 3, 4, 5, 6]],
+				'escaped star negated'                => ["u.username <> 'a\\*b'", [2, 3, 4, 5, 6, 7]],
 				'partly escaped keeps other wildcard' => ["u.username = '?_b\\*'", [4]],
 				'partly escaped star with wildcard'   => ["u.username = '?\\*b'", [1]],
 				'literal percent in pattern'          => ["u.username = 'a%*'", [3]],
 				'literal underscore in pattern'       => ["u.username = 'a_b?'", [4]],
 				'literal backslash in pattern'        => ["u.username = 'a\\\\*'", [5]],
-				'unescaped wildcards negated'         => ["u.username <> 'a?b'", [4]]
+				'literal brackets in pattern'         => ["u.username = 'a[b?'", [7]],
+				'unescaped wildcards negated'         => ["u.username <> 'a?b'", [4, 7]]
 			];
 		}
 
