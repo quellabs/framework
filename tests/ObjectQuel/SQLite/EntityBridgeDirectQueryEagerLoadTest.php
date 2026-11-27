@@ -18,8 +18,7 @@
 	 * the bridge via another entity's relation — there is no relation to exclude,
 	 * since the bridge itself is 'main'.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] (SignalHub allows only one
-	 * EntityManager per process) and its own tables, created idempotently in
+	 * Uses the suite's shared $GLOBALS['test_em'] and its own tables, created idempotently in
 	 * setUp() since another test class may have claimed the connection first.
 	 */
 	class EntityBridgeDirectQueryEagerLoadTest extends TestCase {

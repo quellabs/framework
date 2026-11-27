@@ -17,11 +17,7 @@
 	 * than through a full cascade-delete integration test — see
 	 * RelationshipCascadeForeignKeyTest for that end-to-end coverage.
 	 *
-	 * The UnitOfWork comes from the suite's shared $GLOBALS['test_em'] rather
-	 * than a private EntityManager of this class's own: SignalHub is a
-	 * process-wide singleton that throws on a duplicate 'orm.prePersist'
-	 * registration, so only one EntityManager can ever exist per PHPUnit
-	 * process.
+	 * The UnitOfWork comes from the suite's shared $GLOBALS['test_em'].
 	 */
 	class CascadeStrategyTest extends TestCase {
 

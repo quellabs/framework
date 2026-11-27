@@ -34,8 +34,7 @@
 	 * TempTableExecutor only ever calls it and uses the returned rows.
 	 *
 	 * Uses the suite's shared EntityManager/EntityStore ($GLOBALS['test_em'])
-	 * — see CascadeStrategyTest for why only one EntityManager may exist per
-	 * PHPUnit process — and the App\Entities\PostEntity fixture, which already
+	 * and the App\Entities\PostEntity fixture, which already
 	 * declares unsigned integer, string/limit, text, boolean, and datetime
 	 * columns.
 	 */

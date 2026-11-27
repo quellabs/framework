@@ -18,9 +18,7 @@
 	 * SearchTermEntity::$label carries no FullTextIndex, so search() resolves to
 	 * the LIKE fallback being tested here.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't
-	 * be constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class SearchLikeParameterRegressionTest extends TestCase {
 

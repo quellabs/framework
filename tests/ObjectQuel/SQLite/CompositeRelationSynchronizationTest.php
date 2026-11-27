@@ -14,9 +14,7 @@
 	 * the first component — and reporting a partially-resolved composite parent
 	 * instead of silently writing an inconsistent row.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class CompositeRelationSynchronizationTest extends TestCase {
 

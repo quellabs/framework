@@ -12,12 +12,8 @@
 	use Quellabs\Sculpt\Console\ConsoleOutput;
 
 	/**
-	 * MakeBlankMigrationCommand (`make:blank-migration <Name>`) — see Phase 4
-	 * of objectquel-migrations-implementation-plan.md. Needs no live database
-	 * connection at all (it only writes a file), so — unlike
-	 * QuelMigrateCommand — this can be tested end-to-end without touching
-	 * the "only one EntityManager per process" constraint the rest of this
-	 * suite works around (see tests/bootstrap.php).
+	 * MakeBlankMigrationCommand (`make:blank-migration <Name>`). Needs no live database
+	 * connection (it only writes a file).
 	 */
 	class MakeBlankMigrationCommandTest extends TestCase {
 

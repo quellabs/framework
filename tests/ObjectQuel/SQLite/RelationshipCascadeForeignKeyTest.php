@@ -40,11 +40,7 @@
 	 * FkOrderActionNoFkEntity that are deliberately invalid for other tests'
 	 * purposes.
 	 *
-	 * The EntityManager itself comes from the suite's shared $GLOBALS['test_em']
-	 * — a genuine process-wide singleton, not just per-class — because
-	 * UnitOfWork registers a standalone 'orm.prePersist' signal on the
-	 * process-wide SignalHub with no "already registered" guard, so a second
-	 * EntityManager anywhere else in the same PHPUnit process throws. This
+	 * The EntityManager itself comes from the suite's shared $GLOBALS['test_em']. This
 	 * class's own tables are created idempotently in setUp() (CREATE TABLE IF
 	 * NOT EXISTS) since another test class may have claimed the connection
 	 * first, and table state between tests is reset via DELETE FROM.
