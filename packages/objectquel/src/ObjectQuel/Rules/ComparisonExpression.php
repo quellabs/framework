@@ -98,7 +98,16 @@
 			if (($rightSide instanceof AstRegExp) && !in_array($lookahead, [Token::Equals, Token::Unequal])) {
 				throw new ParserException("Unsupported operator used with regular expression. Only '=' and '<>' operators are allowed for regular expression comparisons.");
 			}
-			
+
+			// A string on the right of = or <> is a pattern, so its pattern syntax must be valid
+			if (
+				$rightSide instanceof AstString &&
+				$rightSide->getPatternError() !== null &&
+				in_array($lookahead, [Token::Equals, Token::Unequal], true)
+			) {
+				throw new ParserException("{$rightSide->getPatternError()} in pattern '{$rightSide->getValue()}'. Escape a literal [ or ] with a backslash.");
+			}
+
 			// Create and return a new AstExpression node
 			return new AstExpression($term, $rightSide, $operatorToken->getStringValue());
 		}

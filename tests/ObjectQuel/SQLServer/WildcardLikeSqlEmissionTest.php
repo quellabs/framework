@@ -28,9 +28,24 @@
 			$sql = $this->compile("
 				range of u is App\\Entities\\UserEntity
 				retrieve (u.id)
-				where u.username = 'a[b]*'
+				where u.username = 'a\\[b]*'
 			");
 
 			self::assertStringContainsString("LIKE 'a\\[b]%' ESCAPE '\\'", $sql);
+		}
+
+		/**
+		 * A character class stays native in T-SQL LIKE, with its members listed and special ones escaped.
+		 * @return void
+		 */
+		public function testCharacterClassUsesNativeLike(): void {
+			$sql = $this->compile("
+				range of u is App\\Entities\\UserEntity
+				retrieve (u.id)
+				where u.username = 'Jan[A-C]*' and u.username <> 'a[\\]^-]b'
+			");
+
+			self::assertStringContainsString("[u].[username] LIKE 'Jan[ABC]%' ESCAPE '\\'", $sql);
+			self::assertStringContainsString("[u].[username] NOT LIKE 'a[\\]\\^\\-]b' ESCAPE '\\'", $sql);
 		}
 	}

@@ -48,7 +48,7 @@
 				'literal percent in pattern'          => ["u.username = 'a%*'", [3]],
 				'literal underscore in pattern'       => ["u.username = 'a_b?'", [4]],
 				'literal backslash in pattern'        => ["u.username = 'a\\\\*'", [5]],
-				'literal brackets in pattern'         => ["u.username = 'a[b?'", [7]],
+				'literal brackets in pattern'         => ["u.username = 'a\\[b?'", [7]],
 				'unescaped wildcards negated'         => ["u.username <> 'a?b'", [4, 7]]
 			];
 		}

@@ -388,18 +388,20 @@
 		}
 
 		/**
-		 * Compares a value against a string literal; unescaped * and ? match like SQL LIKE wildcards, escaped ones literally.
+		 * Compares a value against a string literal; unescaped *, ? and [...] match as a pattern, escaped ones literally.
 		 * @param mixed $left The evaluated left-hand side value
 		 * @param AstString $literal The right-hand side string literal
 		 * @return bool
 		 */
 		private static function evaluateStringLiteralEquals(mixed $left, AstString $literal): bool {
-			if (!$literal->hasWildcards()) {
+			if (!$literal->isPattern()) {
 				return $left == $literal->getValue();
 			}
 
-			// fnmatch() with FNM_CASEFOLD mirrors SQL LIKE case-insensitive behaviour
-			return fnmatch(WildcardPattern::toFnmatch($literal), self::stringify($left), FNM_CASEFOLD);
+			// Same translation as the SQL regex form; i mirrors case-insensitive LIKE, s lets * span newlines
+			$regex = '/\A' . WildcardPattern::toRegexBody($literal) . '\z/usi';
+
+			return preg_match($regex, self::stringify($left)) === 1;
 		}
 		
 		/**

@@ -8,6 +8,7 @@
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstExpression;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstParameter;
 	use Quellabs\ObjectQuel\ObjectQuel\Ast\AstString;
+	use Quellabs\ObjectQuel\ObjectQuel\Lexer;
 
 	class ConditionEvaluatorWildcardTest extends TestCase {
 
@@ -40,6 +41,47 @@
 		#[DataProvider('comparisons')]
 		public function testStringLiteralComparison(string $value, array $wildcardOffsets, string $subject, bool $expected): void {
 			$literal = new AstString($value, "'", $wildcardOffsets);
+			$params = ['subject' => $subject];
+
+			$equals = ConditionEvaluator::evaluate(new AstExpression(new AstParameter('subject'), $literal, '='), [], [], $params);
+			$notEquals = ConditionEvaluator::evaluate(new AstExpression(new AstParameter('subject'), $literal, '<>'), [], [], $params);
+
+			$this->assertSame($expected, $equals);
+			$this->assertSame(!$expected, $notEquals);
+		}
+
+		/**
+		 * Lists a Quel string literal, subject and expected = result for character class patterns.
+		 * @return array<string, array{string, string, bool}>
+		 */
+		public static function classComparisons(): array {
+			return [
+				'range matches'           => ["'Jan[A-C]*9'", 'JanBxx9', true],
+				'range rejects'           => ["'Jan[A-C]*9'", 'JanD9', false],
+				'case-insensitive class'  => ["'Jan[A-C]9'", 'janb9', true],
+				'caret is literal'        => ["'a[^]b'", 'a^b', true],
+				'caret does not negate'   => ["'a[^]b'", 'axb', false],
+				'escaped bracket member'  => ["'a[\\]]b'", 'a]b', true],
+				'regex metachar literal'  => ["'a.[b]'", 'axb', false],
+				'multibyte member'        => ["'[é]?'", 'éa', true],
+				'star spans newline'      => ["'*[A]'", "x\nA", true],
+				'strict end of value'     => ["'*[A]'", "A\n", false],
+				'wildcards still work'    => ["'a*b'", 'axxb', true],
+				'question mark multibyte' => ["'?b'", 'éb', true]
+			];
+		}
+
+		/**
+		 * The in-memory evaluator matches [...] classes like the SQL translation.
+		 * @param string $source Quel string literal source
+		 * @param string $subject Value compared against the literal
+		 * @param bool $expected Expected result of =
+		 * @return void
+		 */
+		#[DataProvider('classComparisons')]
+		public function testCharacterClassComparison(string $source, string $subject, bool $expected): void {
+			$token = (new Lexer($source))->peek();
+			$literal = new AstString($token->getStringValue(), "'", $token->getWildcardOffsets(), $token->getCharacterClasses());
 			$params = ['subject' => $subject];
 
 			$equals = ConditionEvaluator::evaluate(new AstExpression(new AstParameter('subject'), $literal, '='), [], [], $params);
