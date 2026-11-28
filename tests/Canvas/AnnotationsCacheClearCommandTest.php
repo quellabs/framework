@@ -97,6 +97,16 @@
 		/**
 		 * @return void
 		 */
+		public function testHelpExplainsUsageAndPointsToTheRoutesCache(): void {
+			$help = $this->makeCommand($this->createStub(ConsoleOutput::class))->getHelp();
+
+			$this->assertStringContainsString('php sculpt annotations:clear-cache', $help);
+			$this->assertStringContainsString('routes:clear-cache', $help);
+		}
+
+		/**
+		 * @return void
+		 */
 		public function testRemovesTheReadersCacheFilesAndLeavesOthersAlone(): void {
 			$controller = $this->cacheFile('App#Controllers#BillingController.cache');
 			$entity = $this->cacheFile('App#Entities#InvoiceEntity.cache');
