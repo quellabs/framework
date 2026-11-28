@@ -5,6 +5,17 @@
 	use Cake\Database\Connection;
 	use PHPUnit\Framework\TestCase;
 	use Quellabs\Recommender\Config\RecommendationConfig;
+	use Cake\Database\Log\LoggedQuery;
+	use Psr\Log\AbstractLogger;
+	use Quellabs\Recommender\Internal\UserSimilarity;
+use Quellabs\Recommender\Sources\UserSimilaritySource;
+	use Quellabs\Recommender\Sources\SlopeOneSource;
+	use Quellabs\Recommender\Sources\ItemLinksSource;
+use Quellabs\Recommender\Sources\TopRatedSource;
+	use Quellabs\Recommender\RecommendationEngine;
+	use Quellabs\Recommender\Reconciliation\RecommendationReconciler;
+	use Quellabs\Recommender\Internal\Reconciliation\RequestSourcesFactory;
+	use Quellabs\Recommender\Evaluation\ModelScorerResolver;
 	
 	/**
 	 * Base class for integration tests that require a live database connection.
@@ -23,6 +34,25 @@
 			
 			$this->connection->execute('TRUNCATE TABLE vogoo_ratings');
 			$this->connection->execute('TRUNCATE TABLE vogoo_links');
+		}
+		
+		/**
+		 * Build a reconciler with its user-similarity collaborator.
+		 * @return RecommendationReconciler
+		 */
+		protected function reconciler(): RecommendationReconciler {
+			return $this->reconcilerWith($this->config);
+		}
+		
+		/**
+		 * Build a reconciler that uses the given configuration.
+		 * @param RecommendationConfig $config Recommender settings
+		 * @return RecommendationReconciler
+		 */
+		protected function reconcilerWith(RecommendationConfig $config): RecommendationReconciler {
+			return new RecommendationReconciler($config,
+				new RequestSourcesFactory($this->connection, $config, new UserSimilarity($this->connection, $config, new RecommendationEngine($this->connection, $config))),
+				new ModelScorerResolver($this->connection));
 		}
 		
 		/**
@@ -71,5 +101,22 @@
 			
 			$row = $stmt->fetchAssoc();
 			return $row !== [] ? $row : null;
+		}
+	}
+
+	/** Captures SQL issued by the shared CakePHP test connection. */
+	class SqlCaptureLogger extends AbstractLogger {
+		/** @var array<int, string> */
+		public array $queries = [];
+
+		/** @param mixed $level Log level
+		 * @param string|\Stringable $message Logged query
+		 * @param array<string, mixed> $context Query metadata
+		 * @return void
+		 */
+		public function log($level, string|\Stringable $message, array $context = []): void {
+			$query = $context['query'] ?? null;
+			$this->queries[] = $query instanceof LoggedQuery
+				? (string)$query->getContext()['query'] : (string)$message;
 		}
 	}

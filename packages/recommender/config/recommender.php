@@ -17,9 +17,6 @@
 		// Cost factor used in the member similarity spread calculation
 		'cost'                        => 5.0,
 		
-		// Sentinel value stored to mark "not interested" (must remain -1.0)
-		'not_interested'              => -1.0,
-		
 		// Maintain liked_count incrementally on every rating change.
 		// When false, run "sculpt recommender:rebuild-links" after bulk imports.
 		'direct_links'                => false,
@@ -27,5 +24,10 @@
 		// Maintain slope_count and diff_slope incrementally on every rating change.
 		// When false, run "sculpt recommender:rebuild-links" after bulk imports.
 		'direct_slope'                => true,
+		
+		// Reconciliation depth and provider payload bounds.
+		'max_candidate_depth'         => 2000,
+		'max_backfill_rounds'         => 3,
+		'max_eligibility_batch_size'  => 500,
 	
 	];

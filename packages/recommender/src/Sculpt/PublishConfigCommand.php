@@ -7,8 +7,7 @@
 	use Quellabs\Sculpt\Contracts\CommandBase;
 	
 	/**
-	 * Publishes the recommender configuration file to config/recommender.php
-	 * in the project root.
+	 * Publishes the recommender configuration file to config/recommender.php in the project root.
 	 *
 	 * Usage:
 	 *   sculpt recommender:init
@@ -16,8 +15,8 @@
 	class PublishConfigCommand extends CommandBase {
 		
 		/**
-		 * Return the command's invocable signature.
-		 * @return string The command signature (its invocable name)
+		 * Return the command signature.
+		 * @return string The command signature
 		 */
 		public function getSignature(): string {
 			return 'recommender:init';
@@ -32,9 +31,9 @@
 		}
 		
 		/**
-		 * Publish the recommender config stub into the project config directory.
+		 * Copy the recommender config stub into the project config directory, unless it already exists.
 		 * @param ConfigurationManager $config The Sculpt configuration manager (flags and arguments)
-		 * @return int Exit code: 0 on success, 1 on failure
+		 * @return int Exit code: 0 on success or when the file already exists, 1 on failure
 		 */
 		public function execute(ConfigurationManager $config): int {
 			$source = realpath(__DIR__ . '/../../config/recommender.php');
@@ -43,9 +42,10 @@
 				$this->output->error('Could not locate the recommender config stub file.');
 				return 1;
 			}
+			
 			$target = ComposerUtils::getProjectRoot() . '/config/recommender.php';
 			
-			// Skip if the config file was already published
+			// Keep an existing config so user edits are not overwritten
 			if (file_exists($target)) {
 				$this->output->success('Config file already exists, skipping');
 				return 0;
