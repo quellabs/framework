@@ -108,6 +108,20 @@
 		public function getSettlementPayments(string $settlementId): array;
 
 		/**
+		 * Returns the refunds deducted from a settlement.
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 */
+		public function getSettlementRefunds(string $settlementId): array;
+
+		/**
+		 * Returns the chargebacks deducted from a settlement.
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 */
+		public function getSettlementChargebacks(string $settlementId): array;
+
+		/**
 		 * Returns one page of the organization's settlements. Pass the previous
 		 * call's SettlementListResult::$nextCursor to fetch the next page, or
 		 * null to start from the first page. Sort order is provider-specific

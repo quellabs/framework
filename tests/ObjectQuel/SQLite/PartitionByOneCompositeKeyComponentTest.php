@@ -16,9 +16,7 @@
 	 * (AggregateOptimizer) and the hoisted form (AbstractSequenceFunctionHoister,
 	 * forced by a `where` filter on the window result).
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class PartitionByOneCompositeKeyComponentTest extends TestCase {
 

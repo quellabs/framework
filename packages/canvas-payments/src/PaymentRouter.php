@@ -13,9 +13,11 @@
 	use Quellabs\Payments\Contracts\RefundRequest;
 	use Quellabs\Discover\Discover;
 	use Quellabs\Payments\Contracts\RefundResult;
+	use Quellabs\Payments\Contracts\SettlementChargebackInfo;
 	use Quellabs\Payments\Contracts\SettlementInfo;
 	use Quellabs\Payments\Contracts\SettlementListResult;
 	use Quellabs\Payments\Contracts\SettlementPaymentInfo;
+	use Quellabs\Payments\Contracts\SettlementRefundInfo;
 	
 	/**
 	 * Payment Router
@@ -241,6 +243,26 @@
 		 */
 		public function getSettlementPayments(string $driver, string $settlementId): array {
 			return $this->resolveDriver($driver)->getSettlementPayments($settlementId);
+		}
+
+		/**
+		 * Returns the refunds deducted from a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementRefundInfo>
+		 */
+		public function getSettlementRefunds(string $driver, string $settlementId): array {
+			return $this->resolveDriver($driver)->getSettlementRefunds($settlementId);
+		}
+
+		/**
+		 * Returns the chargebacks deducted from a settlement.
+		 * @param string $driver Driver name as returned in PaymentState::$provider (e.g. 'mollie')
+		 * @param string $settlementId
+		 * @return array<int, SettlementChargebackInfo>
+		 */
+		public function getSettlementChargebacks(string $driver, string $settlementId): array {
+			return $this->resolveDriver($driver)->getSettlementChargebacks($settlementId);
 		}
 
 		/**

@@ -86,6 +86,7 @@
             <exclude>packages/canvas-authorization-objectquel/tests/Fixtures</exclude>
         </testsuite>
         <testsuite name="CanvasPayments">
+            <directory>packages/canvas-payments-contracts/tests</directory>
             <directory>packages/canvas-payments-mollie/tests</directory>
             <directory>packages/canvas-payments-adyen/tests</directory>
             <directory>packages/canvas-payments-buckaroo/tests</directory>

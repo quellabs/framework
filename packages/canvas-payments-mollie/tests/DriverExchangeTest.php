@@ -109,5 +109,30 @@
 			$this->assertSame(PaymentStatus::Paid, $state->state);
 			$this->assertNull($state->failureReason);
 			$this->assertNull($state->mandateId);
+			$this->assertSame(0, $state->valueChargedBack, 'Mollie omits amountChargedBack while nothing is charged back');
+		}
+
+		/**
+		 * exchange() reports amountChargedBack on a payment that keeps its paid status.
+		 * @return void
+		 */
+		public function testExchangeMapsTheChargedBackAmount(): void {
+			$gateway = new FakeExchangeGateway();
+			$gateway->setPaymentInfoResponse([
+				'request'  => ['result' => 1, 'errorId' => '', 'errorMessage' => ''],
+				'response' => [
+					'resource'          => 'payment',
+					'status'            => 'paid',
+					'amount'            => ['value' => '19.00', 'currency' => 'EUR'],
+					'amountChargedBack' => ['value' => '19.00', 'currency' => 'EUR']
+				]
+			]);
+
+			$state = $this->driverWithGateway($gateway)->exchange('tr_7UhSN1zuXS');
+
+			$this->assertSame(PaymentStatus::Paid, $state->state);
+			$this->assertSame(1900, $state->valuePaid);
+			$this->assertSame(1900, $state->valueChargedBack);
+			$this->assertSame(0, $state->valueRefunded);
 		}
 	}

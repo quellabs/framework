@@ -17,9 +17,7 @@
 	 * identity map returning the same instance on a repeat lookup. Complements
 	 * the pure-metadata coverage in Unit/Metadata/CompositeIdentifierTest.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class CompositePrimaryKeyFindTest extends TestCase {
 

@@ -18,8 +18,7 @@
 	 * ManyToOne relations — @Orm\EntityBridge only decides whether QueryBuilder
 	 * chains eager-loading one hop further; it doesn't collapse or hide the bridge.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] (SignalHub allows only one
-	 * EntityManager per process) and its own tables, created idempotently in
+	 * Uses the suite's shared $GLOBALS['test_em'] and its own tables, created idempotently in
 	 * setUp() since another test class may have claimed the connection first.
 	 */
 	class EntityBridgeEagerLoadTest extends TestCase {

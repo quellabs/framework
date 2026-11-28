@@ -7,6 +7,7 @@ declare(strict_types=1);
 	use Monolog\Handler\ErrorLogHandler;
 	use Monolog\Handler\RotatingFileHandler;
 	use Monolog\Handler\StreamHandler;
+	use Monolog\Logger;
 	use PHPUnit\Framework\TestCase;
 	use Psr\Log\LoggerInterface;
 	use Quellabs\AnnotationReader\AnnotationReader;
@@ -194,5 +195,44 @@ declare(strict_types=1);
 
 			$this->assertSame('app', $logger->getName());
 			$this->assertInstanceOf(ErrorLogHandler::class, $logger->getHandlers()[0]);
+		}
+
+		/**
+		 * Log file paths the provider must use as given, and a relative one it puts below storage/logs.
+		 * @return array<string, array{string, bool}> Path => whether it is used as given
+		 */
+		public static function logfilePathProvider(): array {
+			return [
+				'unix absolute'              => ['/var/log/app.log', true],
+				'windows drive, backslashes' => ['C:\\logs\\app.log', true],
+				'windows drive, slashes'     => ['C:/logs/app.log', true],
+				'stream'                     => ['php://stderr', true],
+				'relative'                   => ['app.log', false]
+			];
+		}
+
+		/**
+		 * An absolute path (Unix or Windows) or a stream is used as given; a
+		 * relative name is placed below the project's storage/logs.
+		 * @dataProvider logfilePathProvider
+		 * @param string $path
+		 * @param bool $usedAsGiven
+		 * @return void
+		 */
+		public function testResolvesTheLogfilePath(string $path, bool $usedAsGiven): void {
+			$configuration = new Configuration();
+			$configuration->setSource(Configuration::SOURCE_DOCBLOCKS);
+			$provider = new LoggerInterfaceProvider($path, new AnnotationReader($configuration));
+
+			$logger = $provider->createInstance(LoggerInterface::class, [], [], null);
+			$this->assertInstanceOf(Logger::class, $logger);
+			$handler = $logger->getHandlers()[0];
+			$this->assertInstanceOf(StreamHandler::class, $handler);
+
+			if ($usedAsGiven) {
+				$this->assertSame($path, $handler->getUrl());
+			} else {
+				$this->assertStringEndsWith('/storage/logs/' . $path, (string)$handler->getUrl());
+			}
 		}
 	}

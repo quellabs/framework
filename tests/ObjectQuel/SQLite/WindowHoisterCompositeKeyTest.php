@@ -16,9 +16,7 @@
 	 * would fan out against both of its tenant's helper rows, duplicating rows
 	 * and corrupting the row_number() result this test asserts on.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class WindowHoisterCompositeKeyTest extends TestCase {
 

@@ -16,9 +16,7 @@
 	 * tenantId alone, leaving the two rows tied and falling back to whatever
 	 * order the engine happened to return them in.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] — see
-	 * RelationshipCascadeForeignKeyTest for why a second EntityManager can't be
-	 * constructed in this process.
+	 * Uses the suite's shared $GLOBALS['test_em'].
 	 */
 	class InValuesAreFinalCompositeKeyTest extends TestCase {
 

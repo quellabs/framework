@@ -16,8 +16,7 @@
 	 * reached via $userA (their shared target type would match the exclusion for
 	 * either one) — before this fix, $userB never got its extra hop at all.
 	 *
-	 * Uses the suite's shared $GLOBALS['test_em'] (SignalHub allows only one
-	 * EntityManager per process) and its own tables, created idempotently in
+	 * Uses the suite's shared $GLOBALS['test_em'] and its own tables, created idempotently in
 	 * setUp() since another test class may have claimed the connection first.
 	 */
 	class EntityBridgeSelfReferencingEagerLoadTest extends TestCase {

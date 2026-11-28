@@ -45,6 +45,38 @@
 		}
 
 		/**
+		 * getSettlementRefunds() throws PaymentSettlementException with errorId 'not_supported'.
+		 * @return void
+		 */
+		public function testGetSettlementRefundsThrowsNotSupported(): void {
+			$driver = new Driver();
+
+			try {
+				$driver->getSettlementRefunds('stl_123');
+				$this->fail('Expected PaymentSettlementException to be thrown.');
+			} catch (PaymentSettlementException $e) {
+				$this->assertSame('xpay', $e->getProvider());
+				$this->assertSame('not_supported', $e->getErrorId());
+			}
+		}
+
+		/**
+		 * getSettlementChargebacks() throws PaymentSettlementException with errorId 'not_supported'.
+		 * @return void
+		 */
+		public function testGetSettlementChargebacksThrowsNotSupported(): void {
+			$driver = new Driver();
+
+			try {
+				$driver->getSettlementChargebacks('stl_123');
+				$this->fail('Expected PaymentSettlementException to be thrown.');
+			} catch (PaymentSettlementException $e) {
+				$this->assertSame('xpay', $e->getProvider());
+				$this->assertSame('not_supported', $e->getErrorId());
+			}
+		}
+
+		/**
 		 * listSettlements() throws PaymentSettlementException with errorId 'not_supported'.
 		 * @return void
 		 */
